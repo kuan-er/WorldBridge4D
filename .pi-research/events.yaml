@@ -7,7 +7,7 @@ events:
     max_triggers: 1
   - id: nan_inf
     type: log.regex
-    pattern: "NaN|Inf|nan|inf"
+    pattern: "\\b(?:NaN|nan|Inf|inf)\\b"
     source: both
     actions: [record, wake_agent]
     max_triggers: 5

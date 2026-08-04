@@ -25,4 +25,4 @@ def test_quaternion_camera_translation_direction():
 def test_quaternion_matrix_is_orthonormal():
     q = np.array([[.7,.2,-.1,.6],[1.,0.,0.,0.]])
     r = CameraModel.quaternion_matrix(q)
-    np.testing.assert_allclose(np.einsum("...ij,...kj->...ik",r,r), np.eye(3), atol=1e-6)
+    np.testing.assert_allclose(np.einsum("...ij,...kj->...ik",r,r), np.broadcast_to(np.eye(3),(2,3,3)), atol=1e-6)
