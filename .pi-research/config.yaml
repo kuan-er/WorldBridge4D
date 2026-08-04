@@ -1,0 +1,17 @@
+version: 1
+tracking:
+  mlflow:
+    enabled: false
+    tracking_uri_env: MLFLOW_TRACKING_URI
+    experiment_name: default
+    required: false
+  wandb:
+    enabled: false
+    group: null
+    tags: []
+runner:
+  termination_grace_seconds: 10
+  max_wakeups_per_run: 3
+  event_poll_ms: 500
+safety:
+  max_auto_commit_bytes: 52428800

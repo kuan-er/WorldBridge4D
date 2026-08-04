@@ -1,0 +1,20 @@
+# pi-research-loop safety
+.pi-research/worktrees/
+.pi-research/tasks/
+.pi-research/pending/
+.pi-research/runtime/
+runs/*
+!runs/.gitkeep
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+wandb/
+mlruns/
