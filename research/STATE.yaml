@@ -1,4 +1,4 @@
-current_task: T-20260804164132-40f51d
+current_task: T-20260804165015-4c6950
 active_hypotheses:
   - H001
 recent_results:
@@ -57,7 +57,12 @@ recent_results:
   - run_id: R-20260804064416-561437
     kind: final_compileall
     result: succeeded
-next_step: For npm distribution, enable npm publish 2FA or create a granular
-  token with publish and 2FA bypass, then publish pi-research-loop@0.1.0;
-  Git-based Pi installation is already pinned and reproducible.
-updated_at: 2026-08-04T16:41:32.417Z
+  - kind: tracking_configuration
+    result: configured
+    mlflow: disabled_no_server
+    wandb: enabled
+    wandb_entity: zhaigong2023-sjtu-hpc-center
+    wandb_project: worldbridge4d
+    secrets_committed: false
+next_step: "Run the matched-budget Full-vs-Compact comparison with W&B environment variables loaded from the local .env, then evaluate reconstruction, first-frame tracking, arbitrary-source tracking, late-appearing objects, and occluded points."
+updated_at: 2026-08-04T16:50:15.175Z

@@ -36,3 +36,9 @@ The bounded comparison is a plumbing baseline, not a conclusive quality result: 
 
 - The final research worktree was published to the private GitHub repository `https://github.com/kuan-er/WorldBridge4D`, with `main` pointing to the packaging commit after the research commit `52de66a5e89affdf1c26cf6ea0d7501cfa1064b9`. No dataset, checkpoint, cache, or generated output was pushed.
 - `.pi/settings.json` pins `pi-research-loop` to Git commit `1124d244b4b7df624c8ddb9b85da1b3864dd66dd`, so another trusted Pi project can install the extension/skill automatically. The public npm package `pi-research-loop@0.1.0` was tested (`7/7` tests) but publication was blocked by npm's requirement for 2FA or a granular token with 2FA bypass; no npm package was published from this session.
+
+## 2026-08-04 — tracking deployment without MLflow
+
+- This project has no MLflow server, so MLflow tracking is disabled rather than pointing at a nonexistent endpoint. W&B remains enabled with entity `zhaigong2023-sjtu-hpc-center`, project `worldbridge4d`, group `worldbridge4d-full-vs-compact`, and the existing research tags.
+- `docs/tracking-env.example` contains only placeholders; real `.env` files, API keys, and credentials remain ignored and must be configured separately on each machine. A private GitHub repository is not a safe secret store because credentials persist in history and may be exposed through clones, logs, backups, or collaborators.
+- W&B credentials can be provisioned with `wandb login` or environment variables. PRL injects W&B run metadata, while actual scalar logging still requires the training process to call `wandb.init()`.

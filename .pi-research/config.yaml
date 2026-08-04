@@ -3,12 +3,12 @@ tracking:
   mlflow:
     enabled: false
     tracking_uri_env: MLFLOW_TRACKING_URI
-    experiment_name: default
+    experiment_name: worldbridge4d-full-vs-compact
     required: false
   wandb:
-    enabled: false
-    group: null
-    tags: []
+    enabled: true
+    group: worldbridge4d-full-vs-compact
+    tags: [movif, geometry-supervised, full-vs-compact]
 runner:
   termination_grace_seconds: 10
   max_wakeups_per_run: 3

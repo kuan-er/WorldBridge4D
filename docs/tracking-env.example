@@ -1,0 +1,11 @@
+# Copy to .env locally, fill in values, then load it before launching PRL:
+# set -a; source .env; set +a
+# Never commit .env or paste secrets into Git.
+
+# W&B account and project. The API key may instead be stored with `wandb login`.
+WANDB_ENTITY=zhaigong2023-sjtu-hpc-center
+WANDB_PROJECT=worldbridge4d
+# WANDB_API_KEY=replace-with-your-key
+
+# MLflow is disabled because this project has no MLflow server.
+# MLFLOW_TRACKING_URI=
