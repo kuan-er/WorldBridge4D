@@ -1,5 +1,48 @@
-current_task: null
-active_hypotheses: []
-recent_results: []
-next_step: "Read PROJECT.md and create the first hypothesis."
-updated_at: null
+current_task: T-20260804055436-2bc3c7
+active_hypotheses:
+  - H001
+recent_results:
+  - run_id: R-20260804055700-fc6af7
+    kind: dataset_audit
+    result: succeeded
+  - run_id: R-20260804060621-1ebf71
+    kind: geometry_validation
+    result: succeeded
+    roundtrip_max_px: 1.0846e-13
+    diagonal_X_equals_P_max: 0.0
+  - run_id: R-20260804060902-744786
+    kind: model_shape_smoke
+    result: succeeded
+    compact_and_full_latent_shape: [1, 16, 6, 16, 16]
+  - run_id: R-20260804061842-5f297c
+    kind: unit_tests
+    result: succeeded
+    passed: 6
+  - run_id: R-20260804062043-059151
+    kind: tiny_overfit_compact
+    result: succeeded
+    loss_ratio: 0.3454681
+  - run_id: R-20260804062439-810fb1
+    kind: tiny_overfit_full
+    result: succeeded
+    loss_ratio: 0.4314703
+  - run_id: R-20260804062809-41bf71
+    kind: bounded_train_compact
+    result: succeeded
+    final_loss: 2.4896023
+  - run_id: R-20260804063028-a4fe07
+    kind: bounded_train_full
+    result: succeeded
+    final_loss: 4.1850290
+  - run_id: R-20260804063321-e1b7f8
+    kind: validation_compact
+    result: succeeded
+    reconstruction_endpoint_error: 7.03999
+    first_frame_endpoint_error: 6.36766
+  - run_id: R-20260804063717-1d3757
+    kind: validation_full
+    result: succeeded
+    reconstruction_endpoint_error: 11.29462
+    first_frame_endpoint_error: 10.17443
+    arbitrary_all_st_endpoint_error: 11.28567
+next_step: "Run final tests, checkpoint code, and finish the PRL Task without merging."
