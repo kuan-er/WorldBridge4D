@@ -65,7 +65,15 @@ prl run launch --task <TASK> --events <WORKTREE>/.pi-research/events.yaml -- \
 
 建议顺序是 `configs/smoke.yaml` → `configs/tiny_compact.yaml`/`tiny_full.yaml` → bounded `compact.yaml`/`full.yaml`。训练会从 train split 计算坐标统计量，记录配置、seed、commit、硬件、峰值显存、吞吐，保存并立即恢复 checkpoint。`--resume` 支持恢复。`evaluate.py` 以空间 stride 和 query chunk 分块，不物化完整 `O(T²HW)` float32 查询；Full 的 `arbitrary_all_st` 表示所有源/目标时间组合（空间为可复现 stride 网格）。
 
-若环境有 `MLFLOW_TRACKING_URI`，将 `.pi-research/config.yaml` 的 MLflow `enabled` 设为 true 即由 PRL 自动创建可选 run；没有该变量时本地 PRL 运行不受影响。
+本项目没有自有 MLflow server，因此 `.pi-research/config.yaml` 中 MLflow 保持关闭，W&B tracking 保持开启。迁移到其他机器时，复制模板并在本地填写非敏感配置：
+
+```bash
+cp docs/tracking-env.example .env
+# 编辑 .env；不要提交 .env
+set -a; source .env; set +a
+```
+
+W&B API key 推荐使用 `wandb login` 写入机器本地凭据，或只在 shell 环境中设置 `WANDB_API_KEY`。`.env` 已被 Git 忽略；仓库只提交不含密钥的 `docs/tracking-env.example`。PRL 会为 W&B 注入 run ID、group 和 tags。当前训练脚本尚未调用 `wandb.init()`，因此若要上传训练曲线，还需要显式接入 W&B SDK。
 
 ## 其他服务器上的 Pi / PRL
 

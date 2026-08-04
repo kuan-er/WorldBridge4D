@@ -65,5 +65,12 @@ recent_results:
     python_imports: ["numpy==1.26.4", "torch==2.10.0+cu126"]
     python_compileall: passed
     environment_gaps: ["pytest is not installed", "tensorflow is not installed"]
-next_step: "Run a matched-budget Full-vs-Compact comparison on the migrated server, then evaluate reconstruction, first-frame tracking, arbitrary-source tracking, late-appearing objects, and occluded points with identical seeds/configuration."
+  - kind: tracking_configuration
+    result: configured
+    mlflow: disabled_no_server
+    wandb: enabled
+    wandb_entity: zhaigong2023-sjtu-hpc-center
+    wandb_project: worldbridge4d
+    secrets_committed: false
+next_step: "Run the matched-budget Full-vs-Compact comparison with W&B environment variables loaded from the local .env, then evaluate reconstruction, first-frame tracking, arbitrary-source tracking, late-appearing objects, and occluded points."
 updated_at: 2026-08-04T17:25:50.661Z
