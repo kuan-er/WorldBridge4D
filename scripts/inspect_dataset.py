@@ -49,6 +49,8 @@ def main() -> None:
         print(f"TENSORFLOW_IMPORT_ERROR: {type(exc).__name__}: {exc}")
         sys.exit(2)
     files = sorted(version.glob(f"movi_f-{args.split}.tfrecord-*"))
+    split_names = sorted({p.name.split("movi_f-", 1)[1].split(".tfrecord-", 1)[0] for p in version.glob("movi_f-*.tfrecord-*")})
+    print(f"AVAILABLE_SPLITS: {json.dumps(split_names)}")
     print(f"TFRECORD_FILES: {len(files)}")
     if not files:
         raise FileNotFoundError(f"no TFRecords for split={args.split} under {version}")

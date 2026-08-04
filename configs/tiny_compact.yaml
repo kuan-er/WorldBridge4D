@@ -1,0 +1,34 @@
+mode: compact
+seed: 11
+output_dir: artifacts/tiny_compact
+data:
+  root: /dataset/MOVi-F
+  clip_length: 21
+  clip_start: 0
+  max_examples: 1
+  stats_examples: 1
+  depth_tolerance: 0.05
+  depth_relative_tolerance: 0.01
+model:
+  latent_channels: 16
+  latent_time: 6
+  latent_height: 16
+  latent_width: 16
+  trajectory_channels: 16
+  trajectory_hidden: 24
+  trajectory_time_dim: 8
+  reconstruction_channels: 16
+  context_hidden: 32
+  decoder_hidden: 64
+train:
+  steps: 30
+  queries_per_step: 256
+  trajectory_block_size: 16384
+  learning_rate: 0.002
+  weight_decay: 0.0
+  amp: true
+  gradient_accumulation: 1
+  gradient_clip: 1.0
+  fixed_queries: true
+  log_every: 5
+  require_loss_ratio: 0.8

@@ -1,0 +1,33 @@
+mode: full
+seed: 2026
+output_dir: artifacts/full_baseline
+data:
+  root: /dataset/MOVi-F
+  clip_length: 21
+  clip_start: 0
+  max_examples: 4
+  stats_examples: 4
+  depth_tolerance: 0.05
+  depth_relative_tolerance: 0.01
+model:
+  latent_channels: 16
+  latent_time: 6
+  latent_height: 16
+  latent_width: 16
+  trajectory_channels: 16
+  trajectory_hidden: 24
+  trajectory_time_dim: 8
+  reconstruction_channels: 16
+  context_hidden: 32
+  decoder_hidden: 64
+train:
+  steps: 20
+  queries_per_step: 192
+  trajectory_block_size: 16384
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  amp: true
+  gradient_accumulation: 1
+  gradient_clip: 1.0
+  fixed_queries: false
+  log_every: 5
