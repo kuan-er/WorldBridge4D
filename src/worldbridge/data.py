@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+import json
 import os
 
 import numpy as np
@@ -106,10 +107,28 @@ class MOViFDataset:
         import tensorflow as tf
         return tf
 
+    def _metadata_shard_lengths(self) -> list[int] | None:
+        """Read TFDS shard counts without scanning/decode-opening every shard."""
+        info_path = self.version_dir / "dataset_info.json"
+        try:
+            info = json.loads(info_path.read_text())
+            canonical = {"val": "validation", "valid": "validation"}.get(self.split, self.split)
+            split_info = next(x for x in info.get("splits", []) if x.get("name") == canonical)
+            lengths = [int(x) for x in split_info["shardLengths"]]
+            return lengths if len(lengths) == len(self.files) else None
+        except (OSError, KeyError, StopIteration, TypeError, ValueError):
+            return None
+
     def _index_records(self, max_examples: int | None) -> list[tuple[Path, int]]:
-        tf = self._tf()
         limit = int(max_examples) if max_examples is not None else None
         records: list[tuple[Path, int]] = []
+        if limit is None:
+            lengths = self._metadata_shard_lengths()
+            if lengths is not None:
+                for path, length in zip(self.files, lengths):
+                    records.extend((path, local_index) for local_index in range(length))
+                return records
+        tf = self._tf()
         for path in self.files:
             for local_index, _ in enumerate(tf.data.TFRecordDataset([str(path)])):
                 records.append((path, local_index))
