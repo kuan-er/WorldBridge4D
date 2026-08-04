@@ -1,6 +1,5 @@
-current_task: T-20260804165015-4c6950
-active_hypotheses:
-  - H001
+current_task: T-20260804172550-fca601
+active_hypotheses: []
 recent_results:
   - run_id: R-20260804055700-fc6af7
     kind: dataset_audit
@@ -57,7 +56,14 @@ recent_results:
   - run_id: R-20260804064416-561437
     kind: final_compileall
     result: succeeded
-next_step: For npm distribution, enable npm publish 2FA or create a granular
-  token with publish and 2FA bypass, then publish pi-research-loop@0.1.0;
-  Git-based Pi installation is already pinned and reproducible.
-updated_at: 2026-08-04T16:50:15.178Z
+  - run_id: R-20260804162323-4cf2cc
+    kind: migration_verification
+    result: succeeded
+    prl_doctor: passed
+    prl_runner_smoke: passed
+    pi_packages: ["npm:pi-research-loop@0.1.1 (user)", "npm:pi-research-loop@0.1.1 (project)"]
+    python_imports: ["numpy==1.26.4", "torch==2.10.0+cu126"]
+    python_compileall: passed
+    environment_gaps: ["pytest is not installed", "tensorflow is not installed"]
+next_step: "Run a matched-budget Full-vs-Compact comparison on the migrated server, then evaluate reconstruction, first-frame tracking, arbitrary-source tracking, late-appearing objects, and occluded points with identical seeds/configuration."
+updated_at: 2026-08-04T17:25:50.661Z

@@ -35,4 +35,9 @@ The bounded comparison is a plumbing baseline, not a conclusive quality result: 
 ## 2026-08-04 — remote distribution
 
 - The final research worktree was published to the private GitHub repository `https://github.com/kuan-er/WorldBridge4D`, with `main` pointing to the packaging commit after the research commit `52de66a5e89affdf1c26cf6ea0d7501cfa1064b9`. No dataset, checkpoint, cache, or generated output was pushed.
-- `.pi/settings.json` pins `pi-research-loop` to Git commit `1124d244b4b7df624c8ddb9b85da1b3864dd66dd`, so another trusted Pi project can install the extension/skill automatically. The public npm package `pi-research-loop@0.1.0` was tested (`7/7` tests) but publication was blocked by npm's requirement for 2FA or a granular token with 2FA bypass; no npm package was published from this session.
+- `.pi/settings.json` now installs `npm:pi-research-loop@0.1.1`. On the migrated server, `pi list` recognizes both the project and user npm installations, and the local npm lockfile resolves the registry tarball for `0.1.1`. `prl doctor` passes. The old npm-publication blocker is therefore no longer the next research task.
+- The migrated Python environment has NumPy, PyYAML and CUDA PyTorch, and `python -m compileall` passes. PRL runner smoke Run `R-20260804162323-4cf2cc` imported NumPy `1.26.4` and CUDA PyTorch `2.10.0+cu126` and exited successfully. `pytest` and TensorFlow are not installed, so the full test suite and native TFRecord dataset audit still require dependency installation. Pi reports version `0.82.0`, while the package declares peer compatibility starting at `0.82.1`; the extension is currently listed, but upgrading Pi is recommended before long runs.
+
+## 2026-08-04 — post-migration research priority
+
+- Next priority is a matched-budget Full-vs-Compact comparison on this server. Keep seed, train/validation clips, optimizer, query counts, coordinate statistics, and block sizes identical; report reconstruction, first-frame tracking, arbitrary-source tracking, late-appearing objects, occluded points, and target-camera reprojection error. The existing 20-step result is only a plumbing baseline and should not decide H001.
