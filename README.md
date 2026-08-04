@@ -67,6 +67,24 @@ prl run launch --task <TASK> --events <WORKTREE>/.pi-research/events.yaml -- \
 
 若环境有 `MLFLOW_TRACKING_URI`，将 `.pi-research/config.yaml` 的 MLflow `enabled` 设为 true 即由 PRL 自动创建可选 run；没有该变量时本地 PRL 运行不受影响。
 
+## 其他服务器上的 Pi / PRL
+
+仓库包含 `.pi/settings.json`，会在项目被 Pi 信任后自动安装并固定 `pi-research-loop` Git commit。也可以手动安装：
+
+```bash
+pi install git:github.com/kuan-er/pi-research-loop@1124d244b4b7df624c8ddb9b85da1b3864dd66dd
+pi list
+```
+
+如果需要 shell 中的 `prl` 命令，使用 Pi 自带 Node 安装 Git 版本（该包目前未发布到 npm）：
+
+```bash
+PI_BIN="$(dirname "$(command -v pi)")"
+"$PI_BIN/npm" install -g "git+https://github.com/kuan-er/pi-research-loop.git#1124d244b4b7df624c8ddb9b85da1b3864dd66dd"
+export PATH="$PI_BIN:$PATH"
+prl doctor
+```
+
 ## 代码结构
 
 - `src/worldbridge/data.py`：原生 TFRecord 适配器，只读解析。
