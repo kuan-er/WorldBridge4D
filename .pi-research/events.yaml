@@ -1,0 +1,23 @@
+events:
+  - id: cuda_oom
+    type: log.regex
+    pattern: "CUDA out of memory|CUDA error: out of memory|out of memory"
+    source: both
+    actions: [record, terminate, wake_agent]
+    max_triggers: 1
+  - id: nan_inf
+    type: log.regex
+    pattern: "NaN|Inf|nan|inf"
+    source: both
+    actions: [record, wake_agent]
+    max_triggers: 5
+  - id: checkpoint_created
+    type: file.created
+    path: "artifacts/checkpoint.complete"
+    actions: [record, wake_agent]
+    max_triggers: 1
+  - id: timeout
+    type: timer.timeout
+    after_seconds: 1800
+    actions: [record, terminate, wake_agent]
+    max_triggers: 1
