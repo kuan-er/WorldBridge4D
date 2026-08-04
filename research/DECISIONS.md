@@ -31,3 +31,8 @@
 - Bounded training: Compact `R-20260804062809-41bf71` (20 steps, 5.55 s, 153,449 params, 195 MiB peak, 692 query/s); Full `R-20260804063028-a4fe07` (20 steps, 33.45 s, 137,097 params, 2,174 MiB peak, 115 query/s). Validation evaluation: Compact `R-20260804063321-e1b7f8`; Full `R-20260804063717-1d3757`, with all source/target time pairs on stride-16 pixels.
 
 The bounded comparison is a plumbing baseline, not a conclusive quality result: Compact validation reconstruction endpoint error was 7.04 and first-frame tracking 6.37; Full was 11.29 and 10.17 respectively. Full did provide the requested arbitrary-source random/all-time metrics, but did not improve them under this very small budget. The hypothesis therefore remains a testable design prediction, not supported by this first bounded result.
+
+## 2026-08-04 — remote distribution
+
+- The final research worktree was published to the private GitHub repository `https://github.com/kuan-er/WorldBridge4D`, with `main` pointing to the packaging commit after the research commit `52de66a5e89affdf1c26cf6ea0d7501cfa1064b9`. No dataset, checkpoint, cache, or generated output was pushed.
+- `.pi/settings.json` pins `pi-research-loop` to Git commit `1124d244b4b7df624c8ddb9b85da1b3864dd66dd`, so another trusted Pi project can install the extension/skill automatically. The public npm package `pi-research-loop@0.1.0` was tested (`7/7` tests) but publication was blocked by npm's requirement for 2FA or a granular token with 2FA bypass; no npm package was published from this session.

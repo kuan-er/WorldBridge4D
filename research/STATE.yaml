@@ -52,4 +52,4 @@ recent_results:
   - run_id: R-20260804064416-561437
     kind: final_compileall
     result: succeeded
-next_step: "Finish the PRL Task without merging or deleting its worktree."
+next_step: "For npm distribution, enable npm publish 2FA or create a granular token with publish and 2FA bypass, then publish pi-research-loop@0.1.0; Git-based Pi installation is already pinned and reproducible."
