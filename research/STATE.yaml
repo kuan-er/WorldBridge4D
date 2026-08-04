@@ -1,4 +1,4 @@
-current_task: T-20260804164132-40f51d
+current_task: T-20260804165015-4c6950
 active_hypotheses:
   - H001
 recent_results:
@@ -60,4 +60,4 @@ recent_results:
 next_step: For npm distribution, enable npm publish 2FA or create a granular
   token with publish and 2FA bypass, then publish pi-research-loop@0.1.0;
   Git-based Pi installation is already pinned and reproducible.
-updated_at: 2026-08-04T16:41:32.417Z
+updated_at: 2026-08-04T16:50:15.178Z
