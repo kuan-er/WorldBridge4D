@@ -138,7 +138,11 @@ def main():
         f"cuda:{local_rank}" if torch.cuda.is_available() and cfg["train"].get("device", "auto") != "cpu" else "cpu"
     )
     if device.type == "cuda":
-        torch.cuda.reset_peak_memory_stats(device)
+        # With a single visible GPU, some CUDA 12 builds reject a logical
+        # device object after CUDA_VISIBLE_DEVICES remapping; the current
+        # device is unambiguous here.
+        torch.cuda.set_device(local_rank)
+        torch.cuda.reset_peak_memory_stats()
 
     run = init_wandb(cfg, rank)
     data = cfg["data"]
@@ -253,7 +257,7 @@ def main():
             "first_loss": first_loss, "final_loss": last_loss, "loss_ratio": ratio,
             "elapsed_seconds": elapsed,
             "train_queries_per_second": total_queries * world_size / elapsed,
-            "peak_gpu_memory_mb": (torch.cuda.max_memory_allocated(device) / 2**20 if device.type == "cuda" else 0),
+            "peak_gpu_memory_mb": (torch.cuda.max_memory_allocated() / 2**20 if device.type == "cuda" else 0),
             "parameters": sum(p.numel() for p in model.parameters()),
             "coordinate_mean": mean.tolist(), "coordinate_scale": scale.tolist(),
             "device": str(device), "torch": torch.__version__, "git_commit": git_commit,
