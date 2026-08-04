@@ -12,8 +12,9 @@ events:
     actions: [record, wake_agent]
     max_triggers: 5
   - id: checkpoint_created
-    type: file.created
-    path: "artifacts/checkpoint.complete"
+    type: log.regex
+    pattern: "CHECKPOINT_CREATED:"
+    source: stdout
     actions: [record, wake_agent]
     max_triggers: 1
   - id: timeout

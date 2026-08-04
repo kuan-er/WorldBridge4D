@@ -18,3 +18,7 @@ runs/*
 *.bin
 wandb/
 mlruns/
+artifacts/
+outputs/
+__pycache__/
+.pytest_cache/
