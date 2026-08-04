@@ -1,5 +1,6 @@
 """Blockwise conversion from MOVi geometry to model inputs and balanced queries."""
 from __future__ import annotations
+from collections.abc import Iterable
 import numpy as np
 import torch
 
@@ -8,7 +9,7 @@ from .geometry import GeometryBuilder
 from .models import WorldLatentModel
 
 
-def train_coordinate_stats(samples: list[MOViSample], depth_tolerance: float = 0.05,
+def train_coordinate_stats(samples: Iterable[MOViSample], depth_tolerance: float = 0.05,
                            depth_relative_tolerance: float = 0.01) -> tuple[np.ndarray, np.ndarray]:
     """Coordinate moments from training pointmaps only (never validation/test)."""
     count = 0

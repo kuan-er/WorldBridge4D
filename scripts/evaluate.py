@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Chunked evaluation of reconstruction and tracking query families."""
 from __future__ import annotations
-import argparse,json,pathlib,sys,time
+import argparse,json,os,pathlib,sys,time
 import numpy as np
 import torch
 ROOT=pathlib.Path(__file__).resolve().parents[1]; sys.path.insert(0,str(ROOT/"src"))
@@ -27,10 +27,16 @@ def decode_update(model,z,geom,store,group,source,target,uv,x,visible,valid,devi
  return n
 
 def main():
- ap=argparse.ArgumentParser(); ap.add_argument("--checkpoint",required=True); ap.add_argument("--split",default="validation"); ap.add_argument("--data-root"); ap.add_argument("--max-examples",type=int,default=2); ap.add_argument("--pixel-stride",type=int,default=16); ap.add_argument("--query-chunk",type=int,default=8192); ap.add_argument("--output")
+ ap=argparse.ArgumentParser(); ap.add_argument("--checkpoint",required=True); ap.add_argument("--split",default="validation"); ap.add_argument("--data-root"); ap.add_argument("--max-examples",type=int,default=None); ap.add_argument("--pixel-stride",type=int,default=16); ap.add_argument("--query-chunk",type=int,default=8192); ap.add_argument("--output")
  args=ap.parse_args(); device=torch.device("cuda" if torch.cuda.is_available() else "cpu"); ckpt=torch.load(args.checkpoint,map_location=device,weights_only=False); cfg=ckpt["config"]; data=cfg["data"]
  root=args.data_root or data["root"]
  ds=MOViFDataset(root,args.split,data["clip_length"],data.get("clip_start",0),args.max_examples,cfg.get("seed",0))
+ tracking=data.get("tracking", cfg.get("tracking", {}))
+ run=None
+ if cfg.get("tracking", {}).get("enabled", False):
+  import wandb
+  run=wandb.init(project=os.getenv("WANDB_PROJECT", tracking.get("project", "worldbridge4d")), entity=os.getenv("WANDB_ENTITY", tracking.get("entity")), group=os.getenv("WANDB_GROUP", tracking.get("group", "worldbridge4d-full-vs-compact")), job_type="evaluate", name=os.getenv("WANDB_NAME", f"{cfg['mode']}-{args.split}-eval-{os.getenv('PRL_RUN_ID', 'local')}"), tags=list(tracking.get("tags", []))+[cfg["mode"], args.split, "full-movi-f"], config={"checkpoint": args.checkpoint, "split": args.split, "max_examples": args.max_examples, "pixel_stride": args.pixel_stride, "query_chunk": args.query_chunk})
+  print(f"WANDB_RUN_URL: {run.url}", flush=True)
  model=make_model(cfg).to(device); model.load_state_dict(ckpt["model"]); model.eval(); store={}; total_queries=0
  if device.type=="cuda": torch.cuda.reset_peak_memory_stats()
  started=time.perf_counter()
@@ -64,5 +70,9 @@ def main():
     total_queries+=decode_update(model,z,geom,store,"arbitrary_random",source,target,ruv,x[row,target],m[row,target],v[row,target],device,args.query_chunk)
  elapsed=time.perf_counter()-started
  result={"mode":cfg["mode"],"split":args.split,"examples":len(ds),"pixel_stride":args.pixel_stride,"all_st":cfg["mode"]=="full","metrics":finalize_metrics(store),"parameters":sum(p.numel() for p in model.parameters()),"peak_gpu_memory_mb":torch.cuda.max_memory_allocated()/2**20 if device.type=="cuda" else 0,"inference_queries_per_second":total_queries/elapsed,"elapsed_seconds":elapsed,"query_count":total_queries,"device":str(device),"compact_capability_note":("Compact is evaluated only for reconstruction and source-frame-0 tracking; arbitrary-source tracking is not a native claim." if cfg["mode"]=="compact" else None)}
+ if run is not None:
+  run.summary.update({f"eval/{k}": v for k,v in result["metrics"].items()})
+  result["wandb_url"]=run.url
+  run.finish()
  print(json.dumps(result,indent=2)); output=pathlib.Path(args.output or pathlib.Path(args.checkpoint).with_name(f"evaluation_{args.split}.json")); output.parent.mkdir(parents=True,exist_ok=True); output.write_text(json.dumps(result,indent=2)); print(f"EVALUATION_OK: {output}")
 if __name__=="__main__":main()
