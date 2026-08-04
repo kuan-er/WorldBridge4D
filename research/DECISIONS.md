@@ -48,6 +48,12 @@ The bounded comparison is a plumbing baseline, not a conclusive quality result: 
 - `docs/tracking-env.example` contains only placeholders; real `.env` files, API keys, and credentials remain ignored and must be configured separately on each machine. A private GitHub repository is not a safe secret store because credentials persist in history and may be exposed through clones, logs, backups, or collaborators.
 - W&B credentials can be provisioned with `wandb login` or environment variables. PRL injects W&B run metadata, while actual scalar logging still requires the training process to call `wandb.init()`.
 
+## 2026-08-04 — reliability follow-up plan
+
+- After the full-scale one-epoch comparison, run Compact and Full on MOVi-F 128x128 for seeds `2026`, `2027`, and `2028`, with three complete train epochs (`17211` global clip updates) and identical optimizer/query/model settings. Compact uses GPU 6; Full uses two-card DDP on GPUs 0 and 1 when available.
+- Reuse the train-only coordinate statistics from the completed all-train Compact pass via `artifacts/reliability/coordinate_stats_train.npz`; this cache contains only mean/scale metadata and is not a geometry or model-weight cache. The cache is valid for the fixed 21-frame, clip-start-0, depth-tolerance configuration.
+- Evaluate every seed on all 147 validation clips at pixel stride 16, then aggregate endpoint error, per-coordinate MAE, target-camera reprojection, visible/occluded groups, and Full-only arbitrary-source/late-appearing groups with mean and sample standard deviation using `scripts/aggregate_evaluations.py`.
+
 ## 2026-08-04 — PRL extension update
 
 - Project `.pi/settings.json` now pins `npm:pi-research-loop@0.2.0`; reload the local Pi window if the current session still shows the old package version.

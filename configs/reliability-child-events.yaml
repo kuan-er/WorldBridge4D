@@ -1,0 +1,36 @@
+events:
+  - id: wandb_url
+    type: log.regex
+    pattern: "WANDB_RUN_URL:"
+    source: stdout
+    actions: [record, wake_agent]
+    max_triggers: 1
+  - id: checkpoint
+    type: log.regex
+    pattern: "CHECKPOINT_CREATED:"
+    source: stdout
+    actions: [record, wake_agent]
+    max_triggers: 1
+  - id: evaluation
+    type: log.regex
+    pattern: "EVALUATION_OK:|AGGREGATION_OK:"
+    source: stdout
+    actions: [record, wake_agent]
+    max_triggers: 1
+  - id: oom
+    type: log.regex
+    pattern: "CUDA out of memory|CUDA error: out of memory|out of memory"
+    source: both
+    actions: [record, terminate, wake_agent]
+    max_triggers: 1
+  - id: traceback
+    type: log.regex
+    pattern: "Traceback|RuntimeError|ValueError|DistBackendError"
+    source: both
+    actions: [record, wake_agent]
+    max_triggers: 3
+  - id: timeout
+    type: timer.timeout
+    after_seconds: 21600
+    actions: [record, terminate, wake_agent]
+    max_triggers: 1

@@ -124,6 +124,8 @@ def main():
     ap.add_argument("--config", required=True)
     ap.add_argument("--output-dir")
     ap.add_argument("--steps", type=int, help="Global clip updates; DDP divides these across ranks")
+    ap.add_argument("--seed", type=int, help="Override config seed")
+    ap.add_argument("--stats-cache", help="Precomputed train coordinate stats .npz")
     ap.add_argument("--resume")
     args = ap.parse_args()
     cfg = load_config(args.config)
@@ -131,6 +133,10 @@ def main():
         cfg["output_dir"] = args.output_dir
     if args.steps is not None:
         cfg["train"]["steps"] = args.steps
+    if args.seed is not None:
+        cfg["seed"] = args.seed
+    if args.stats_cache is not None:
+        cfg["data"]["stats_cache"] = args.stats_cache
 
     world_size, rank, local_rank = init_distributed()
     distributed = world_size > 1
@@ -159,11 +165,23 @@ def main():
     stats_examples = data.get("stats_examples")
     if rank == 0 and run is not None:
         run.log({"train/epoch": 0.0, "train/progress": 0.0, "train/phase_coordinate_stats": 1}, step=0)
-    if rank == 0:
+    cache_path = pathlib.Path(data["stats_cache"]) if data.get("stats_cache") else None
+    if rank == 0 and cache_path is not None and cache_path.exists():
+        cached = np.load(cache_path)
+        mean, scale = cached["mean"].astype(np.float32), cached["scale"].astype(np.float32)
+        print(f"COORDINATE_STATS_CACHE: {cache_path}", flush=True)
+    elif rank == 0:
         stats_samples = ds if stats_examples is None else itertools.islice(ds, int(stats_examples))
         mean, scale = train_coordinate_stats(
             stats_samples, data["depth_tolerance"], data["depth_relative_tolerance"],
         )
+        if cache_path is not None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = cache_path.with_suffix(cache_path.suffix + ".tmp")
+            with tmp.open("wb") as handle:
+                np.savez(handle, mean=mean, scale=scale)
+            tmp.replace(cache_path)
+            print(f"COORDINATE_STATS_CACHE_CREATED: {cache_path}", flush=True)
     else:
         mean = np.zeros(3, np.float32)
         scale = np.ones(3, np.float32)

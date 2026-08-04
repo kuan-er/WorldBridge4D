@@ -1,0 +1,12 @@
+events:
+  - id: matrix_progress
+    type: log.regex
+    pattern: "launched|finished|RELIABILITY_MATRIX_OK|Traceback|ERROR"
+    source: both
+    actions: [record, wake_agent]
+    max_triggers: 50
+  - id: timeout
+    type: timer.timeout
+    after_seconds: 86400
+    actions: [record, terminate, wake_agent]
+    max_triggers: 1
