@@ -1,5 +1,5 @@
 {
   "packages": [
-    "git:github.com/kuan-er/pi-research-loop@1124d244b4b7df624c8ddb9b85da1b3864dd66dd"
+    "npm:pi-research-loop@0.1.1"
   ]
 }
