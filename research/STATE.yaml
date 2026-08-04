@@ -45,4 +45,11 @@ recent_results:
     reconstruction_endpoint_error: 11.29462
     first_frame_endpoint_error: 10.17443
     arbitrary_all_st_endpoint_error: 11.28567
-next_step: "Run final tests, checkpoint code, and finish the PRL Task without merging."
+  - run_id: R-20260804064338-1f8b5d
+    kind: final_unit_tests
+    result: succeeded
+    passed: 6
+  - run_id: R-20260804064416-561437
+    kind: final_compileall
+    result: succeeded
+next_step: "Finish the PRL Task without merging or deleting its worktree."
