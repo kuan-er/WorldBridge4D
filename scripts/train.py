@@ -2,6 +2,7 @@
 """Train Compact or Full geometry-supervised deterministic 4D latent baseline."""
 from __future__ import annotations
 import argparse
+import datetime
 import itertools
 import json
 import math
@@ -52,7 +53,12 @@ def init_distributed():
         if not torch.cuda.is_available():
             raise RuntimeError("DDP training requires CUDA in this experiment")
         torch.cuda.set_device(local_rank)
-        dist.init_process_group(backend="nccl", init_method="env://")
+        # Rank 0 computes train-only coordinate statistics before the first
+        # collective. Full MOVi-F can exceed NCCL's default 10-minute timeout;
+        # rank 1 must be allowed to wait for the broadcast.
+        dist.init_process_group(
+            backend="nccl", init_method="env://", timeout=datetime.timedelta(hours=12),
+        )
     return world_size, rank, local_rank
 
 
@@ -151,6 +157,8 @@ def main():
         data.get("max_examples"), seed,
     )
     stats_examples = data.get("stats_examples")
+    if rank == 0 and run is not None:
+        run.log({"train/epoch": 0.0, "train/progress": 0.0, "train/phase_coordinate_stats": 1}, step=0)
     if rank == 0:
         stats_samples = ds if stats_examples is None else itertools.islice(ds, int(stats_examples))
         mean, scale = train_coordinate_stats(
@@ -164,6 +172,8 @@ def main():
         dist.broadcast(stats, src=0)
         mean, scale = stats[:3].cpu().numpy(), stats[3:].cpu().numpy()
         dist.barrier()
+    if rank == 0 and run is not None:
+        run.log({"train/epoch": 0.0, "train/progress": 0.0, "train/phase_coordinate_stats": 0}, step=0)
 
     model = make_model(cfg).to(device)
     model.set_coordinate_stats(torch.from_numpy(mean), torch.from_numpy(scale))
@@ -235,8 +245,10 @@ def main():
             }
             print(json.dumps(record), flush=True)
             if run is not None:
+                processed = min((local_step + 1) * world_size, global_steps)
                 run.log(
                     {"train/loss": value, "train/valid_queries": valid_count,
+                     "train/epoch": processed / len(ds), "train/progress": processed / global_steps,
                      **{f"train/{k}": v for k, v in parts.items()}},
                     step=local_step + 1,
                 )
