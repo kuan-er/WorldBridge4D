@@ -1,4 +1,4 @@
-current_task: T-20260804172550-fca601
+current_task: T-20260804180710-de77a9
 active_hypotheses: []
 recent_results:
   - run_id: R-20260804055700-fc6af7
@@ -72,5 +72,36 @@ recent_results:
     wandb_entity: zhaigong2023-sjtu-hpc-center
     wandb_project: worldbridge4d
     secrets_committed: false
-next_step: "Run the matched-budget Full-vs-Compact comparison with W&B environment variables loaded from the local .env, then evaluate reconstruction, first-frame tracking, arbitrary-source tracking, late-appearing objects, and occluded points."
-updated_at: 2026-08-04T17:25:50.661Z
+  - run_id: R-20260805001025-f69797
+    kind: reliability_compact_aggregate
+    result: succeeded
+    seeds: [2026, 2027, 2028]
+    epochs_per_seed: 3
+    validation_clips: 147
+    reconstruction_endpoint_error_mean_std: [1.204306, 0.027303]
+    first_frame_endpoint_error_mean_std: [1.011372, 0.040499]
+    first_frame_visible_endpoint_error_mean_std: [0.852038, 0.036112]
+    first_frame_occluded_endpoint_error_mean_std: [1.541508, 0.057134]
+  - run_id: R-20260805072305-ca927b
+    kind: reliability_full_aggregate
+    result: succeeded
+    seeds: [2026, 2027, 2028]
+    epochs_per_seed: 3
+    validation_clips: 147
+    reconstruction_endpoint_error_mean_std: [1.160271, 0.031295]
+    first_frame_endpoint_error_mean_std: [1.077097, 0.067967]
+    first_frame_visible_endpoint_error_mean_std: [0.899438, 0.063357]
+    first_frame_occluded_endpoint_error_mean_std: [1.668204, 0.084017]
+    arbitrary_all_st_endpoint_error_mean_std: [1.234847, 0.033491]
+    arbitrary_all_st_visible_endpoint_error_mean_std: [1.057624, 0.027443]
+    arbitrary_all_st_occluded_endpoint_error_mean_std: [1.991241, 0.060382]
+    late_appearing_endpoint_error_mean_std: [3.107029, 0.116804]
+    late_appearing_visible_endpoint_error_mean_std: [2.562628, 0.108425]
+    late_appearing_occluded_endpoint_error_mean_std: [3.811266, 0.127873]
+  - run_id: R-20260804195945-61e4b5
+    kind: reliability_scheduler
+    result: succeeded
+    marker: RELIABILITY_MATRIX_OK
+    errors: []
+next_step: "Treat H001 as an engineering-capability result rather than evidence of Full quality dominance; investigate late-appearing and occluded errors, then test an explicit arbitrary-source Compact baseline or ablation before claiming improvement."
+updated_at: 2026-08-05T07:23:10.984Z

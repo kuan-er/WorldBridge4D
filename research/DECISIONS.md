@@ -57,3 +57,11 @@ The bounded comparison is a plumbing baseline, not a conclusive quality result: 
 ## 2026-08-04 — PRL extension update
 
 - Project `.pi/settings.json` now pins `npm:pi-research-loop@0.2.0`; reload the local Pi window if the current session still shows the old package version.
+
+## 2026-08-05 — three-seed reliability matrix completed
+
+- The unattended scheduler completed all six matched-budget training runs, six validations, and both three-seed aggregations without retries or errors. Completion marker: `RELIABILITY_MATRIX_OK` from `R-20260804195945-61e4b5`; Full aggregation run: `R-20260805072305-ca927b`.
+- Configuration was held fixed across seeds: MOVi-F 128x128, 21-frame clip from the 24-frame native sequence, 17,211 global clip updates (three epochs), train-only coordinate-stat cache, validation on 147 clips, pixel stride 16, query chunk 8192, Compact on GPU 6, and Full with two-card DDP on GPUs 0/1. W&B project was `zhaigong2023-sjtu-hpc-center/worldbridge4d`.
+- Final endpoint-error means and sample standard deviations are in `artifacts/reliability/compact_mean_std.json` and `artifacts/reliability/full_mean_std.json` (generated outputs are ignored and not committed). Compact reconstruction / first-frame EPE were `1.2043 ± 0.0273` / `1.0114 ± 0.0405`; Full reconstruction / first-frame EPE were `1.1603 ± 0.0313` / `1.0771 ± 0.0680`.
+- Full's arbitrary all-source/all-target EPE was `1.2348 ± 0.0335` (`1.0576 ± 0.0274` visible; `1.9912 ± 0.0604` occluded). Late-appearing EPE was `3.1070 ± 0.1168` (`2.5626 ± 0.1084` visible; `3.8113 ± 0.1279` occluded). These are capability measurements, not a direct Compact comparison because Compact does not expose arbitrary-source queries.
+- Decision: retain the Full query capability, but do not claim Full dominates Compact. Full trades a 3.7% reconstruction improvement for a 6.5% first-frame EPE regression overall (8.2% on occluded points). Any follow-up should use an explicit arbitrary-source Compact ablation and investigate late-appearing/occluded errors.
