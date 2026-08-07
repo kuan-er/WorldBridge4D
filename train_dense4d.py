@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import pathlib
+import pickle
 import random
 import sys
 import time
@@ -57,6 +58,73 @@ def init_wandb(config: dict[str, Any]):
     )
     print(f"WANDB_RUN_URL: {run.url}", flush=True)
     return run
+
+
+def _cache_metadata(config: dict[str, Any], count: int) -> dict[str, Any]:
+    return {
+        "format": 1,
+        "data_root": str(pathlib.Path(config["data_root"]).resolve()),
+        "split": "train",
+        "clip_length": int(config["clip_length"]),
+        "clip_start": config.get("clip_start", 0),
+        "seed": int(config["seed"]),
+        "count": int(count),
+    }
+
+
+def load_or_create_samples(dataset: MOViFDataset, config: dict[str, Any]) -> list[Any]:
+    cache_name = config.get("sample_cache")
+    if not cache_name:
+        return [dataset[index] for index in range(len(dataset))]
+    path = pathlib.Path(cache_name)
+    metadata = _cache_metadata(config, len(dataset))
+    if path.exists():
+        with path.open("rb") as handle:
+            payload = pickle.load(handle)
+        if payload.get("metadata") != metadata:
+            raise RuntimeError(f"sample cache metadata mismatch: {path}; remove it to rebuild")
+        samples = payload["samples"]
+        if len(samples) != len(dataset):
+            raise RuntimeError(f"sample cache length mismatch: {path}")
+        print(f"SAMPLE_CACHE_HIT: {path} ({len(samples)} clips)", flush=True)
+        return samples
+    samples = [dataset[index] for index in range(len(dataset))]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("wb") as handle:
+        pickle.dump({"metadata": metadata, "samples": samples}, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    temporary.replace(path)
+    print(f"SAMPLE_CACHE_CREATED: {path} ({len(samples)} clips)", flush=True)
+    return samples
+
+
+def load_or_create_clean_latents(samples: list[Any], config: dict[str, Any], device: torch.device) -> list[torch.Tensor]:
+    cache_name = config.get("clean_latent_cache")
+    if not cache_name:
+        return encode_clean_video_latents(samples, config["wan_root"], device)
+    path = pathlib.Path(cache_name)
+    metadata = {
+        **_cache_metadata(config, len(samples)),
+        "wan_root": str(pathlib.Path(config["wan_root"]).resolve()),
+        "dtype": "float32",
+    }
+    if path.exists():
+        payload = torch.load(path, map_location="cpu", mmap=True, weights_only=True)
+        if payload.get("metadata") != metadata:
+            raise RuntimeError(f"clean latent cache metadata mismatch: {path}; remove it to rebuild")
+        latents = payload["latents"]
+        if tuple(latents.shape) != (len(samples), 16, 6, 16, 16):
+            raise RuntimeError(f"clean latent cache shape mismatch: {tuple(latents.shape)}")
+        print(f"CLEAN_LATENT_CACHE_HIT: {path} ({len(samples)} clips)", flush=True)
+        return [latents[index:index + 1] for index in range(len(samples))]
+    encoded = encode_clean_video_latents(samples, config["wan_root"], device)
+    stacked = torch.cat(encoded, dim=0).contiguous().float().cpu()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    torch.save({"metadata": metadata, "latents": stacked}, temporary)
+    temporary.replace(path)
+    print(f"CLEAN_LATENT_CACHE_CREATED: {path} ({len(samples)} clips)", flush=True)
+    return [stacked[index:index + 1] for index in range(len(samples))]
 
 
 def pair_suite(config: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
@@ -138,9 +206,9 @@ def main() -> None:
         config["data_root"], split="train", clip_length=int(config["clip_length"]),
         clip_start=int(config.get("clip_start", 0)), max_examples=max_examples, seed=seed,
     )
-    samples = [dataset[index] for index in range(len(dataset))]
+    samples = load_or_create_samples(dataset, config)
     stats = CoordinateStats.from_npz(config["coordinate_stats"])
-    clean_latents = encode_clean_video_latents(samples, config["wan_root"], device)
+    clean_latents = load_or_create_clean_latents(samples, config, device)
     model = build_real_model(config, device)
     groups = parameter_groups(model, config)
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 0.0)))

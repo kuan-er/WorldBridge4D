@@ -4,6 +4,8 @@ data_root: /dataset/MOVi-F
 wan_root: /dataset/Wan2.1-T2V-1.3B
 empty_text_condition: /tmp/worldbridge_dense4d_matched/wan_empty_condition.pt
 coordinate_stats: /tmp/worldbridge_dense4d_matched/coordinate_stats_train.npz
+sample_cache: /tmp/worldbridge_dense4d_matched/cache/movif_train_clip21_start0_samples.pkl
+clean_latent_cache: /tmp/worldbridge_dense4d_matched/cache/movif_train_clip21_start0_wan_vae_float32.pt
 clip_length: 21
 clip_start: 0
 image_size: 128
