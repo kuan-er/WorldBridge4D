@@ -4,7 +4,7 @@ from torch import nn
 
 from worldbridge.data import MOViSample
 from worldbridge.dense4d import (
-    DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone, RotaryEmbedding2D,
+    CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone, RotaryEmbedding2D,
     flatten_z4d, masked_pair_smooth_l1, unflatten_z4d, verify_flow_velocity_algebra,
 )
 from worldbridge.dense4d_data import CoordinateStats, dense_pair_targets, sample_dense_pairs
@@ -128,6 +128,18 @@ def test_memory_flatten_unflatten_and_temporal_spatial_coordinates():
     torch.testing.assert_close(restored, z4d)
     torch.testing.assert_close(coordinates[:4], coordinates[4:8])
     assert memory.shape == (1, 12, 2)
+
+
+def test_clean_latent_control_and_fullres_coordinate_upsampler():
+    latent = torch.randn(1, *WAN_LATENT_SHAPE)
+    torch.testing.assert_close(CleanLatentBackbone()(latent), latent)
+    decoder = DenseQueryDecoder(
+        query_dim=32, embedding_dim=16, num_layers=1, num_heads=4,
+        upsample_channels=(32, 16, 8, 4), fullres_coordinates=True,
+    )
+    output = decoder(latent, torch.tensor([[0]]), torch.tensor([[1]]))
+    assert output.normalized_xyz.shape == (1, 1, 3, 128, 128)
+    assert decoder.upsampler.xyz.in_channels == 6
 
 
 def test_cross_attention_and_upsampler_multiple_pairs_shape():

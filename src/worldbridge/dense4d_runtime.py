@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from .data import MOViSample
-from .dense4d import DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone
+from .dense4d import CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone
 from .wan import WAN_LATENT_SHAPE, WanDiTMapping, WanVAEEncoder
 
 
@@ -59,14 +59,20 @@ def encode_clean_video_latents(samples: Sequence[MOViSample], wan_root: str | Pa
 def build_real_model(config: dict[str, Any], device: torch.device | str) -> DenseQueryWanModel:
     device = torch.device(device)
     dtype = precision_dtype(config["precision"])
-    condition = load_empty_condition(config["empty_text_condition"])
-    mapping = WanDiTMapping(
-        Path(config["wan_root"]) / "diffusion_pytorch_model.safetensors",
-        condition=condition, device=device, dtype=dtype,
-    )
-    if bool(config.get("gradient_checkpointing", True)):
-        mapping.dit.enable_gradient_checkpointing()
-    backbone = FeedForwardWanBackbone(mapping)
+    readout = str(config.get("backbone_readout", "wan_velocity"))
+    if readout == "wan_velocity":
+        condition = load_empty_condition(config["empty_text_condition"])
+        mapping = WanDiTMapping(
+            Path(config["wan_root"]) / "diffusion_pytorch_model.safetensors",
+            condition=condition, device=device, dtype=dtype,
+        )
+        if bool(config.get("gradient_checkpointing", True)):
+            mapping.dit.enable_gradient_checkpointing()
+        backbone = FeedForwardWanBackbone(mapping)
+    elif readout == "clean_latent":
+        backbone = CleanLatentBackbone()
+    else:
+        raise ValueError(f"unknown backbone_readout={readout!r}")
     decoder = DenseQueryDecoder(
         num_frames=int(config["clip_length"]), latent_shape=WAN_LATENT_SHAPE,
         query_dim=int(config["query_dim"]), embedding_dim=int(config.get("embedding_dim", 128)),
@@ -74,6 +80,7 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
         upsample_channels=tuple(int(x) for x in config["upsample_channels"]),
         output_size=(int(config["image_size"]), int(config["image_size"])),
         coarse_diagnostic=bool(config.get("coarse_diagnostic", False)),
+        fullres_coordinates=bool(config.get("fullres_coordinates", False)),
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
     model.configure_trainable(str(config.get("trainable_mode", "full")), int(config.get("trainable_blocks", 2)))

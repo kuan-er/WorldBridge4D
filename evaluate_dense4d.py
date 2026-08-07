@@ -47,6 +47,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--max-clips", type=int, default=2)
+    parser.add_argument("--split", default="validation", choices=("train", "validation"))
     parser.add_argument("--pair-chunk", type=int, default=8)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--pixel-stride", type=int, default=1,
@@ -65,7 +66,7 @@ def main() -> None:
     dtype = precision_dtype(config["precision"])
 
     dataset = MOViFDataset(
-        config["data_root"], split="validation", clip_length=int(config["clip_length"]),
+        config["data_root"], split=args.split, clip_length=int(config["clip_length"]),
         clip_start=int(config.get("clip_start", 0)), max_examples=args.max_clips, seed=int(config["seed"]),
     )
     samples = [dataset[index] for index in range(len(dataset))]
@@ -141,7 +142,7 @@ def main() -> None:
                             )
 
     result = {
-        "clips": len(samples), "pixel_stride": int(args.pixel_stride),
+        "split": args.split, "clips": len(samples), "pixel_stride": int(args.pixel_stride),
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
         "decoder_query_shape": [1, args.pair_chunk, 16 * 16, int(config["query_dim"])],

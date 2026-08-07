@@ -182,7 +182,8 @@ class DenseUpsampler2D(nn.Module):
     """Bilinear 16->32->64->128 XYZ decoder (never transposed convolution)."""
 
     def __init__(self, query_dim: int = 256, channels: Sequence[int] = (256, 128, 64, 32),
-                 latent_size: tuple[int, int] = (16, 16), output_size: tuple[int, int] = (128, 128)):
+                 latent_size: tuple[int, int] = (16, 16), output_size: tuple[int, int] = (128, 128),
+                 fullres_coordinates: bool = False):
         super().__init__()
         channels = tuple(int(x) for x in channels)
         if len(channels) < 2:
@@ -192,18 +193,32 @@ class DenseUpsampler2D(nn.Module):
             raise ValueError(f"{latent_size} with {len(channels)-1} x2 stages does not produce {output_size}")
         self.latent_size = tuple(latent_size)
         self.output_size = tuple(output_size)
+        self.fullres_coordinates = bool(fullres_coordinates)
         self.projection = nn.Conv2d(query_dim, channels[0], 3, padding=1)
         self.blocks = nn.ModuleList([
             ResidualBlock2D(in_channel, out_channel)
             for in_channel, out_channel in zip(channels[:-1], channels[1:])
         ])
-        self.xyz = nn.Conv2d(channels[-1], 3, 3, padding=1)
+        self.xyz = nn.Conv2d(channels[-1] + (2 if self.fullres_coordinates else 0), 3, 3, padding=1)
+        if self.fullres_coordinates:
+            v, u = torch.meshgrid(
+                torch.linspace(-1.0, 1.0, self.output_size[0]),
+                torch.linspace(-1.0, 1.0, self.output_size[1]),
+                indexing="ij",
+            )
+            self.register_buffer(
+                "fullres_uv",
+                torch.stack((u, v), dim=0).unsqueeze(0),
+                persistent=False,
+            )
 
     def forward(self, feature: torch.Tensor) -> torch.Tensor:
         x = self.projection(feature)
         for block in self.blocks:
             x = F.interpolate(x, scale_factor=2.0, mode="bilinear", align_corners=False)
             x = block(x)
+        if self.fullres_coordinates:
+            x = torch.cat((x, self.fullres_uv.expand(x.shape[0], -1, -1, -1).to(dtype=x.dtype)), dim=1)
         x = self.xyz(x)
         if x.shape[-2:] != self.output_size:
             raise RuntimeError(f"upsampler output {tuple(x.shape[-2:])} != {self.output_size}")
@@ -223,7 +238,8 @@ class DenseQueryDecoder(nn.Module):
     def __init__(self, num_frames: int = 21, latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE,
                  query_dim: int = 256, embedding_dim: int = 128, num_layers: int = 2,
                  num_heads: int = 8, upsample_channels: Sequence[int] = (256, 128, 64, 32),
-                 output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False):
+                 output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False,
+                 fullres_coordinates: bool = False):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
@@ -239,7 +255,10 @@ class DenseQueryDecoder(nn.Module):
         ])
         v, u = torch.meshgrid(torch.arange(latent_height), torch.arange(latent_width), indexing="ij")
         self.register_buffer("query_coordinates", torch.stack((u.reshape(-1), v.reshape(-1)), dim=-1), persistent=False)
-        self.upsampler = DenseUpsampler2D(query_dim, upsample_channels, (latent_height, latent_width), output_size)
+        self.upsampler = DenseUpsampler2D(
+            query_dim, upsample_channels, (latent_height, latent_width), output_size,
+            fullres_coordinates=fullres_coordinates,
+        )
         self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -277,6 +296,16 @@ class DenseQueryDecoder(nn.Module):
         xyz = self.upsampler(feature).reshape(batch, pairs, 3, *self.upsampler.output_size)
         feature = feature.reshape(batch, pairs, self.query_dim, latent_height, latent_width)
         return DenseQueryOutput(xyz, feature, coarse)
+
+
+class CleanLatentBackbone(nn.Module):
+    """Control readout returning the frozen clean VAE latent unchanged."""
+
+    raw_velocity_convention = "not_applicable"
+    z4d_transform = "clean_latent_identity"
+
+    def forward(self, clean_video_latent: torch.Tensor) -> torch.Tensor:
+        return clean_video_latent
 
 
 class FeedForwardWanBackbone(nn.Module):

@@ -238,10 +238,15 @@ def main() -> None:
         )
         print(f"CHECKPOINT_CREATED: {checkpoint}", flush=True)
         loaded = torch.load(checkpoint, map_location="cpu", mmap=True, weights_only=True)
+        readout = str(config.get("backbone_readout", "wan_velocity"))
+        backbone_payload_ok = (
+            readout == "clean_latent"
+            or "backbone.mapping.dit.proj_out.weight" in loaded["model"]
+        )
         checkpoint_load_ok = (
             loaded["extra"]["steps"] == steps
             and "decoder.source_embedding.weight" in loaded["model"]
-            and "backbone.mapping.dit.proj_out.weight" in loaded["model"]
+            and backbone_payload_ok
         )
         del loaded
         if not bool(config.get("keep_checkpoint", True)):
