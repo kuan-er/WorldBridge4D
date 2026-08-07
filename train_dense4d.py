@@ -100,7 +100,7 @@ def main() -> None:
     device = torch.device(args.device)
     if device.type != "cuda":
         raise ValueError("real Wan training requires CUDA")
-    torch.cuda.set_device(device)
+    torch.cuda.set_device(0 if device.index is None else device.index)
     torch.cuda.reset_peak_memory_stats(device)
     dtype = precision_dtype(config["precision"])
     rng = np.random.default_rng(seed)
