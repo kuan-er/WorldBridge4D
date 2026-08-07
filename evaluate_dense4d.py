@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Bounded exhaustive `(s,t)` XYZ evaluation for H004."""
+from __future__ import annotations
+
+import argparse
+from collections import defaultdict
+import json
+import pathlib
+import sys
+import time
+
+import numpy as np
+import torch
+
+ROOT = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
+from worldbridge.data import MOViFDataset
+from worldbridge.dense4d_data import CoordinateStats, DynamicPointmapCache
+from worldbridge.dense4d_runtime import build_real_model, encode_clean_video_latents, precision_dtype
+
+
+class Accumulator:
+    def __init__(self):
+        self.points = 0
+        self.epe_sum = 0.0
+        self.absolute_sum = 0.0
+
+    def add(self, prediction: np.ndarray, target: np.ndarray, mask: np.ndarray):
+        mask = np.asarray(mask, bool)
+        if not np.any(mask):
+            return
+        difference = np.asarray(prediction) - np.asarray(target)
+        self.points += int(mask.sum())
+        self.epe_sum += float(np.linalg.norm(difference, axis=0)[mask].sum())
+        self.absolute_sum += float(np.abs(difference)[:, mask].sum())
+
+    def result(self):
+        return {
+            "points": self.points,
+            "epe": self.epe_sum / self.points if self.points else None,
+            "xyz_mae": self.absolute_sum / (3 * self.points) if self.points else None,
+        }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--max-clips", type=int, default=2)
+    parser.add_argument("--pair-chunk", type=int, default=8)
+    parser.add_argument("--device", default="cuda")
+    args = parser.parse_args()
+    device = torch.device(args.device)
+    checkpoint = torch.load(args.checkpoint, map_location="cpu", mmap=True, weights_only=True)
+    config = checkpoint["config"]
+    stats = CoordinateStats(checkpoint["coordinate_mean"], checkpoint["coordinate_scale"])
+    model = build_real_model(config, device)
+    model.load_state_dict(checkpoint["model"], strict=True)
+    del checkpoint
+    model.eval()
+    dtype = precision_dtype(config["precision"])
+
+    dataset = MOViFDataset(
+        config["data_root"], split="validation", clip_length=int(config["clip_length"]),
+        clip_start=int(config.get("clip_start", 0)), max_examples=args.max_clips, seed=int(config["seed"]),
+    )
+    samples = [dataset[index] for index in range(len(dataset))]
+    latents = encode_clean_video_latents(samples, config["wan_root"], device)
+    groups = defaultdict(Accumulator)
+    gap_groups = defaultdict(Accumulator)
+    cache = DynamicPointmapCache(
+        max_entries=2, depth_tolerance=float(config.get("depth_tolerance", 0.05)),
+        depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
+    )
+    forward_seconds = []
+    z4d_shape = None
+
+    with torch.inference_mode():
+        for sample, latent in zip(samples, latents):
+            start = time.time()
+            with torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
+                z4d = model.backbone(latent.to(device=device, dtype=dtype))
+            forward_seconds.append(time.time() - start)
+            z4d_shape = list(z4d.shape)
+            for source in range(sample.num_frames):
+                dynamic = cache.get(sample, source)
+                for target_start in range(0, sample.num_frames, args.pair_chunk):
+                    targets = np.arange(target_start, min(target_start + args.pair_chunk, sample.num_frames))
+                    sources = np.full(len(targets), source, dtype=np.int64)
+                    with torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
+                        output = model.decoder(
+                            z4d, torch.from_numpy(sources)[None].to(device),
+                            torch.from_numpy(targets)[None].to(device),
+                        ).normalized_xyz
+                    prediction = output.float().cpu().numpy()[0]
+                    prediction = prediction * stats.scale[None, :, None, None] + stats.mean[None, :, None, None]
+                    for local_index, target in enumerate(targets):
+                        target = int(target)
+                        truth = dynamic.xyz[target].transpose(2, 0, 1)
+                        valid = dynamic.valid[target]
+                        visible = dynamic.visible[target]
+                        pred = prediction[local_index]
+                        if source == target:
+                            groups["pointmap"].add(pred, truth, valid)
+                        else:
+                            groups["tracking"].add(pred, truth, valid)
+                            groups["tracking_visible"].add(pred, truth, valid & visible)
+                            groups["tracking_occluded_valid"].add(pred, truth, valid & ~visible)
+                            groups["tracking_source_zero" if source == 0 else "tracking_source_gt_zero"].add(
+                                pred, truth, valid
+                            )
+                            gap_groups[abs(target - source)].add(pred, truth, valid)
+
+    result = {
+        "clips": len(samples), "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
+        "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
+        "decoder_query_shape": [1, args.pair_chunk, 16 * 16, int(config["query_dim"])],
+        "decoder_output_shape": [1, args.pair_chunk, 3, int(config["image_size"]), int(config["image_size"])],
+        "pointmap": groups["pointmap"].result(),
+        "tracking": groups["tracking"].result(),
+        "tracking_visible": groups["tracking_visible"].result(),
+        "tracking_occluded_valid": groups["tracking_occluded_valid"].result(),
+        "tracking_source_zero": groups["tracking_source_zero"].result(),
+        "tracking_source_gt_zero": groups["tracking_source_gt_zero"].result(),
+        "epe_by_temporal_gap": {str(gap): gap_groups[gap].result() for gap in sorted(gap_groups)},
+        "mean_wan_forward_seconds": float(np.mean(forward_seconds)),
+        "flow_timestep": 0, "z4d_transform": "negative_raw_velocity",
+    }
+    output = pathlib.Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2))
+    print(json.dumps(result, indent=2), flush=True)
+    print("DENSE4D_EVAL_OK", flush=True)
+
+
+if __name__ == "__main__":
+    main()

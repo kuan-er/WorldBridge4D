@@ -1,0 +1,201 @@
+"""Strict Wan2.1 VAE/DiT weight adapters.
+
+The adapters fail on unexpected native shapes; no temporal interpolation or
+reshape is hidden in this module.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import torch
+from torch import nn
+
+WAN_LATENT_SHAPE = (16, 6, 16, 16)
+
+
+def freeze_module(module: nn.Module) -> nn.Module:
+    module.eval()
+    for parameter in module.parameters():
+        parameter.requires_grad_(False)
+    return module
+
+
+WAN_TIMESTEP_SCALE = 1000.0
+
+
+def _wan_stats(module: nn.Module, name: str, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    values = getattr(module.config, name, None)
+    if values is None or len(values) != WAN_LATENT_SHAPE[0]:
+        raise ValueError(f"WAN VAE config has invalid {name}: {values}")
+    return torch.tensor(values, device=device, dtype=dtype).reshape(1, -1, 1, 1, 1)
+
+
+def rgb_to_wan_input(rgb: torch.Tensor) -> torch.Tensor:
+    """Convert RGB to WAN's [B,3,T,H,W] float input without changing T."""
+    if rgb.ndim != 5:
+        raise ValueError(f"RGB video must be [B,T,3,H,W], got {tuple(rgb.shape)}")
+    if rgb.shape[2] != 3:
+        raise ValueError(f"RGB channel dimension must be 3, got {rgb.shape[2]}")
+    x = rgb if rgb.is_floating_point() else rgb.float() / 255.0
+    if float(x.detach().amin()) < -1e-4 or float(x.detach().amax()) > 1.0001:
+        raise ValueError("RGB input must be uint8 or floating point in [0,1]")
+    return (x * 2.0 - 1.0).permute(0, 2, 1, 3, 4).contiguous()
+
+
+class WanVAEEncoder(nn.Module):
+    """Frozen native Wan-VAE encoder returning the diffusion-normalized latent."""
+
+    def __init__(self, checkpoint: str | Path, device: torch.device | str = "cpu",
+                 dtype: torch.dtype = torch.float32, expected_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE):
+        super().__init__()
+        self.checkpoint = str(checkpoint)
+        self.expected_shape = tuple(expected_shape)
+        self.device = torch.device(device)
+        self.compute_dtype = dtype
+        self.vae = self._load(self.checkpoint, self.device, dtype)
+        freeze_module(self.vae)
+
+    @staticmethod
+    def _load(checkpoint: str, device: torch.device, dtype: torch.dtype) -> nn.Module:
+        try:
+            from diffusers import AutoencoderKLWan
+        except ImportError as exc:
+            raise RuntimeError("WAN VAE requires diffusers>=0.36") from exc
+        path = Path(checkpoint)
+        if not path.exists():
+            raise FileNotFoundError(f"WAN VAE checkpoint not found: {path}")
+        # The supplied Wan2.1 directory contains the original VAE .pth, not a
+        # diffusers VAE directory. from_single_file performs the official key
+        # conversion and avoids a guessed model or a silent resize.
+        config = {
+            "base_dim": 96, "decoder_base_dim": 96, "z_dim": 16,
+            "dim_mult": [1, 2, 4, 4], "num_res_blocks": 2,
+            "attn_scales": [], "temperal_downsample": [False, True, True],
+            "latents_mean": [-0.7571, -0.7089, -0.9113, 0.1075, -0.1745, 0.9653, -0.1517, 1.5508,
+                             0.4134, -0.0715, 0.5517, -0.3632, -0.1922, -0.9497, 0.2503, -0.2921],
+            "latents_std": [2.8184, 1.4541, 2.3275, 2.6558, 1.2196, 1.7708, 2.6052, 2.0743,
+                            3.2687, 2.1526, 2.8652, 1.5579, 1.6382, 1.1253, 2.8251, 1.9160],
+            "scale_factor_temporal": 4, "scale_factor_spatial": 8,
+        }
+        from diffusers.loaders.single_file_utils import convert_wan_vae_to_diffusers, load_single_file_checkpoint
+        checkpoint_state = load_single_file_checkpoint(str(path))
+        vae = AutoencoderKLWan(**config)
+        converted = convert_wan_vae_to_diffusers(checkpoint_state)
+        missing, unexpected = vae.load_state_dict(converted, strict=False)
+        if missing or unexpected:
+            raise RuntimeError(f"WAN VAE checkpoint conversion mismatch; missing={missing[:8]}, unexpected={unexpected[:8]}")
+        vae.to(device=device, dtype=dtype)
+        return vae
+
+    @property
+    def trainable_parameters(self) -> list[nn.Parameter]:
+        return [p for p in self.parameters() if p.requires_grad]
+
+    @torch.no_grad()
+    def forward(self, rgb: torch.Tensor) -> torch.Tensor:
+        x = rgb_to_wan_input(rgb).to(device=self.device, dtype=self.compute_dtype)
+        posterior = self.vae.encode(x, return_dict=True).latent_dist
+        # Mean is deterministic; sampling would make cache endpoints differ
+        # between runs. These are WAN's own channel statistics, not a project
+        # normalization and not a temporal operation.
+        raw = posterior.mean
+        mean = _wan_stats(self.vae, "latents_mean", raw.device, raw.dtype)
+        std = _wan_stats(self.vae, "latents_std", raw.device, raw.dtype)
+        latent = (raw - mean) / std
+        actual = tuple(latent.shape[1:])
+        if actual != self.expected_shape:
+            raise RuntimeError(
+                "WAN VAE latent shape mismatch: actual "
+                f"[B,{','.join(map(str, actual))}] != expected [B,{','.join(map(str, self.expected_shape))}]. "
+                "For T=21, the native causal WAN temporal factor 4 yields 6; "
+                "the adapter will not reshape, pool, crop, or interpolate it."
+            )
+        return latent
+
+
+class WanDiTMapping(nn.Module):
+    """Native Wan 1.3B DiT used as F_theta(Y, tau)."""
+
+    def __init__(self, checkpoint: str | Path, condition: torch.Tensor | None = None,
+                 device: torch.device | str = "cpu", dtype: torch.dtype = torch.float32,
+                 timestep_scale: float = WAN_TIMESTEP_SCALE):
+        super().__init__()
+        self.checkpoint = str(checkpoint)
+        self.timestep_scale = float(timestep_scale)
+        self.dit = self._load(self.checkpoint, torch.device(device), dtype)
+        self.register_buffer("empty_condition", torch.empty(0), persistent=False)
+        if condition is not None:
+            self.set_condition(condition)
+
+    @staticmethod
+    def _load(checkpoint: str, device: torch.device, dtype: torch.dtype) -> nn.Module:
+        try:
+            from diffusers import WanTransformer3DModel
+        except ImportError as exc:
+            raise RuntimeError("WAN DiT requires diffusers>=0.36") from exc
+        path = Path(checkpoint)
+        if not path.exists():
+            raise FileNotFoundError(f"WAN DiT checkpoint not found: {path}")
+        # Wan2.1's published 1.3B file is an original-format safetensors file.
+        # Explicitly supplying the 1.3B architecture avoids accidentally
+        # constructing the diffusers default 14B (40-layer) transformer.
+        config = {
+            "patch_size": (1, 2, 2), "num_attention_heads": 12,
+            "attention_head_dim": 128, "in_channels": 16, "out_channels": 16,
+            "text_dim": 4096, "freq_dim": 256, "ffn_dim": 8960,
+            "num_layers": 30, "cross_attn_norm": True,
+            "qk_norm": "rms_norm_across_heads", "eps": 1e-6,
+            "rope_max_seq_len": 1024,
+        }
+        from diffusers.loaders.single_file_utils import convert_wan_transformer_to_diffusers, load_single_file_checkpoint
+        checkpoint_state = load_single_file_checkpoint(str(path))
+        model = WanTransformer3DModel(**config)
+        converted = convert_wan_transformer_to_diffusers(checkpoint_state)
+        missing, unexpected = model.load_state_dict(converted, strict=False)
+        if missing or unexpected:
+            raise RuntimeError(f"WAN DiT checkpoint conversion mismatch; missing={missing[:8]}, unexpected={unexpected[:8]}")
+        model.to(device=device, dtype=dtype)
+        return model
+
+    def set_condition(self, condition: torch.Tensor) -> None:
+        condition = torch.as_tensor(condition).detach()
+        if condition.ndim == 2:
+            condition = condition[None]
+        if condition.ndim != 3 or condition.shape[1:] != (512, 4096):
+            raise ValueError(f"WAN null condition must be [1 or B,512,4096], got {tuple(condition.shape)}")
+        self.empty_condition = condition.to(device=next(self.dit.parameters()).device,
+                                           dtype=next(self.dit.parameters()).dtype)
+
+    def _condition(self, batch: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+        if self.empty_condition.numel() == 0:
+            # This is a fixed null/empty cross-attention context. A native
+            # empty-T5 tensor can be supplied with set_condition; zeros are a
+            # deterministic fallback for architecture/smoke tests.
+            return torch.zeros(batch, 512, 4096, device=device, dtype=dtype)
+        if self.empty_condition.shape[0] not in (1, batch):
+            raise ValueError("null condition batch dimension does not match latent batch")
+        return self.empty_condition.expand(batch, -1, -1).to(device=device, dtype=dtype)
+
+    def forward(self, latent: torch.Tensor, tau: torch.Tensor) -> torch.Tensor:
+        if latent.ndim != 5 or tuple(latent.shape[1:]) != WAN_LATENT_SHAPE:
+            raise ValueError(f"WAN mapper input must be [B,{','.join(map(str, WAN_LATENT_SHAPE))}], got {tuple(latent.shape)}")
+        tau = torch.as_tensor(tau, device=latent.device, dtype=latent.dtype).flatten()
+        if tau.shape != (latent.shape[0],):
+            raise ValueError(f"tau must be [B]={latent.shape[0]}, got {tuple(tau.shape)}")
+        if not torch.isfinite(tau).all() or (tau < 0).any() or (tau > 1).any():
+            raise ValueError("external flow tau must be in [0,1]")
+        timestep = tau * self.timestep_scale
+        dit_dtype = next(self.dit.parameters()).dtype
+        hidden_states = latent.to(dtype=dit_dtype)
+        condition = self._condition(latent.shape[0], latent.device, dit_dtype)
+        output = self.dit(hidden_states, timestep=timestep.to(dtype=dit_dtype),
+                          encoder_hidden_states=condition, return_dict=True).sample
+        output = output.to(dtype=latent.dtype)
+        if output.shape != latent.shape:
+            raise RuntimeError(f"WAN DiT output shape {tuple(output.shape)} != input {tuple(latent.shape)}")
+        return output
+
+    @property
+    def trainable_parameters(self) -> list[nn.Parameter]:
+        return [p for p in self.parameters() if p.requires_grad]
