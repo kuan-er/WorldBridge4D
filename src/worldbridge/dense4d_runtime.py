@@ -73,6 +73,11 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
         backbone = CleanLatentBackbone()
     else:
         raise ValueError(f"unknown backbone_readout={readout!r}")
+    # Construct every decoder ablation from identical weights even when the
+    # backbone path consumes a different amount of RNG during loading.
+    torch.manual_seed(int(config.get("decoder_seed", config.get("seed", 0))))
+    if device.type == "cuda":
+        torch.cuda.manual_seed_all(int(config.get("decoder_seed", config.get("seed", 0))))
     decoder = DenseQueryDecoder(
         num_frames=int(config["clip_length"]), latent_shape=WAN_LATENT_SHAPE,
         query_dim=int(config["query_dim"]), embedding_dim=int(config.get("embedding_dim", 128)),

@@ -27,6 +27,7 @@ gradient_clip: 1.0
 trainable_mode: decoder_only
 backbone_readout: wan_velocity
 seed: 2026
+decoder_seed: 424242
 smooth_l1_beta: 0.05
 geometry_cache_entries: 32
 save_checkpoint: true
