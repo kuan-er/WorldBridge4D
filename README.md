@@ -1,12 +1,22 @@
-# MOVi-F 四维世界潜变量第一版
+# MOVi-F 四维世界潜变量研究代码
 
-本仓库实现两个只使用 MOVi-F 真值几何/刚体轨迹的确定性 autoencoder：
+当前 H004 路线实现 **Dense-Query 4D Latent with Feed-forward Wan**：
 
-- **Compact**：每个源像素使用第一帧锚定的完整目标轨迹 `q[p]`，只保留每帧 pointmap reconstruction 与第一帧 anchor；它不宣称任意源帧 tracking。
-- **Full**：每个源帧、源像素编码完整 `X[s,t,p]` 轨迹，支持任意合法 `(s,t)` 查询，包括后出现物体。
+```text
+RGB [B,21,3,128,128]
+ -> frozen Wan VAE clean latent [B,16,6,16,16]
+ -> Wan DiT once at rectified-flow time 0
+ -> negative raw velocity Z4D [B,16,6,16,16]
+ -> full-memory dense (source,target) cross-attention query
+ -> XYZ [B,K,3,128,128]
+```
 
-RGB 仅用于诊断图；没有 RGB encoder、KL、扩散模型或 Wan 组件。输出 latent 始终为
-`Z4D [B,Cz,Tz,Hz,Wz]`，其中时间轴是源帧时间。
+`Z4D` 没有真值或直接损失。模型只以 validity-masked XYZ SmoothL1 监督，同一全局 latent 回答 diagonal pointmap、前向/后向 tracking 和任意源帧 query。v1 使用独立 source/target embedding、spatial-only 2D RoPE、无 query self-attention 的 2-layer cross-attention，以及 bilinear+2D ResBlock upsampler；不输入相机、局部 RGB 或 visibility。
+
+仓库也保留早期两个只使用 MOVi-F 真值几何/刚体轨迹的确定性 autoencoder 基线：
+
+- **Compact**：第一帧锚定轨迹；不宣称任意源帧 tracking。
+- **Full**：每个源帧、源像素编码完整 `X[s,t,p]` 轨迹。
 
 ## 数据审计得到的约定
 
@@ -63,7 +73,7 @@ prl run launch --task <TASK> --events <WORKTREE>/.pi-research/events.yaml -- \
   python scripts/evaluate.py --checkpoint artifacts/full_baseline/checkpoint.pt --split validation
 ```
 
-建议顺序是 `configs/smoke.yaml` → `configs/tiny_compact.yaml`/`tiny_full.yaml` → bounded `compact.yaml`/`full.yaml`。训练会从 train split 计算坐标统计量，记录配置、seed、commit、硬件、峰值显存、吞吐，保存并立即恢复 checkpoint。`--resume` 支持恢复。`evaluate.py` 以空间 stride 和 query chunk 分块，不物化完整 `O(T²HW)` float32 查询；Full 的 `arbitrary_all_st` 表示所有源/目标时间组合（空间为可复现 stride 网格）。
+H004 的入口为 `scripts/dense4d_wan_audit.py`、`scripts/dense4d_decoder_smoke.py`、`train_dense4d.py` 和 `evaluate_dense4d.py`；配置顺序为 `configs/dense4d_smoke.yaml` → `dense4d_tiny_overfit.yaml` → `dense4d_arbitrary_overfit.yaml` → bounded `dense4d_train.yaml`。原 Compact/Full 路线仍使用上一段命令。坐标统计量必须由 `scripts/compute_coordinate_stats.py` 从 train split 生成；Wan empty-UMT5 condition 由 `scripts/create_wan_empty_text_condition.py` 生成在仓库外。
 
 本项目没有自有 MLflow server，因此 `.pi-research/config.yaml` 中 MLflow 保持关闭，W&B tracking 保持开启。迁移到其他机器时，复制模板并在本地填写非敏感配置：
 
@@ -97,7 +107,10 @@ prl doctor
 
 - `src/worldbridge/data.py`：原生 TFRecord 适配器，只读解析。
 - `src/worldbridge/geometry.py`：相机、pointmap、rigid trajectory、`M`/`V_valid`。
-- `src/worldbridge/models.py`：共享 temporal encoder 类型、Compact/Full、matched 3D context、统一可微 query decoder。
+- `src/worldbridge/models.py`：早期 Compact/Full geometry-autoencoder 基线。
+- `src/worldbridge/wan.py`：严格的 Wan2.1 VAE/DiT 原生 checkpoint adapter。
+- `src/worldbridge/dense4d.py`：feed-forward Wan readout、global memory、2D RoPE cross-attention、dense upsampler 和 XYZ loss。
+- `src/worldbridge/dense4d_data.py`、`dense4d_runtime.py`：balanced pair targets、train-only normalization 与 real-Wan 构建。
 - `src/worldbridge/pipeline.py`：坐标统计、按源帧/像素块的 Full 编码和 query 采样。
 - `src/worldbridge/losses.py`, `metrics.py`：validity masked Smooth-L1、visible/occluded 与重投影指标。
 - `scripts/`：审计、几何诊断、训练、评估入口；`tests/`：几何、shape、latent mapping 和 decoder gradient。
