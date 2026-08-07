@@ -145,7 +145,9 @@ def main() -> None:
         "split": args.split, "clips": len(samples), "pixel_stride": int(args.pixel_stride),
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
-        "decoder_query_shape": [1, args.pair_chunk, 16 * 16, int(config["query_dim"])],
+        "decoder_query_shape": [
+            1, args.pair_chunk, int(model.decoder.query_coordinates.shape[0]), int(config["query_dim"])
+        ],
         "decoder_output_shape": [1, args.pair_chunk, 3, int(config["image_size"]), int(config["image_size"])],
         "pointmap": groups["pointmap"].result(),
         "first_frame_tracking": groups["first_frame_tracking"].result(),
