@@ -36,6 +36,29 @@ REQUIRED_CONFIG = {
 }
 
 
+def init_wandb(config: dict[str, Any]):
+    """Initialize explicit scalar tracking; PRL only injects W&B metadata."""
+    tracking = config.get("tracking", {})
+    if not bool(tracking.get("enabled", False)) or os.getenv("WANDB_MODE", "online") == "disabled":
+        return None
+    try:
+        import wandb
+    except ImportError as exc:
+        raise RuntimeError("tracking.enabled=true but wandb is not installed") from exc
+    run = wandb.init(
+        project=os.getenv("WANDB_PROJECT", tracking.get("project", "worldbridge4d")),
+        entity=os.getenv("WANDB_ENTITY", tracking.get("entity")),
+        group=os.getenv("WANDB_GROUP", tracking.get("group", "h004-dense4d-long-train")),
+        job_type="train",
+        name=os.getenv("WANDB_NAME", f"h004-dense4d-{os.getenv('PRL_RUN_ID', 'local')}"),
+        tags=list(tracking.get("tags", [])) + ["h004", "dense4d", "movi-f"],
+        config=config,
+        reinit="return_previous",
+    )
+    print(f"WANDB_RUN_URL: {run.url}", flush=True)
+    return run
+
+
 def pair_suite(config: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     values = config.get("evaluation_pairs") or [
         [0, 0], [7, 7], [20, 20], [0, 1], [0, 20], [7, 14], [20, 0], [14, 7], [20, 19], [3, 18],
@@ -107,6 +130,7 @@ def main() -> None:
     rng = np.random.default_rng(seed)
     output_dir = pathlib.Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    wandb_run = init_wandb(config)
 
     max_examples = config.get("max_clips", 1)
     max_examples = None if max_examples is None else int(max_examples)
@@ -132,6 +156,11 @@ def main() -> None:
         stats, cache, device, dtype,
     )
     print(json.dumps({"event": "initial_evaluation", **initial_eval}), flush=True)
+    if wandb_run is not None:
+        wandb_run.log({
+            f"initial_eval/{key}": value for key, value in initial_eval.items()
+            if isinstance(value, (int, float)) and value is not None
+        }, step=0)
 
     steps = int(config["steps"])
     batch_size = int(config["batch_size"])
@@ -224,6 +253,16 @@ def main() -> None:
             "pairs": np.stack((source_rows[0], target_rows[0]), axis=-1).tolist(),
             "z4d_shape": list(z4d.shape),
         }), flush=True)
+        wandb_log_every = int(config.get("tracking", {}).get("log_every", 10))
+        if wandb_run is not None and (step == 0 or (step + 1) % wandb_log_every == 0):
+            wandb_run.log({
+                "train/loss": raw_loss,
+                "train/epe_m": mean_epe,
+                "train/clips_seen": (step + 1) * batch_size,
+                "train/passes": (step + 1) * batch_size / len(samples),
+                "train/backbone_lr": float(groups[0]["lr"]),
+                "system/peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
+            }, step=step + 1)
 
     final_eval = grouped_eval(
         model, clean_latents[0], samples[0], evaluation_source, evaluation_target,
@@ -268,9 +307,26 @@ def main() -> None:
         "elapsed_seconds": time.time() - start_time,
         "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
         "checkpoint": str(checkpoint) if checkpoint else None, "checkpoint_load_ok": checkpoint_load_ok,
+        "wandb_url": wandb_run.url if wandb_run is not None else None,
         "environment": {"torch": torch.__version__, "cuda_visible_devices": os.getenv("CUDA_VISIBLE_DEVICES")},
     }
     (output_dir / "train_metrics.json").write_text(json.dumps(result, indent=2))
+    if wandb_run is not None:
+        final_scalars = {
+            f"final_eval/{key}": value for key, value in final_eval.items()
+            if isinstance(value, (int, float)) and value is not None
+        }
+        final_scalars.update({
+            "final/train_loss": losses[-1],
+            "final/train_epe_m": epe_values[-1],
+            "final/elapsed_seconds": result["elapsed_seconds"],
+            "final/peak_cuda_memory_gib": result["peak_cuda_memory_gib"],
+        })
+        wandb_run.log(final_scalars, step=steps)
+        wandb_run.summary.update(final_scalars)
+        wandb_run.summary["checkpoint"] = result["checkpoint"]
+        wandb_run.summary["checkpoint_load_ok"] = checkpoint_load_ok
+        wandb_run.finish()
     print(json.dumps(result, indent=2), flush=True)
     print("DENSE4D_TRAIN_OK", flush=True)
 
