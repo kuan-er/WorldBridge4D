@@ -107,9 +107,11 @@ def main() -> None:
     output_dir = pathlib.Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    max_examples = config.get("max_clips", 1)
+    max_examples = None if max_examples is None else int(max_examples)
     dataset = MOViFDataset(
         config["data_root"], split="train", clip_length=int(config["clip_length"]),
-        clip_start=int(config.get("clip_start", 0)), max_examples=int(config.get("max_clips", 1)), seed=seed,
+        clip_start=int(config.get("clip_start", 0)), max_examples=max_examples, seed=seed,
     )
     samples = [dataset[index] for index in range(len(dataset))]
     stats = CoordinateStats.from_npz(config["coordinate_stats"])
@@ -147,7 +149,12 @@ def main() -> None:
     model.train()
 
     for step in range(steps):
-        if bool(config.get("fixed_clip_order", False)):
+        if bool(config.get("matched_epoch_sampling", False)):
+            # One deterministic pass is exactly len(samples) optimizer updates;
+            # this makes steps=N*epochs comparable to the prior Kubric runs.
+            start = (step * batch_size) % len(samples)
+            sample_indices = (start + np.arange(batch_size, dtype=np.int64)) % len(samples)
+        elif bool(config.get("fixed_clip_order", False)):
             sample_indices = np.arange(batch_size, dtype=np.int64) % len(samples)
         else:
             sample_indices = rng.integers(len(samples), size=batch_size)
