@@ -1,8 +1,85 @@
-current_task: T-20260806110441-6e60de
+current_task: T-20260807120421-6da6ff
 active_hypotheses:
+  - H004
   - H002
   - H001
 recent_results:
+  - run_id: R-20260807120649-ce3667
+    kind: h004_dataset_audit
+    result: succeeded
+  - run_id: R-20260807121556-0d3599
+    kind: h004_geometry_validation
+    result: succeeded
+    roundtrip_max_px: 1.0845964142784046e-13
+    diagonal_max: 0.0
+    dynamic_rigid_max_m: 5.016623623677104e-7
+    static_background_max_m: 2.0610834884352757e-6
+    occluded_valid: true
+  - run_id: R-20260807121652-27b9ac
+    kind: h004_native_empty_condition
+    result: succeeded
+    shape: [1, 512, 4096]
+    unpadded_tokens: 1
+  - run_id: R-20260807121940-5cafa5
+    kind: h004_wan_feedforward_audit
+    result: succeeded
+    clean_latent_shape: [1, 16, 6, 16, 16]
+    timestep: 0.0
+    raw_velocity: epsilon_minus_clean
+    z4d_transform: negative_raw_velocity
+    dit_gradient: true
+  - run_id: R-20260807122056-d99561
+    kind: h004_decoder_smoke
+    result: succeeded
+    memory_shape: [1, 1536, 16]
+    low_resolution_shape: [1, 4, 256, 16, 16]
+    output_shape: [1, 4, 3, 128, 128]
+  - run_id: R-20260807122126-c56ffb
+    kind: h004_unit_tests
+    result: succeeded
+    passed: 21
+  - run_id: R-20260807122258-659248
+    kind: h004_coordinate_stats
+    result: succeeded
+    train_clips: 5737
+    point_count: 1973886172
+    mean: [-0.004755645448679449, 1.9840435057254722, -13.47452929937991]
+    scale: [4.819900971027581, 5.335500618483786, 11.895373035302578]
+  - run_id: R-20260807123135-3e0f39
+    kind: h004_fixed_tiny_overfit
+    result: succeeded
+    steps: 24
+    evaluation_loss_ratio: 0.7175770369377824
+    initial_epe: 15.44895076751709
+    final_epe: 10.82796859741211
+    checkpoint_load_ok: true
+  - run_id: R-20260807123252-527d39
+    kind: h004_arbitrary_tiny_overfit
+    result: succeeded
+    steps: 32
+    evaluation_loss_ratio: 0.5764622584549269
+    initial_epe: 15.915731430053711
+    final_epe: 8.022258758544922
+    source_zero_final_epe: 8.340014457702637
+    source_gt_zero_final_epe: 7.886078834533691
+  - run_id: R-20260807123356-35e147
+    kind: h004_bounded_train
+    result: succeeded
+    clips: 8
+    steps: 32
+    checkpoint_load_ok: true
+  - run_id: R-20260807123513-8d40a0
+    kind: h004_bounded_validation
+    result: succeeded
+    clips: 2
+    pointmap_epe: 11.45714984070891
+    tracking_epe: 11.41861476850158
+    visible_epe: 11.980271034668085
+    occluded_valid_epe: 8.670006995130036
+    source_zero_epe: 10.693531148907438
+    source_gt_zero_epe: 11.454867843091488
+    gap_1_epe: 11.435608632909686
+    gap_20_epe: 11.215997653925383
   - run_id: R-20260804055700-fc6af7
     kind: dataset_audit
     result: succeeded
@@ -145,8 +222,8 @@ recent_results:
     result: succeeded
     marker: RELIABILITY_MATRIX_OK
     errors: []
-next_step: Treat H001 as an engineering-capability result rather than evidence
-  of Full quality dominance; investigate late-appearing and occluded errors,
-  then test an explicit arbitrary-source Compact baseline or ablation before
-  claiming improvement.
-updated_at: 2026-08-07T12:41:06.526Z
+next_step: Finish H004 v1 after removing temporary checkpoints and generated
+  outputs. The next highest-value experiment is a longer fixed-architecture
+  full-DiT budget to test whether the bounded Z4D adaptation bottleneck is
+  optimization rather than query or upsampling capacity.
+updated_at: 2026-08-07T12:36:00Z
