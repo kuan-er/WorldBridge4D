@@ -131,6 +131,30 @@ def sample_dense_pairs(num_frames: int, num_pairs: int, rng: np.random.Generator
     return np.asarray(source, np.int64)[order], np.asarray(target, np.int64)[order]
 
 
+def sample_h001_balanced_pairs(num_frames: int, num_pairs: int,
+                               rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+    """Match H001's three training families: reconstruction, s=0, arbitrary."""
+    num_frames, num_pairs = int(num_frames), int(num_pairs)
+    if num_frames < 2 or num_pairs < 3:
+        raise ValueError("H001-balanced sampling requires >=2 frames and >=3 pairs")
+    counts = [num_pairs // 3] * 3
+    for index in range(num_pairs - sum(counts)):
+        counts[index] += 1
+    source, target = [], []
+    for _ in range(counts[0]):
+        frame = int(rng.integers(num_frames))
+        source.append(frame); target.append(frame)
+    for _ in range(counts[1]):
+        source.append(0); target.append(int(rng.integers(1, num_frames)))
+    categories = np.arange(4, dtype=np.int64)
+    rng.shuffle(categories)
+    for index in range(counts[2]):
+        s, t = _off_diagonal_pair(num_frames, int(categories[index % 4]), rng)
+        source.append(s); target.append(t)
+    order = rng.permutation(num_pairs)
+    return np.asarray(source, np.int64)[order], np.asarray(target, np.int64)[order]
+
+
 def parse_fixed_pairs(values: Iterable[Sequence[int]], num_frames: int, expected_count: int | None = None
                       ) -> tuple[np.ndarray, np.ndarray]:
     pairs = np.asarray(list(values), dtype=np.int64)

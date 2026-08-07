@@ -27,7 +27,7 @@ gradient_checkpointing: true
 gradient_accumulation: 1
 gradient_clip: 1.0
 trainable_mode: full
-seed: 2026
+seed: 2028
 smooth_l1_beta: 0.05
 geometry_cache_entries: 32
 save_checkpoint: true

@@ -20,7 +20,8 @@ sys.path.insert(0, str(ROOT / "src"))
 from worldbridge.data import MOViFDataset
 from worldbridge.dense4d import masked_pair_smooth_l1
 from worldbridge.dense4d_data import (
-    CoordinateStats, DynamicPointmapCache, dense_pair_targets, parse_fixed_pairs, sample_dense_pairs,
+    CoordinateStats, DynamicPointmapCache, dense_pair_targets, parse_fixed_pairs,
+    sample_dense_pairs, sample_h001_balanced_pairs,
 )
 from worldbridge.dense4d_runtime import (
     build_real_model, encode_clean_video_latents, optimizer_trainable_count,
@@ -162,7 +163,15 @@ def main() -> None:
         metric_rows = []
         for sample_index in sample_indices:
             if fixed_source is None:
-                source, target = sample_dense_pairs(int(config["clip_length"]), num_pairs, rng)
+                sampler = str(config.get("pair_sampling", "dense_balanced"))
+                if sampler == "h001_balanced":
+                    source, target = sample_h001_balanced_pairs(
+                        int(config["clip_length"]), num_pairs, rng
+                    )
+                elif sampler == "dense_balanced":
+                    source, target = sample_dense_pairs(int(config["clip_length"]), num_pairs, rng)
+                else:
+                    raise ValueError(f"unknown pair_sampling={sampler!r}")
             else:
                 source, target = fixed_source.copy(), fixed_target.copy()
             normalized, metric, _, valid = dense_pair_targets(
