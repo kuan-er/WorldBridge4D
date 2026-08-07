@@ -105,8 +105,10 @@ def save_checkpoint(path: str | Path, model: DenseQueryWanModel, config: dict[st
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "model": model.state_dict(), "config": config,
-        "coordinate_mean": np.asarray(coordinate_mean, np.float32),
-        "coordinate_scale": np.asarray(coordinate_scale, np.float32),
+        # Plain lists keep weights_only=True checkpoint validation safe on
+        # PyTorch 2.6+; no NumPy reconstruction globals are needed.
+        "coordinate_mean": np.asarray(coordinate_mean, np.float32).tolist(),
+        "coordinate_scale": np.asarray(coordinate_scale, np.float32).tolist(),
         "extra": extra or {},
     }
     temporary = path.with_suffix(path.suffix + ".tmp")
