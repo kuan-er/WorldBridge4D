@@ -302,7 +302,7 @@ class DenseQueryDecoder(nn.Module):
         coarse = self.coarse_head(feature).reshape(batch, pairs, 3, query_height, query_width) \
             if self.coarse_head is not None else None
         xyz = self.upsampler(feature).reshape(batch, pairs, 3, *self.upsampler.output_size)
-        feature = feature.reshape(batch, pairs, self.query_dim, latent_height, latent_width)
+        feature = feature.reshape(batch, pairs, self.query_dim, query_height, query_width)
         return DenseQueryOutput(xyz, feature, coarse)
 
 
