@@ -81,6 +81,7 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
         output_size=(int(config["image_size"]), int(config["image_size"])),
         coarse_diagnostic=bool(config.get("coarse_diagnostic", False)),
         fullres_coordinates=bool(config.get("fullres_coordinates", False)),
+        query_grid_size=int(config.get("query_grid_size", WAN_LATENT_SHAPE[-1])),
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
     model.configure_trainable(str(config.get("trainable_mode", "full")), int(config.get("trainable_blocks", 2)))

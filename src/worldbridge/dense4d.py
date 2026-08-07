@@ -239,7 +239,7 @@ class DenseQueryDecoder(nn.Module):
                  query_dim: int = 256, embedding_dim: int = 128, num_layers: int = 2,
                  num_heads: int = 8, upsample_channels: Sequence[int] = (256, 128, 64, 32),
                  output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False,
-                 fullres_coordinates: bool = False):
+                 fullres_coordinates: bool = False, query_grid_size: int | None = None):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
@@ -253,10 +253,18 @@ class DenseQueryDecoder(nn.Module):
         self.blocks = nn.ModuleList([
             CrossAttentionBlock(query_dim, channels, num_heads) for _ in range(int(num_layers))
         ])
-        v, u = torch.meshgrid(torch.arange(latent_height), torch.arange(latent_width), indexing="ij")
+        query_grid_size = int(query_grid_size or latent_height)
+        if query_grid_size < latent_height:
+            raise ValueError("query_grid_size cannot be smaller than the Wan latent grid")
+        self.query_grid_shape = (query_grid_size, query_grid_size)
+        v, u = torch.meshgrid(
+            torch.linspace(0, latent_height - 1, query_grid_size),
+            torch.linspace(0, latent_width - 1, query_grid_size),
+            indexing="ij",
+        )
         self.register_buffer("query_coordinates", torch.stack((u.reshape(-1), v.reshape(-1)), dim=-1), persistent=False)
         self.upsampler = DenseUpsampler2D(
-            query_dim, upsample_channels, (latent_height, latent_width), output_size,
+            query_dim, upsample_channels, self.query_grid_shape, output_size,
             fullres_coordinates=fullres_coordinates,
         )
         self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
@@ -289,9 +297,9 @@ class DenseQueryDecoder(nn.Module):
         for block in self.blocks:
             query = block(query, memory, self.query_coordinates, memory_coordinates)
         batch, pairs, _, _ = query.shape
-        _, _, latent_height, latent_width = self.latent_shape
-        feature = query.reshape(batch * pairs, latent_height, latent_width, self.query_dim).permute(0, 3, 1, 2)
-        coarse = self.coarse_head(feature).reshape(batch, pairs, 3, latent_height, latent_width) \
+        query_height, query_width = self.query_grid_shape
+        feature = query.reshape(batch * pairs, query_height, query_width, self.query_dim).permute(0, 3, 1, 2)
+        coarse = self.coarse_head(feature).reshape(batch, pairs, 3, query_height, query_width) \
             if self.coarse_head is not None else None
         xyz = self.upsampler(feature).reshape(batch, pairs, 3, *self.upsampler.output_size)
         feature = feature.reshape(batch, pairs, self.query_dim, latent_height, latent_width)

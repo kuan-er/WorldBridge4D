@@ -140,6 +140,13 @@ def test_clean_latent_control_and_fullres_coordinate_upsampler():
     output = decoder(latent, torch.tensor([[0]]), torch.tensor([[1]]))
     assert output.normalized_xyz.shape == (1, 1, 3, 128, 128)
     assert decoder.upsampler.xyz.in_channels == 6
+    query32 = DenseQueryDecoder(
+        query_dim=32, embedding_dim=16, num_layers=1, num_heads=4,
+        upsample_channels=(32, 16, 8), query_grid_size=32,
+    )
+    query32_output = query32(latent, torch.tensor([[0]]), torch.tensor([[1]]))
+    assert query32_output.low_resolution_feature.shape == (1, 1, 32, 32, 32)
+    assert query32_output.normalized_xyz.shape == (1, 1, 3, 128, 128)
 
 
 def test_cross_attention_and_upsampler_multiple_pairs_shape():
