@@ -348,12 +348,41 @@ def main() -> None:
         raise ValueError("source-centric H004 protocol requires clip_length=21 and image_size=128")
     if int(config["batch_size"]) != 16 or int(config["steps"]) != 1000:
         raise ValueError("formal source-centric screen requires batch_size=16 and steps=1000")
+    if int(config.get("gradient_accumulation", 1)) != 1 or str(config["precision"]).lower() not in {"bf16", "bfloat16"}:
+        raise ValueError("formal source-centric screen fixes accumulation=1 and BF16")
+    if str(config["trainable_mode"]) != "full" or int(config["seed"]) != 2029:
+        raise ValueError("formal source-centric screen fixes trainable_mode=full and seed=2029")
+    if int(config.get("num_query_pairs", 21)) != 21:
+        raise ValueError("source-centric training enumerates exactly all 21 targets")
     if int(config.get("geometry_workers", 8)) != 8 or int(config.get("prefetch_queue_depth", 2)) != 2:
         raise ValueError("source-centric protocol fixes 8 geometry workers and queue depth 2")
-    if str(config.get("rope_mode", "2d")) == "3d" and int(config["query_dim"]) // int(config["num_heads"]) != 32:
+    if not np.isclose(float(config.get("xyz_pair_weight_diagonal", 1 / 3)), 1 / 3) or not np.isclose(
+        float(config.get("xyz_pair_weight_off_diagonal", 2 / 3)), 2 / 3
+    ):
+        raise ValueError("XYZ pair weights must be exactly 1/3 diagonal and 2/3 off-diagonal")
+    for excluded in ("depth_loss", "depth_loss_weight", "reprojection_loss", "reprojection_loss_weight",
+                     "iterative_dit", "multi_step_dit"):
+        if bool(config.get(excluded, False)):
+            raise ValueError(f"{excluded} is excluded from the H004 source-centric screen")
+    arm = str(config.get("ablation_arm"))
+    actual = (str(config.get("rope_mode", "2d")), int(config["num_cross_attn_layers"]),
+              bool(config.get("visibility_head", False)))
+    expected = {"B0": ("2d", 2, False), "E3": ("3d", 2, False),
+                "E5": ("2d", 2, True), "E6": ("2d", 4, False)}
+    if arm not in expected or actual != expected[arm]:
+        raise ValueError(f"strict arm mismatch: {arm=} has {actual}, expected {expected.get(arm)}")
+    if actual[0] == "3d" and int(config["query_dim"]) // int(config["num_heads"]) != 32:
         raise ValueError("E3 requires head_dim=32")
-    if bool(config.get("visibility_head", False)) and "visibility_pos_weight" not in config:
-        raise ValueError("E5 requires a precomputed fixed visibility_pos_weight")
+    if arm == "E5":
+        if config.get("visibility_target", "M") != "M" or config.get("visibility_mask", "A") != "A" \
+                or not bool(config.get("visibility_off_diagonal_only", True)):
+            raise ValueError("E5 fixes visibility target=M, mask=A, and off-diagonal-only BCE")
+        if "visibility_pos_weight" not in config or not np.isfinite(float(config["visibility_pos_weight"])):
+            raise ValueError("E5 requires a finite precomputed visibility_pos_weight")
+        if not np.isclose(float(config.get("lambda_visibility", -1)), 0.1):
+            raise ValueError("E5 fixes lambda_visibility=0.1")
+    elif not np.isclose(float(config.get("lambda_visibility", 0.0)), 0.0):
+        raise ValueError(f"{arm} must remain XYZ-only")
 
     seed = int(config["seed"])
     np.random.seed(seed)
