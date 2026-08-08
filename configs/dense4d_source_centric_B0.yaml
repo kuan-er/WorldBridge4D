@@ -1,5 +1,7 @@
 # H004-v2 B0: source-centric 2D-RoPE, 2 decoder blocks, XYZ-only.
 ablation_arm: B0
+latent_adapter: none
+backbone_readout: wan_velocity
 data_root: /dataset/MOVi-F
 wan_root: /dataset/Wan2.1-T2V-1.3B
 empty_text_condition: /tmp/worldbridge_dense4d_matched/wan_empty_condition.pt
