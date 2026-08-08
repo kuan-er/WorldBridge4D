@@ -1,5 +1,6 @@
-current_task: T-20260806110441-6e60de
+current_task: T-20260807125947-a177c2
 active_hypotheses:
+  - H004
   - H002
   - H001
 recent_results:
@@ -149,4 +150,4 @@ next_step: Treat H001 as an engineering-capability result rather than evidence
   of Full quality dominance; investigate late-appearing and occluded errors,
   then test an explicit arbitrary-source Compact baseline or ablation before
   claiming improvement.
-updated_at: 2026-08-07T12:41:06.526Z
+updated_at: 2026-08-07T12:59:47.595Z
