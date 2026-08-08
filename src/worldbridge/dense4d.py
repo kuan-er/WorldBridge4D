@@ -284,6 +284,69 @@ class DenseQueryOutput:
     visibility_logits: torch.Tensor | None = None
 
 
+class FixedChannelWhitening(nn.Module):
+    """Fixed per-channel standardization for a latent covariate-shift control."""
+
+    def __init__(self, channels: int):
+        super().__init__()
+        self.register_buffer("mean", torch.zeros(int(channels)), persistent=True)
+        self.register_buffer("scale", torch.ones(int(channels)), persistent=True)
+
+    def set_stats(self, mean: torch.Tensor, scale: torch.Tensor) -> None:
+        mean = torch.as_tensor(mean, dtype=self.mean.dtype, device=self.mean.device).flatten()
+        scale = torch.as_tensor(scale, dtype=self.scale.dtype, device=self.scale.device).flatten()
+        if mean.shape != self.mean.shape or scale.shape != self.scale.shape:
+            raise ValueError("latent whitening statistics must match the latent channel count")
+        self.mean.copy_(mean)
+        self.scale.copy_(scale.clamp_min(1e-6))
+
+    def forward(self, latent: torch.Tensor) -> torch.Tensor:
+        shape = (1, -1, 1, 1, 1)
+        return (latent - self.mean.to(dtype=latent.dtype).view(shape)) / self.scale.to(dtype=latent.dtype).view(shape)
+
+
+class ChannelAffineAdapter(nn.Module):
+    """Learnable channel-wise affine bridge, initialized as the identity."""
+
+    def __init__(self, channels: int):
+        super().__init__()
+        self.scale = nn.Parameter(torch.ones(int(channels)))
+        self.bias = nn.Parameter(torch.zeros(int(channels)))
+
+    def forward(self, latent: torch.Tensor) -> torch.Tensor:
+        shape = (1, -1, 1, 1, 1)
+        return latent * self.scale.to(dtype=latent.dtype).view(shape) + self.bias.to(dtype=latent.dtype).view(shape)
+
+
+class ConvLatentAdapter(nn.Module):
+    """Small nonlinear 1x1x1 latent remapping for the D3 control."""
+
+    def __init__(self, channels: int):
+        super().__init__()
+        channels = int(channels)
+        self.net = nn.Sequential(
+            nn.Conv3d(channels, channels, 1), nn.GELU(), nn.Conv3d(channels, channels, 1),
+        )
+        nn.init.zeros_(self.net[-1].weight)
+        nn.init.zeros_(self.net[-1].bias)
+
+    def forward(self, latent: torch.Tensor) -> torch.Tensor:
+        return latent + self.net(latent)
+
+
+def make_latent_adapter(kind: str, channels: int) -> nn.Module:
+    kind = str(kind).lower()
+    if kind in {"none", "identity"}:
+        return nn.Identity()
+    if kind in {"fixed_whiten", "whiten"}:
+        return FixedChannelWhitening(channels)
+    if kind in {"channel_affine", "affine"}:
+        return ChannelAffineAdapter(channels)
+    if kind in {"conv1x1", "nonlinear"}:
+        return ConvLatentAdapter(channels)
+    raise ValueError(f"unknown latent_adapter={kind!r}")
+
+
 class DenseQueryDecoder(nn.Module):
     """Map global native Z4D and K dense `(s,t)` queries to K XYZ maps."""
 
@@ -292,7 +355,8 @@ class DenseQueryDecoder(nn.Module):
                  num_heads: int = 8, upsample_channels: Sequence[int] = (256, 128, 64, 32),
                  output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False,
                  fullres_coordinates: bool = False, query_grid_size: int | None = None,
-                 rope_mode: str = "2d", visibility_head: bool = False):
+                 rope_mode: str = "2d", visibility_head: bool = False,
+                 latent_adapter: str = "none"):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
@@ -339,6 +403,16 @@ class DenseQueryDecoder(nn.Module):
                 CrossAttentionBlock(query_dim, channels, num_heads, rope_mode=self.rope_mode)
                 for _ in range(num_layers - common_layers)
             ])
+        # Construct latent adapters last so B0/E3/E5/E6 common decoder weights
+        # remain bit-identical under decoder_seed=424242.  D2 is identity at
+        # initialization; D1 receives fixed statistics before training starts.
+        self.latent_adapter_kind = str(latent_adapter).lower()
+        self.latent_adapter = make_latent_adapter(self.latent_adapter_kind, channels)
+
+    def set_latent_stats(self, mean: torch.Tensor, scale: torch.Tensor) -> None:
+        if not hasattr(self.latent_adapter, "set_stats"):
+            raise ValueError("latent statistics are only supported by fixed_whiten")
+        self.latent_adapter.set_stats(mean, scale)
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         source = torch.as_tensor(source, dtype=torch.long, device=self.source_embedding.weight.device)
@@ -358,6 +432,7 @@ class DenseQueryDecoder(nn.Module):
     def forward(self, z4d: torch.Tensor, source: torch.Tensor, target: torch.Tensor) -> DenseQueryOutput:
         if z4d.ndim != 5 or tuple(z4d.shape[1:]) != self.latent_shape:
             raise ValueError(f"Z4D must be [B,{','.join(map(str, self.latent_shape))}], got {tuple(z4d.shape)}")
+        z4d = self.latent_adapter(z4d)
         content = self.query_content(source, target)
         if content.shape[0] not in (1, z4d.shape[0]):
             raise ValueError("query batch does not match Z4D batch")

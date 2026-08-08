@@ -130,6 +130,52 @@ def _cuda_sync(device: torch.device) -> None:
         torch.cuda.synchronize(device)
 
 
+def _estimate_latent_feature_stats(model: torch.nn.Module, clean_latents: list[torch.Tensor],
+                                   config: dict[str, Any], device: torch.device,
+                                   dtype: torch.dtype) -> tuple[np.ndarray, np.ndarray]:
+    """Estimate fixed D1 channel statistics before any optimization updates.
+
+    The first deterministic ``latent_stats_clips`` train-cache entries are used;
+    this is a representation-only statistic, not a geometry target or a learned
+    per-batch normalization.  Statistics are frozen for the complete run.
+    """
+    count = min(int(config.get("latent_stats_clips", 64)), len(clean_latents))
+    if count < 1:
+        raise ValueError("latent_stats_clips must select at least one cached train clip")
+    was_training = model.backbone.training
+    model.backbone.eval()
+    channels = int(clean_latents[0].shape[1])
+    total = 0
+    channel_sum = torch.zeros(channels, dtype=torch.float64)
+    channel_sq_sum = torch.zeros(channels, dtype=torch.float64)
+    with torch.inference_mode():
+        for latent_cpu in clean_latents[:count]:
+            latent = latent_cpu.to(device=device, dtype=dtype, non_blocking=True)
+            with torch.autocast(device_type="cuda", dtype=dtype, enabled=device.type == "cuda" and dtype == torch.bfloat16):
+                feature = model.backbone(latent)
+            feature = feature.float()
+            values = feature.permute(1, 0, 2, 3, 4).reshape(channels, -1).double().cpu()
+            channel_sum += values.sum(dim=1)
+            channel_sq_sum += (values * values).sum(dim=1)
+            total += values.shape[1]
+    if was_training:
+        model.backbone.train()
+    mean = channel_sum / total
+    variance = (channel_sq_sum / total - mean * mean).clamp_min(1e-8)
+    scale = variance.sqrt().clamp_min(1e-4)
+    mean_np = mean.numpy().astype(np.float32)
+    scale_np = scale.numpy().astype(np.float32)
+    print(json.dumps({
+        "event": "latent_feature_stats",
+        "adapter": "fixed_whiten",
+        "clips": count,
+        "elements_per_channel": total,
+        "mean": mean_np.tolist(),
+        "scale": scale_np.tolist(),
+    }), flush=True)
+    return mean_np, scale_np
+
+
 class GPUUtilizationSampler:
     """Sample NVML utilization during each full step instead of at an idle boundary."""
 
@@ -368,10 +414,25 @@ def main() -> None:
     arm = str(config.get("ablation_arm"))
     actual = (str(config.get("rope_mode", "2d")), int(config["num_cross_attn_layers"]),
               bool(config.get("visibility_head", False)))
-    expected = {"B0": ("2d", 2, False), "E3": ("3d", 2, False),
-                "E5": ("2d", 2, True), "E6": ("2d", 4, False)}
-    if arm not in expected or actual != expected[arm]:
-        raise ValueError(f"strict arm mismatch: {arm=} has {actual}, expected {expected.get(arm)}")
+    expected = {
+        "B0": ("2d", 2, False), "E3": ("3d", 2, False),
+        "E5": ("2d", 2, True), "E6": ("2d", 4, False),
+        "D1": ("2d", 2, False), "D2": ("2d", 2, False), "D3": ("2d", 2, False),
+    }
+    expected_adapters = {
+        "B0": "none", "E3": "none", "E5": "none", "E6": "none",
+        "D1": "fixed_whiten", "D2": "channel_affine", "D3": "conv1x1",
+    }
+    adapter = str(config.get("latent_adapter", "none")).lower()
+    if arm not in expected or actual != expected[arm] or adapter != expected_adapters.get(arm):
+        raise ValueError(
+            f"strict arm mismatch: {arm=} has architecture={actual}, adapter={adapter!r}; "
+            f"expected architecture={expected.get(arm)}, adapter={expected_adapters.get(arm)!r}"
+        )
+    if arm in {"D1", "D2", "D3"} and str(config.get("backbone_readout", "wan_velocity")) != "wan_velocity":
+        raise ValueError(f"{arm} must adapt the Wan velocity readout")
+    if arm == "D1" and int(config.get("latent_stats_clips", 0)) < 1:
+        raise ValueError("D1 requires a positive deterministic latent_stats_clips count")
     if actual[0] == "3d" and int(config["query_dim"]) // int(config["num_heads"]) != 32:
         raise ValueError("E3 requires head_dim=32")
     if arm == "E5":
@@ -412,6 +473,23 @@ def main() -> None:
     samples = load_or_create_samples(dataset, config)
     stats = CoordinateStats.from_npz(config["coordinate_stats"])
     clean_latents = load_or_create_clean_latents(samples, config, device)
+    if adapter == "fixed_whiten":
+        latent_mean, latent_scale = _estimate_latent_feature_stats(
+            model, clean_latents, config, device, dtype,
+        )
+        model.decoder.set_latent_stats(
+            torch.from_numpy(latent_mean).to(device), torch.from_numpy(latent_scale).to(device),
+        )
+        config["latent_feature_mean"] = latent_mean.tolist()
+        config["latent_feature_scale"] = latent_scale.tolist()
+        config["latent_stats_source"] = "first_deterministic_train_cache_entries_pre_update"
+        (output_dir / "resolved_config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+        if wandb_run is not None:
+            wandb_run.config.update({
+                "latent_feature_mean": config["latent_feature_mean"],
+                "latent_feature_scale": config["latent_feature_scale"],
+                "latent_stats_clips": int(config["latent_stats_clips"]),
+            }, allow_val_change=True)
     validation_samples, validation_latents = _load_validation(config, device)
 
     losses: list[float] = []
@@ -419,6 +497,7 @@ def main() -> None:
     timings: list[dict[str, float | None]] = []
     backbone_gradient = False
     decoder_gradient = False
+    adapter_gradient = adapter in {"none", "fixed_whiten"}
     pair_weights_cpu = None
     start_time = time.perf_counter()
     model.train()
@@ -522,8 +601,19 @@ def main() -> None:
                     parameter.grad is not None and torch.isfinite(parameter.grad).all()
                     for parameter in model.decoder.parameters() if parameter.requires_grad
                 )
-                if not backbone_gradient or not decoder_gradient:
-                    raise RuntimeError(f"gradient gate failed: backbone={backbone_gradient}, decoder={decoder_gradient}")
+                adapter_parameters = [
+                    parameter for parameter in model.decoder.latent_adapter.parameters() if parameter.requires_grad
+                ]
+                if adapter_parameters:
+                    adapter_gradient = all(
+                        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+                        for parameter in adapter_parameters
+                    )
+                if not backbone_gradient or not decoder_gradient or not adapter_gradient:
+                    raise RuntimeError(
+                        f"gradient gate failed: backbone={backbone_gradient}, decoder={decoder_gradient}, "
+                        f"adapter={adapter_gradient}"
+                    )
 
             _cuda_sync(device)
             step_start = time.perf_counter()
@@ -563,12 +653,14 @@ def main() -> None:
                 "source": plan.source[:, 0].tolist(),
                 "target_shape": list(plan.target.shape),
                 "z4d_shape": [logical_batch, *z4d_shape],
+                "latent_adapter": adapter,
                 "timing": timing,
             }
             if step == 0 or (step + 1) % int(config.get("log_every", 10)) == 0:
                 print(json.dumps(event), flush=True)
                 if wandb_run is not None:
                     wandb_run.log({
+                        "global_step": step + 1,
                         "train/loss": raw_loss, "train/xyz_loss": xyz_loss_value,
                         "train/visibility_loss": visibility_loss_value, "train/epe_m": mean_epe,
                         "train/passes": (step + 1) * int(config["batch_size"]) / len(samples),
@@ -591,6 +683,7 @@ def main() -> None:
         extra={
             "steps": int(config["steps"]), "total_steps": int(config["steps"]), "seed": seed,
             "protocol": "h004_source_centric_ablation_screen", "validation_pending": True,
+            "ablation_arm": arm, "latent_adapter": adapter,
         },
     )
     print(f"TRAIN_WEIGHTS_SAVED: {prevalidation_checkpoint}", flush=True)
@@ -604,6 +697,7 @@ def main() -> None:
             "steps": int(config["steps"]), "total_steps": int(config["steps"]), "seed": seed,
             "protocol": "h004_source_centric_ablation_screen",
             "mode": args.mode, "visibility_pos_weight": config.get("visibility_pos_weight"),
+            "ablation_arm": arm, "latent_adapter": adapter,
             "validation": validation,
             "timing_summary": {
                 key: float(np.mean([row[key] for row in timings if row[key] is not None]))
@@ -617,6 +711,7 @@ def main() -> None:
     del loaded
     result = {
         "protocol": "h004_source_centric_ablation_screen", "mode": args.mode,
+        "ablation_arm": arm, "latent_adapter": adapter,
         "seed": seed, "steps": int(config["steps"]), "clips": len(samples),
         "batch_size": int(config["batch_size"]),
         "microbatch_size": int(config.get("microbatch_size", config["batch_size"])),
@@ -624,6 +719,7 @@ def main() -> None:
         "initial_train_loss": losses[0], "final_train_loss": losses[-1],
         "initial_train_epe": train_epes[0], "final_train_epe": train_epes[-1],
         "backbone_gradient": backbone_gradient, "decoder_gradient": decoder_gradient,
+        "adapter_gradient": adapter_gradient,
         "validation": validation, "checkpoint": str(checkpoint), "checkpoint_load_ok": checkpoint_load_ok,
         "visibility_pos_weight": config.get("visibility_pos_weight"),
         "timing_mean": {
@@ -638,6 +734,7 @@ def main() -> None:
     (output_dir / "train_metrics.json").write_text(json.dumps(result, indent=2))
     if wandb_run is not None:
         wandb_run.log({
+            "global_step": int(config["steps"]),
             "final/off_diagonal_all_valid_epe": validation["metrics"]["off_diagonal_all_valid"]["epe"],
             "final/diagonal_epe": validation["metrics"]["diagonal"]["epe"],
             "final/source_zero_epe": validation["metrics"]["source_zero"]["epe"],
@@ -647,7 +744,10 @@ def main() -> None:
             "final/peak_cuda_allocated_gib": result["peak_cuda_allocated_gib"],
             "final/peak_cuda_reserved_gib": result["peak_cuda_reserved_gib"],
         }, step=int(config["steps"]))
-        wandb_run.summary.update({"checkpoint": str(checkpoint), "checkpoint_load_ok": checkpoint_load_ok})
+        wandb_run.summary.update({
+            "checkpoint": str(checkpoint), "checkpoint_load_ok": checkpoint_load_ok,
+            "ablation_arm": arm, "latent_adapter": adapter,
+        })
         wandb_run.finish()
     print(json.dumps(result, indent=2), flush=True)
     print("DENSE4D_SOURCE_CENTRIC_TRAIN_OK", flush=True)

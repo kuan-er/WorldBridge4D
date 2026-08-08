@@ -89,6 +89,7 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
         query_grid_size=int(config.get("query_grid_size", WAN_LATENT_SHAPE[-1])),
         rope_mode=str(config.get("rope_mode", "2d")),
         visibility_head=bool(config.get("visibility_head", False)),
+        latent_adapter=str(config.get("latent_adapter", "none")),
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
     model.configure_trainable(str(config.get("trainable_mode", "full")), int(config.get("trainable_blocks", 2)))

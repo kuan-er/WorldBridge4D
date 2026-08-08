@@ -5,7 +5,8 @@ import torch.nn.functional as F
 
 from worldbridge.data import MOViSample
 from worldbridge.dense4d import (
-    CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone,
+    ChannelAffineAdapter, CleanLatentBackbone, ConvLatentAdapter, DenseQueryDecoder,
+    DenseQueryWanModel, FeedForwardWanBackbone, FixedChannelWhitening,
     RotaryEmbedding2D, RotaryEmbedding3D, flatten_z4d, masked_pair_smooth_l1,
     masked_visibility_bce, unflatten_z4d, verify_flow_velocity_algebra,
 )
@@ -133,6 +134,22 @@ def test_memory_flatten_unflatten_and_temporal_spatial_coordinates():
     assert memory.shape == (1, 12, 2)
 
 
+def test_latent_alignment_adapters_have_expected_initial_contracts():
+    latent = torch.randn(2, 16, 6, 4, 4)
+    whitening = FixedChannelWhitening(16)
+    mean = torch.arange(16, dtype=torch.float32)
+    scale = torch.arange(16, dtype=torch.float32) + 1.0
+    whitening.set_stats(mean, scale)
+    expected = (latent - mean.view(1, 16, 1, 1, 1)) / scale.view(1, 16, 1, 1, 1)
+    torch.testing.assert_close(whitening(latent), expected)
+    affine = ChannelAffineAdapter(16)
+    torch.testing.assert_close(affine(latent), latent)
+    nonlinear = ConvLatentAdapter(16)
+    torch.testing.assert_close(nonlinear(latent), latent)
+    assert sum(parameter.numel() for parameter in affine.parameters()) == 32
+    assert all(parameter.grad is None for parameter in whitening.parameters())
+
+
 def test_clean_latent_control_and_fullres_coordinate_upsampler():
     latent = torch.randn(1, *WAN_LATENT_SHAPE)
     torch.testing.assert_close(CleanLatentBackbone()(latent), latent)
@@ -228,14 +245,18 @@ def test_3d_rope_decoder_and_visibility_head_shapes():
 
 
 def test_ablation_decoders_share_identical_overlapping_initial_weights():
-    def make(rope_mode="2d", layers=2, visibility=False):
+    def make(rope_mode="2d", layers=2, visibility=False, adapter="none"):
         torch.manual_seed(424242)
         return DenseQueryDecoder(
             query_dim=32, embedding_dim=16, num_layers=layers, num_heads=1,
             upsample_channels=(32, 16, 8, 4), rope_mode=rope_mode, visibility_head=visibility,
+            latent_adapter=adapter,
         )
     baseline = make()
-    variants = [make("3d"), make(visibility=True), make(layers=4)]
+    variants = [
+        make("3d"), make(visibility=True), make(layers=4),
+        make(adapter="fixed_whiten"), make(adapter="channel_affine"), make(adapter="conv1x1"),
+    ]
     baseline_state = baseline.state_dict()
     for variant in variants:
         variant_state = variant.state_dict()

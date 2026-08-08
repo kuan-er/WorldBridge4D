@@ -40,7 +40,8 @@ REQUIRED_CONFIG = {
 def init_wandb(config: dict[str, Any]):
     """Initialize explicit scalar tracking; PRL only injects W&B metadata."""
     tracking = config.get("tracking", {})
-    if not bool(tracking.get("enabled", False)) or os.getenv("WANDB_MODE", "online") == "disabled":
+    mode = os.getenv("WANDB_MODE", tracking.get("mode", "online"))
+    if not bool(tracking.get("enabled", False)) or mode == "disabled":
         return None
     try:
         import wandb
@@ -54,8 +55,12 @@ def init_wandb(config: dict[str, Any]):
         name=os.getenv("WANDB_NAME", f"h004-dense4d-{os.getenv('PRL_RUN_ID', 'local')}"),
         tags=list(tracking.get("tags", [])) + ["h004", "dense4d", "movi-f"],
         config=config,
+        mode=mode,
         reinit="return_previous",
     )
+    run.define_metric("global_step")
+    for namespace in ("train/*", "timing/*", "system/*", "final/*"):
+        run.define_metric(namespace, step_metric="global_step")
     print(f"WANDB_RUN_URL: {run.url}", flush=True)
     return run
 
