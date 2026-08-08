@@ -1,8 +1,34 @@
-current_task: T-20260807120421-6da6ff
+current_task: T-20260808072920-bd4011
 active_hypotheses:
   - H004
   - H002
   - H001
+planned_protocol:
+  name: h004_source_centric_ablation_screen
+  status: designed_not_launched
+  common_route:
+    source_sampling: deterministic_one_source_per_clip_all_21_targets
+    cpu_geometry_prefetch: 8_threads_bounded_async_queue_depth_2
+    batch_size: 16
+    gradient_accumulation: 1
+    optimizer_updates: 1000
+    seed: 2029
+    precision: bf16
+    trainable_mode: full
+    xyz_pair_weights:
+      diagonal: 0.3333333333333333
+      off_diagonal: 0.6666666666666666
+    validation_clips: 32
+    validation_pairs_per_clip: 441
+  arms:
+    - B0_optimized_2d_rope_xyz_decoder2
+    - E3_3d_rope_only
+    - E5_visibility_head_loss_only
+    - E6_decoder4_only
+  excluded:
+    - depth_loss
+    - reprojection_loss
+    - iterative_dit
 recent_results:
   - run_id: R-20260807120649-ce3667
     kind: h004_dataset_audit
@@ -222,8 +248,8 @@ recent_results:
     result: succeeded
     marker: RELIABILITY_MATRIX_OK
     errors: []
-next_step: Finish H004 v1 after removing temporary checkpoints and generated
-  outputs. The next highest-value experiment is a longer fixed-architecture
-  full-DiT budget to test whether the bounded Z4D adaptation bottleneck is
-  optimization rather than query or upsampling capacity.
-updated_at: 2026-08-07T12:36:00Z
+next_step: Implement and test the common source-centric geometry and bounded
+  asynchronous prefetch route, verify synchronous/asynchronous target and loss
+  equality, then launch B0, E3, E5, and E6 as separate 1000-update PRL Runs.
+  Do not add depth/reprojection loss or multi-step DiT in this screen.
+updated_at: 2026-08-08T07:29:00Z
