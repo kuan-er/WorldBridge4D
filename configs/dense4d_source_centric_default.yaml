@@ -3,12 +3,15 @@
 # to train_dense4d_source_centric.py because a run can select only one arm.
 config_kind: source_centric_ablation_manifest
 protocol: h004_source_centric_ablation_screen
-default_arm: B0
+default_arm: E3E6
+default_config: configs/dense4d_source_centric_E3E6.yaml
 formal_arms:
   B0: configs/dense4d_source_centric_B0.yaml
   E3: configs/dense4d_source_centric_E3.yaml
   E5: configs/dense4d_source_centric_E5.yaml
   E6: configs/dense4d_source_centric_E6.yaml
+default_combinations:
+  E3E6: configs/dense4d_source_centric_E3E6.yaml
 shared:
   clip_length: 21
   image_size: 128

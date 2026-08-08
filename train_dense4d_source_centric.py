@@ -423,12 +423,12 @@ def main() -> None:
         "B0": ("2d", 2, False), "E3": ("3d", 2, False),
         "E5": ("2d", 2, True), "E6": ("2d", 4, False),
         "D1": ("2d", 2, False), "D2": ("2d", 2, False), "D3": ("2d", 2, False),
-        "E3E5E6": ("3d", 4, True),
+        "E3E6": ("3d", 4, False), "E3E5E6": ("3d", 4, True),
     }
     expected_adapters = {
         "B0": "none", "E3": "none", "E5": "none", "E6": "none",
         "D1": "fixed_whiten", "D2": "channel_affine", "D3": "conv1x1",
-        "E3E5E6": "none",
+        "E3E6": "none", "E3E5E6": "none",
     }
     adapter = str(config.get("latent_adapter", "none")).lower()
     if arm not in expected or actual != expected[arm] or adapter != expected_adapters.get(arm):
