@@ -1,8 +1,5 @@
-current_task: T-20260807120421-6da6ff
-active_hypotheses:
-  - H004
-  - H002
-  - H001
+current_task: null
+active_hypotheses: []
 recent_results:
   - run_id: R-20260807120649-ce3667
     kind: h004_dataset_audit
@@ -11,29 +8,50 @@ recent_results:
     kind: h004_geometry_validation
     result: succeeded
     roundtrip_max_px: 1.0845964142784046e-13
-    diagonal_max: 0.0
+    diagonal_max: 0
     dynamic_rigid_max_m: 5.016623623677104e-7
-    static_background_max_m: 2.0610834884352757e-6
+    static_background_max_m: 0.0000020610834884352757
     occluded_valid: true
   - run_id: R-20260807121652-27b9ac
     kind: h004_native_empty_condition
     result: succeeded
-    shape: [1, 512, 4096]
+    shape:
+      - 1
+      - 512
+      - 4096
     unpadded_tokens: 1
   - run_id: R-20260807121940-5cafa5
     kind: h004_wan_feedforward_audit
     result: succeeded
-    clean_latent_shape: [1, 16, 6, 16, 16]
-    timestep: 0.0
+    clean_latent_shape:
+      - 1
+      - 16
+      - 6
+      - 16
+      - 16
+    timestep: 0
     raw_velocity: epsilon_minus_clean
     z4d_transform: negative_raw_velocity
     dit_gradient: true
   - run_id: R-20260807122056-d99561
     kind: h004_decoder_smoke
     result: succeeded
-    memory_shape: [1, 1536, 16]
-    low_resolution_shape: [1, 4, 256, 16, 16]
-    output_shape: [1, 4, 3, 128, 128]
+    memory_shape:
+      - 1
+      - 1536
+      - 16
+    low_resolution_shape:
+      - 1
+      - 4
+      - 256
+      - 16
+      - 16
+    output_shape:
+      - 1
+      - 4
+      - 3
+      - 128
+      - 128
   - run_id: R-20260807122126-c56ffb
     kind: h004_unit_tests
     result: succeeded
@@ -43,8 +61,14 @@ recent_results:
     result: succeeded
     train_clips: 5737
     point_count: 1973886172
-    mean: [-0.004755645448679449, 1.9840435057254722, -13.47452929937991]
-    scale: [4.819900971027581, 5.335500618483786, 11.895373035302578]
+    mean:
+      - -0.004755645448679449
+      - 1.9840435057254722
+      - -13.47452929937991
+    scale:
+      - 4.819900971027581
+      - 5.335500618483786
+      - 11.895373035302578
   - run_id: R-20260807123135-3e0f39
     kind: h004_fixed_tiny_overfit
     result: succeeded
@@ -226,4 +250,4 @@ next_step: Finish H004 v1 after removing temporary checkpoints and generated
   outputs. The next highest-value experiment is a longer fixed-architecture
   full-DiT budget to test whether the bounded Z4D adaptation bottleneck is
   optimization rather than query or upsampling capacity.
-updated_at: 2026-08-07T12:36:00Z
+updated_at: 2026-08-08T07:32:20.173Z
