@@ -253,6 +253,8 @@ def main() -> None:
     losses: list[float] = []
     epe_values: list[float] = []
     backbone_gradient = False
+    wan_gradient = False
+    geometry_adapter_gradient = False
     decoder_gradient = False
     start_time = time.time()
     model.train()
@@ -304,10 +306,24 @@ def main() -> None:
         if step == 0:
             backbone_gradient = any(parameter.grad is not None and torch.isfinite(parameter.grad).all()
                                     for parameter in model.backbone.parameters() if parameter.requires_grad)
+            mapping = getattr(model.backbone, "mapping", None)
+            wan_gradient = mapping is not None and any(
+                parameter.grad is not None and torch.isfinite(parameter.grad).all()
+                for parameter in mapping.parameters() if parameter.requires_grad
+            )
+            geometry_adapter_gradient = any(
+                parameter.grad is not None and torch.isfinite(parameter.grad).all()
+                for parameter in getattr(model.backbone, "adapter_parameters", []) if parameter.requires_grad
+            )
             decoder_gradient = any(parameter.grad is not None and torch.isfinite(parameter.grad).all()
                                    for parameter in model.decoder.parameters() if parameter.requires_grad)
-            if str(config.get("trainable_mode", "full")) == "full" and not backbone_gradient:
+            trainable_mode = str(config.get("trainable_mode", "full"))
+            if trainable_mode == "full" and mapping is not None and not wan_gradient:
                 raise RuntimeError("XYZ loss did not reach a trainable Wan DiT parameter")
+            if trainable_mode == "full" and mapping is None and not backbone_gradient:
+                raise RuntimeError("XYZ loss did not reach the trainable backbone")
+            if trainable_mode == "geometry_adapter" and not geometry_adapter_gradient:
+                raise RuntimeError("XYZ loss did not reach the geometry adapter")
             if not decoder_gradient:
                 raise RuntimeError("XYZ loss did not reach decoder parameters")
         if (step + 1) % accumulation == 0 or step + 1 == steps:
@@ -388,7 +404,8 @@ def main() -> None:
         "initial_train_epe": epe_values[0], "final_train_epe": epe_values[-1],
         "initial_evaluation": initial_eval, "final_evaluation": final_eval,
         "evaluation_loss_ratio": final_eval["normalized_smooth_l1"] / initial_eval["normalized_smooth_l1"],
-        "backbone_gradient": backbone_gradient, "decoder_gradient": decoder_gradient,
+        "backbone_gradient": backbone_gradient, "wan_gradient": wan_gradient,
+        "geometry_adapter_gradient": geometry_adapter_gradient, "decoder_gradient": decoder_gradient,
         "clean_latent_shape": list(clean_latents[0].shape), "z4d_shape": final_eval["z4d_shape"],
         "coordinate_mean": stats.mean.tolist(), "coordinate_scale": stats.scale.tolist(),
         "elapsed_seconds": time.time() - start_time,
