@@ -388,6 +388,11 @@ def main() -> None:
     parser.add_argument("--mode", choices=("sync", "async"), default="async")
     args = parser.parse_args()
     config = yaml.safe_load(Path(args.config).read_text())
+    if config.get("config_kind") == "source_centric_ablation_manifest":
+        raise ValueError(
+            "dense4d_source_centric_default.yaml is a manifest; pass one referenced arm config "
+            "(B0, E3, E5, or E6) to train_dense4d_source_centric.py"
+        )
     missing = sorted(REQUIRED - set(config))
     if missing:
         raise ValueError(f"missing required config keys: {missing}")
