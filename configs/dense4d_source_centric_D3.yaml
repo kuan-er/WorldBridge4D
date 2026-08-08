@@ -25,6 +25,7 @@ visibility_head: false
 lambda_visibility: 0.0
 upsample_channels: [256, 128, 64, 32]
 batch_size: 16
+microbatch_size: 8
 steps: 1000
 learning_rate: 0.001
 backbone_learning_rate: 0.000005
