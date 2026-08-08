@@ -1,11 +1,11 @@
-current_task: T-20260808072920-bd4011
+current_task: T-20260808075825-d25087
 active_hypotheses:
   - H004
   - H002
   - H001
 planned_protocol:
   name: h004_source_centric_ablation_screen
-  status: designed_not_launched
+  status: common_base_smoke_passed_waiting_formal_runs
   common_route:
     source_sampling: deterministic_one_source_per_clip_all_21_targets
     cpu_geometry_prefetch: 8_threads_bounded_async_queue_depth_2
@@ -30,6 +30,21 @@ planned_protocol:
     - reprojection_loss
     - iterative_dit
 recent_results:
+  - run_id: R-20260808081319-9ba8d0
+    kind: h004_source_centric_unit_tests
+    result: succeeded
+    passed: 20
+  - run_id: R-20260808081437-3a97cb
+    kind: h004_source_centric_prefetch_smoke
+    result: succeeded
+    clips: 2
+    steps: 2
+    exact_target_equality: true
+    exact_loss_equality: true
+    source_target_shape: [2, 21]
+    xyz_shape: [2, 21, 3, 128, 128]
+    prefetch_workers: 8
+    prefetch_queue_depth: 2
   - run_id: R-20260807120649-ce3667
     kind: h004_dataset_audit
     result: succeeded

@@ -1,5 +1,11 @@
 # Research Decisions
 
+## 2026-08-08 — H004 source-centric common implementation validated
+
+- Implementation Task `T-20260808075825-d25087` was created from protocol commit `c522637b0c70b90e2da7c0e34e9ddf2922ce2a25`; the outer worktree and finished protocol Task remain untouched.
+- Sampling plans are deterministic main-thread values. For global clip position `p`, `clip=p mod N`, `visit=floor(p/N)`, and `source=(clip+visit) mod 21`; every selected source enumerates target `0..20`. Worker completion order therefore cannot affect data order.
+- Eight threads each own their `DynamicPointmapCache`; a depth-2 queue bounds pending batches. XYZ, `M`, and `A` are pinned before non-blocking H2D. Run `R-20260808081437-3a97cb` established exact synchronous/asynchronous target and weighted-loss equality on real MOVi-F clips. Formal B0/E3/E5/E6 runs remain pending a real-Wan bounded smoke and release of GPUs 5/6.
+
 ## 2026-08-08 — H004 source-centric ablation screen protocol
 
 - Task `T-20260808072920-bd4011` records the approved follow-up design; no experiment was launched in this phase. All formal arms will use one deterministic source per clip, enumerate all 21 target times, and share a bounded asynchronous CPU geometry prefetch pipeline. Sampling plans are created in the main process; eight shared-memory threads and queue depth 2 are fixed for every formal arm. Synchronous/asynchronous target and loss equality must pass before the screen. These common changes define a new optimized baseline and do not permit direct attribution against the old pair-sampled 2,400-step run.
