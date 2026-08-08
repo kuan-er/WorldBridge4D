@@ -5,7 +5,7 @@ active_hypotheses:
   - H001
 planned_protocol:
   name: h004_source_centric_ablation_screen
-  status: B0_E3_E6_formal_retries_running_E5_then_D1_D2_D3_queued_by_protocol
+  status: completed_source_centric_screen_and_E3E6_combinations
   common_route:
     source_sampling: deterministic_one_source_per_clip_all_21_targets
     cpu_geometry_prefetch: 8_threads_bounded_async_queue_depth_2
@@ -283,8 +283,42 @@ recent_results:
     result: succeeded
     marker: RELIABILITY_MATRIX_OK
     errors: []
-next_step: Implement and test the common source-centric geometry and bounded
-  asynchronous prefetch route, verify synchronous/asynchronous target and loss
-  equality, then launch B0, E3, E5, and E6 as separate 1000-update PRL Runs.
-  Do not add depth/reprojection loss or multi-step DiT in this screen.
-updated_at: 2026-08-08T07:29:00Z
+final_screen:
+  formal_single_factor:
+    B0:
+      run_id: R-20260808104239-6d8c9d
+      off_diagonal_epe_m: 2.899696
+    E3:
+      run_id: R-20260808104239-8af70b
+      off_diagonal_epe_m: 2.815216
+    E5:
+      run_id: R-20260808111847-813197
+      off_diagonal_epe_m: 2.861455
+    E6:
+      run_id: R-20260808104239-673514
+      off_diagonal_epe_m: 2.800534
+    D1:
+      run_id: R-20260808114435-614853
+      off_diagonal_epe_m: 2.797342
+    D2:
+      run_id: R-20260808142503-19dac4
+      off_diagonal_epe_m: 2.822316
+      caveat: bf16_channel_scale_remained_exactly_one_effectively_bias_only
+    D3:
+      run_id: R-20260808142545-3cb5aa
+      off_diagonal_epe_m: 2.805536
+  combinations:
+    E3E6:
+      run_id: R-20260808153039-8b0807
+      off_diagonal_epe_m: 2.925703
+    E3E6W:
+      run_id: R-20260808161920-d3a72d
+      off_diagonal_epe_m: 2.958181
+      checkpoint_load_ok: true
+  recommended_default: D1
+  canonical_baseline: B0
+next_step: Review the completed H004 task diff, preserve B0 as the canonical
+  baseline, use D1 as the recommended source-centric default, and merge only
+  after explicit review. Keep E3/E5/E6 and combination profiles as research
+  configurations; do not claim 1000-update screening results as final quality.
+updated_at: 2026-08-08T17:14:09Z
