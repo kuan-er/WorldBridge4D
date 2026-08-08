@@ -55,6 +55,15 @@ def main() -> None:
     groups = parameter_groups(model, config)
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 0.0)))
     clean = torch.cat(latents).to(device=device, dtype=dtype)
+    adapter = str(config.get("latent_adapter", "none")).lower()
+    if adapter == "fixed_whiten":
+        model.backbone.eval()
+        with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
+            smoke_feature = model.backbone(clean).float()
+        latent_mean = smoke_feature.mean(dim=(0, 2, 3, 4))
+        latent_scale = smoke_feature.std(dim=(0, 2, 3, 4), unbiased=False).clamp_min(1e-4)
+        model.decoder.set_latent_stats(latent_mean, latent_scale)
+        model.backbone.train()
     source = batch.source_cpu.to(device)
     target = batch.target_cpu.to(device)
     target_xyz = batch.normalized_xyz_cpu.to(device)
@@ -75,6 +84,8 @@ def main() -> None:
     optimizer.step()
     backbone_gradient = any(parameter.grad is not None for parameter in model.backbone.parameters() if parameter.requires_grad)
     decoder_gradient = any(parameter.grad is not None for parameter in model.decoder.parameters() if parameter.requires_grad)
+    adapter_parameters = [parameter for parameter in model.decoder.latent_adapter.parameters() if parameter.requires_grad]
+    adapter_gradient = not adapter_parameters or all(parameter.grad is not None for parameter in adapter_parameters)
     result = {
         "samples": len(samples), "source_shape": list(source.shape), "target_shape": list(target.shape),
         "xyz_shape": list(target_xyz.shape), "valid_shape": list(valid.shape),
@@ -82,11 +93,12 @@ def main() -> None:
         "z4d_shape": list(z4d.shape), "prediction_shape": list(prediction.shape),
         "loss": float(loss.detach()), "xyz_loss": float(xyz_loss.detach()),
         "visibility_loss": float(visibility_loss.detach()), "backbone_gradient": backbone_gradient,
-        "decoder_gradient": decoder_gradient, "latent_seconds": latent_seconds,
+        "decoder_gradient": decoder_gradient, "adapter_gradient": adapter_gradient,
+        "latent_adapter": adapter, "latent_seconds": latent_seconds,
         "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
     }
     print(json.dumps(result, indent=2), flush=True)
-    if not backbone_gradient or not decoder_gradient:
+    if not backbone_gradient or not decoder_gradient or not adapter_gradient:
         raise RuntimeError("source-centric real-Wan smoke gradient gate failed")
     print("SOURCE_CENTRIC_MODEL_SMOKE_OK", flush=True)
 

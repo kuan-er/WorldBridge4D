@@ -5,7 +5,7 @@ active_hypotheses:
   - H001
 planned_protocol:
   name: h004_source_centric_ablation_screen
-  status: common_base_smoke_passed_waiting_formal_runs
+  status: B0_E3_E6_formal_retries_running_E5_then_D1_D2_D3_queued_by_protocol
   common_route:
     source_sampling: deterministic_one_source_per_clip_all_21_targets
     cpu_geometry_prefetch: 8_threads_bounded_async_queue_depth_2
@@ -25,11 +25,23 @@ planned_protocol:
     - E3_3d_rope_only
     - E5_visibility_head_loss_only
     - E6_decoder4_only
+    - D1_fixed_preupdate_channel_whitening_only
+    - D2_trainable_identity_channel_affine_only
+    - D3_identity_initialized_nonlinear_1x1x1_adapter_only
+  execution_order:
+    - finish_B0_E3_E5_E6_before_latent_alignment_arms
+    - run_D1_D2_D3_as_independent_1000_update_screens
   excluded:
     - depth_loss
     - reprojection_loss
     - iterative_dit
 recent_results:
+  - run_id: R-20260808111521-e50068
+    kind: h004_D1_D2_D3_code_and_config_tests
+    result: succeeded
+    passed: 22
+    configs_validated: [D1, D2, D3]
+    wandb_mode: online
   - run_id: R-20260808082322-a83a9e
     kind: h004_source_centric_unit_tests
     result: succeeded

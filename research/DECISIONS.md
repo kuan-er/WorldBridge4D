@@ -101,3 +101,10 @@ The bounded comparison is a plumbing baseline, not a conclusive quality result: 
 - Final endpoint-error means and sample standard deviations are in `artifacts/reliability/compact_mean_std.json` and `artifacts/reliability/full_mean_std.json` (generated outputs are ignored and not committed). Compact reconstruction / first-frame EPE were `1.2043 ± 0.0273` / `1.0114 ± 0.0405`; Full reconstruction / first-frame EPE were `1.1603 ± 0.0313` / `1.0771 ± 0.0680`.
 - Full's arbitrary all-source/all-target EPE was `1.2348 ± 0.0335` (`1.0576 ± 0.0274` visible; `1.9912 ± 0.0604` occluded). Late-appearing EPE was `3.1070 ± 0.1168` (`2.5626 ± 0.1084` visible; `3.8113 ± 0.1279` occluded). These are capability measurements, not a direct Compact comparison because Compact does not expose arbitrary-source queries.
 - Decision: retain the Full query capability, but do not claim Full dominates Compact. Full trades a 3.7% reconstruction improvement for a 6.5% first-frame EPE regression overall (8.2% on occluded points). Any follow-up should use an explicit arbitrary-source Compact ablation and investigate late-appearing/occluded errors.
+
+## 2026-08-08 — latent-alignment screen after source-centric arms
+
+- Complete B0/E3/E5/E6 before launching D1/D2/D3; the new arms are independent follow-up screens and must not be used to rewrite the original architecture-ablation protocol.
+- Operationalize the latent-distribution hypothesis through downstream XYZ generalization rather than an ungrounded raw latent distance: D1 uses fixed pre-update per-channel whitening, D2 an identity-initialized learned channel affine, and D3 an identity-initialized residual nonlinear 1x1x1 adapter.
+- Hold the source-centric schedule, 1,000 updates, seed 2029, full Wan trainability, XYZ weighting, and complete 32-clip/441-pair validation fixed. Use no direct Z4D target or latent-regression loss.
+- Explicitly run W&B online and log `global_step`; save D1's deterministic 64-clip feature statistics in the resolved config and checkpoint. Treat all results as screening evidence only.
