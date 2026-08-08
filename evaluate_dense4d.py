@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded exhaustive `(s,t)` XYZ evaluation for H004."""
+"""Bounded exhaustive `(s,t)` XYZ evaluation for dense 4D models."""
 from __future__ import annotations
 
 import argparse
@@ -79,6 +79,7 @@ def main() -> None:
     )
     forward_seconds = []
     z4d_shape = None
+    z4d_motion_shape = None
 
     with torch.inference_mode():
         for sample, latent in zip(samples, latents):
@@ -87,6 +88,7 @@ def main() -> None:
                 z4d = model.backbone(latent.to(device=device, dtype=dtype))
             forward_seconds.append(time.time() - start)
             z4d_shape = list(z4d.shape)
+            z4d_motion_shape = list(z4d.motion.shape) if hasattr(z4d, "motion") else None
             for source in range(sample.num_frames):
                 dynamic = cache.get(sample, source)
                 ids = sample.segmentation[source]
@@ -145,6 +147,7 @@ def main() -> None:
         "split": args.split, "clips": len(samples), "pixel_stride": int(args.pixel_stride),
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
+        "z4d_motion_shape": z4d_motion_shape,
         "decoder_query_shape": [
             1, args.pair_chunk, int(model.decoder.query_coordinates.shape[0]), int(config["query_dim"])
         ],
@@ -166,7 +169,8 @@ def main() -> None:
         "tracking_source_gt_zero": groups["tracking_source_gt_zero"].result(),
         "epe_by_temporal_gap": {str(gap): gap_groups[gap].result() for gap in sorted(gap_groups)},
         "mean_wan_forward_seconds": float(np.mean(forward_seconds)),
-        "flow_timestep": 0, "z4d_transform": "negative_raw_velocity",
+        "flow_timestep": 0,
+        "z4d_transform": getattr(model.backbone, "z4d_transform", "unknown"),
     }
     output = pathlib.Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

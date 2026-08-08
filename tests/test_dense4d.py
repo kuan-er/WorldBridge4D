@@ -1,11 +1,15 @@
+from types import SimpleNamespace
+
 import numpy as np
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from worldbridge.data import MOViSample
 from worldbridge.dense4d import (
     CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone, RotaryEmbedding2D,
-    flatten_z4d, masked_pair_smooth_l1, unflatten_z4d, verify_flow_velocity_algebra,
+    StructuredZ4D, WanHiddenGeometryBackbone, flatten_structured_z4d, flatten_z4d,
+    masked_pair_smooth_l1, unflatten_z4d, verify_flow_velocity_algebra,
 )
 from worldbridge.dense4d_data import CoordinateStats, dense_pair_targets, sample_dense_pairs
 from worldbridge.geometry import GeometryBuilder
@@ -171,6 +175,78 @@ class TinyFinalBackbone(nn.Module):
 
     def forward(self, latent):
         return -self.dit(latent)
+
+
+class TinyHiddenMapping(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.hidden_projection = nn.Linear(16, 64)
+        self.dit = nn.Module()
+        self.dit.config = SimpleNamespace(
+            num_attention_heads=4, attention_head_dim=16, patch_size=(1, 2, 2),
+        )
+        self.dit.norm_out = nn.LayerNorm(64)
+        self.dit.proj_out = nn.Linear(64, 64)
+        self.dit.scale_shift_table = nn.Parameter(torch.randn(1, 2, 64))
+        self.final_output_called = False
+
+    def forward(self, latent, tau):
+        self.final_output_called = True
+        raise AssertionError("structured geometry must bypass the Wan output head")
+
+    def forward_hidden_layers(self, latent, tau, layers):
+        pooled = F.avg_pool3d(latent, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+        tokens = pooled.permute(0, 2, 3, 4, 1).reshape(latent.shape[0], 6 * 8 * 8, 16)
+        hidden = self.hidden_projection(tokens)
+        return tuple(hidden * (index + 1) for index in layers), (6, 8, 8)
+
+
+def test_structured_hidden_readout_bypasses_final_head_and_keeps_st_query_contract():
+    mapping = TinyHiddenMapping()
+    backbone = WanHiddenGeometryBackbone(
+        mapping, hidden_layers=(0, 1), geometry_dim=32, num_frames=21,
+        spatial_size=16, motion_slots=4, num_heads=4,
+    )
+    decoder = DenseQueryDecoder(
+        latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(32, 16, 8, 4),
+        structured_motion_slots=4, structured_local_queries=True,
+    )
+    model = DenseQueryWanModel(backbone, decoder)
+    clean = torch.randn(1, *WAN_LATENT_SHAPE)
+    prediction, z4d, _ = model(clean, torch.tensor([[0, 20]]), torch.tensor([[20, 0]]))
+    assert isinstance(z4d, StructuredZ4D)
+    assert z4d.dense.shape == (1, 32, 21, 16, 16)
+    assert z4d.motion.shape == (1, 21, 4, 32)
+    memory, coordinates = flatten_structured_z4d(z4d)
+    assert memory.shape == (1, 21 * 16 * 16 + 21 * 4, 32)
+    assert coordinates.shape == (memory.shape[1], 2)
+    assert prediction.shape == (1, 2, 3, 128, 128)
+    loss = prediction.square().mean()
+    loss.backward()
+    assert mapping.hidden_projection.weight.grad is not None
+    assert backbone.temporal_logits.grad is not None
+    assert decoder.upsampler.xyz.weight.grad is not None
+    assert mapping.dit.proj_out.weight.grad is None
+    assert not mapping.final_output_called
+
+
+def test_geometry_adapter_mode_freezes_wan_but_trains_structured_adapter_and_decoder():
+    mapping = TinyHiddenMapping()
+    backbone = WanHiddenGeometryBackbone(
+        mapping, hidden_layers=(0,), geometry_dim=32, motion_slots=4, num_heads=4,
+    )
+    decoder = DenseQueryDecoder(
+        latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(32, 16, 8, 4),
+        structured_motion_slots=4, structured_local_queries=True,
+    )
+    model = DenseQueryWanModel(backbone, decoder)
+    model.configure_trainable("geometry_adapter")
+    assert not mapping.hidden_projection.weight.requires_grad
+    assert not mapping.dit.proj_out.weight.requires_grad
+    assert backbone.temporal_logits.requires_grad
+    assert decoder.upsampler.xyz.weight.requires_grad
 
 
 def test_xyz_gradient_reaches_backbone_and_decoder():

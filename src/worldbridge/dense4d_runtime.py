@@ -9,7 +9,10 @@ import numpy as np
 import torch
 
 from .data import MOViSample
-from .dense4d import CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone
+from .dense4d import (
+    CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel,
+    FeedForwardWanBackbone, WanHiddenGeometryBackbone,
+)
 from .wan import WAN_LATENT_SHAPE, WanDiTMapping, WanVAEEncoder
 
 
@@ -60,7 +63,8 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
     device = torch.device(device)
     dtype = precision_dtype(config["precision"])
     readout = str(config.get("backbone_readout", "wan_velocity"))
-    if readout == "wan_velocity":
+    structured = readout == "wan_hidden_structured"
+    if readout in {"wan_velocity", "wan_hidden_structured"}:
         condition = load_empty_condition(config["empty_text_condition"])
         mapping = WanDiTMapping(
             Path(config["wan_root"]) / "diffusion_pytorch_model.safetensors",
@@ -68,25 +72,51 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
         )
         if bool(config.get("gradient_checkpointing", True)):
             mapping.dit.enable_gradient_checkpointing()
-        backbone = FeedForwardWanBackbone(mapping)
+        if readout == "wan_velocity":
+            backbone = FeedForwardWanBackbone(mapping)
+        else:
+            geometry_seed = int(config.get("geometry_seed", config.get("seed", 0)))
+            torch.manual_seed(geometry_seed)
+            if device.type == "cuda":
+                torch.cuda.manual_seed_all(geometry_seed)
+            backbone = WanHiddenGeometryBackbone(
+                mapping,
+                hidden_layers=tuple(int(value) for value in config.get(
+                    "wan_hidden_layers", (5, 11, 17, 23, 29)
+                )),
+                geometry_dim=int(config.get("geometry_dim", 128)),
+                num_frames=int(config["clip_length"]),
+                spatial_size=int(config.get("geometry_spatial_size", WAN_LATENT_SHAPE[-1])),
+                motion_slots=int(config.get("motion_slots", 16)),
+                num_heads=int(config.get("geometry_num_heads", 8)),
+                use_clean_skip=bool(config.get("geometry_clean_skip", True)),
+            )
     elif readout == "clean_latent":
         backbone = CleanLatentBackbone()
     else:
         raise ValueError(f"unknown backbone_readout={readout!r}")
+    backbone = backbone.to(device=device, dtype=dtype)
     # Construct every decoder ablation from identical weights even when the
     # backbone path consumes a different amount of RNG during loading.
     torch.manual_seed(int(config.get("decoder_seed", config.get("seed", 0))))
     if device.type == "cuda":
         torch.cuda.manual_seed_all(int(config.get("decoder_seed", config.get("seed", 0))))
+    latent_shape = (
+        int(config.get("geometry_dim", 128)), int(config["clip_length"]),
+        int(config.get("geometry_spatial_size", WAN_LATENT_SHAPE[-1])),
+        int(config.get("geometry_spatial_size", WAN_LATENT_SHAPE[-1])),
+    ) if structured else WAN_LATENT_SHAPE
     decoder = DenseQueryDecoder(
-        num_frames=int(config["clip_length"]), latent_shape=WAN_LATENT_SHAPE,
+        num_frames=int(config["clip_length"]), latent_shape=latent_shape,
         query_dim=int(config["query_dim"]), embedding_dim=int(config.get("embedding_dim", 128)),
         num_layers=int(config["num_cross_attn_layers"]), num_heads=int(config["num_heads"]),
         upsample_channels=tuple(int(x) for x in config["upsample_channels"]),
         output_size=(int(config["image_size"]), int(config["image_size"])),
         coarse_diagnostic=bool(config.get("coarse_diagnostic", False)),
         fullres_coordinates=bool(config.get("fullres_coordinates", False)),
-        query_grid_size=int(config.get("query_grid_size", WAN_LATENT_SHAPE[-1])),
+        query_grid_size=int(config.get("query_grid_size", latent_shape[-1])),
+        structured_motion_slots=int(config.get("motion_slots", 16)) if structured else 0,
+        structured_local_queries=bool(config.get("structured_local_queries", True)) if structured else False,
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
     model.configure_trainable(str(config.get("trainable_mode", "full")), int(config.get("trainable_blocks", 2)))
@@ -95,11 +125,18 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
 
 def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[dict[str, Any]]:
     backbone = [parameter for parameter in model.backbone.parameters() if parameter.requires_grad]
+    adapter = [parameter for parameter in getattr(model.backbone, "adapter_parameters", [])
+               if parameter.requires_grad]
+    adapter_ids = {id(parameter) for parameter in adapter}
+    wan = [parameter for parameter in backbone if id(parameter) not in adapter_ids]
     decoder = [parameter for parameter in model.decoder.parameters() if parameter.requires_grad]
     groups = []
-    if backbone:
-        groups.append({"params": backbone, "lr": float(config.get("backbone_learning_rate", config["learning_rate"])),
+    if wan:
+        groups.append({"params": wan, "lr": float(config.get("backbone_learning_rate", config["learning_rate"])),
                        "name": "wan_backbone"})
+    if adapter:
+        groups.append({"params": adapter, "lr": float(config.get("geometry_learning_rate", config["learning_rate"])),
+                       "name": "geometry_adapter"})
     if decoder:
         groups.append({"params": decoder, "lr": float(config["learning_rate"]), "name": "dense_decoder"})
     if not groups:

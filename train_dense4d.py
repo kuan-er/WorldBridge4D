@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tiny/bounded end-to-end H004 training with only masked XYZ loss."""
+"""Tiny/bounded end-to-end dense 4D training with masked XYZ loss."""
 from __future__ import annotations
 
 import argparse
@@ -164,6 +164,7 @@ def grouped_eval(model, latent, sample, source, target, stats, cache, device, dt
             prediction_float, target_tensor_xyz.float(), valid_tensor
         )),
         "z4d_shape": list(z4d.shape),
+        "z4d_motion_shape": list(z4d.motion.shape) if hasattr(z4d, "motion") else None,
     }
     for name, select in groups.items():
         mask = valid[select]
@@ -178,14 +179,14 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--resume", help="load model weights from a prior H004 checkpoint")
+    parser.add_argument("--resume", help="load model weights from a prior compatible checkpoint")
     args = parser.parse_args()
     config = yaml.safe_load(pathlib.Path(args.config).read_text())
     missing = sorted(REQUIRED_CONFIG - set(config))
     if missing:
         raise ValueError(f"missing required config keys: {missing}")
     if int(config["image_size"]) != 128 or int(config["clip_length"]) != 21:
-        raise ValueError("H004 v1 is intentionally fixed to 21 frames and 128x128")
+        raise ValueError("dense 4D training is intentionally fixed to 21 frames and 128x128")
 
     seed = int(config["seed"])
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
@@ -339,7 +340,10 @@ def main() -> None:
                 "train/epe_m": mean_epe,
                 "train/clips_seen": (global_step + 1) * batch_size,
                 "train/passes": (global_step + 1) * batch_size / len(samples),
-                "train/backbone_lr": float(groups[0]["lr"]),
+                "train/backbone_lr": float(next(
+                    (group["lr"] for group in groups if group["name"] == "wan_backbone"),
+                    next(group["lr"] for group in groups if group["name"] in {"geometry_adapter", "dense_decoder"}),
+                )),
                 "system/peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
             }, step=global_step + 1)
 
@@ -361,7 +365,8 @@ def main() -> None:
         readout = str(config.get("backbone_readout", "wan_velocity"))
         backbone_payload_ok = (
             readout == "clean_latent"
-            or "backbone.mapping.dit.proj_out.weight" in loaded["model"]
+            or (readout == "wan_hidden_structured" and "backbone.temporal_logits" in loaded["model"])
+            or (readout == "wan_velocity" and "backbone.mapping.dit.proj_out.weight" in loaded["model"])
         )
         checkpoint_load_ok = (
             loaded["extra"]["steps"] == steps
