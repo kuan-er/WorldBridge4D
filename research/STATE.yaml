@@ -1,6 +1,34 @@
 current_task: null
 active_hypotheses: []
 recent_results:
+  - run_id: R-20260808164356-7cf2e0
+    kind: h005_unit_tests
+    result: succeeded
+    passed: 25
+  - run_id: R-20260808164446-852e73
+    kind: h005_real_structured_smoke
+    result: succeeded
+    z_dense_shape: [1, 128, 21, 16, 16]
+    z_motion_shape: [1, 21, 8, 128]
+    trainable_parameters: 4795846
+    peak_cuda_memory_gib: 2.804969310760498
+  - run_id: R-20260808164542-1a7038
+    kind: h005_frozen_wan_tiny_overfit
+    result: succeeded
+    steps: 256
+    evaluation_loss_ratio: 0.04047859560801072
+    initial_epe: 16.0607852935791
+    final_epe: 1.0107083320617676
+    diagonal_epe: 0.9598708748817444
+    off_diagonal_epe: 1.0324958562850952
+    peak_cuda_memory_gib: 3.125835418701172
+  - run_id: R-20260808164726-7f5732
+    kind: h005_full_wan_gradient_smoke
+    result: succeeded
+    wan_gradient: true
+    geometry_adapter_gradient: true
+    decoder_gradient: true
+    peak_cuda_memory_gib: 13.263145446777344
   - run_id: R-20260807120649-ce3667
     kind: h004_dataset_audit
     result: succeeded
@@ -246,8 +274,8 @@ recent_results:
     result: succeeded
     marker: RELIABILITY_MATRIX_OK
     errors: []
-next_step: Finish H004 v1 after removing temporary checkpoints and generated
-  outputs. The next highest-value experiment is a longer fixed-architecture
-  full-DiT budget to test whether the bounded Z4D adaptation bottleneck is
-  optimization rather than query or upsampling capacity.
-updated_at: 2026-08-08T07:32:20.173Z
+next_step: Run a matched-budget held-out H004 velocity-versus-H005 structured
+  hidden-state comparison with identical data, pair sampling, decoder depth,
+  seeds, and optimization exposure. Separately ablate Z_motion only after the
+  full structured route has a held-out baseline.
+updated_at: 2026-08-08T16:48:30Z

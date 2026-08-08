@@ -1,5 +1,14 @@
 # Research Decisions
 
+## 2026-08-08 — H005 structured pre-output Wan readout
+
+- Preserve the user-facing and training contract from H004: independent integer `(source,target)` inputs still produce a complete source-grid XYZ pointmap, and the existing dense cross-attention/FFN blocks plus bilinear residual upsampler remain the decoder core.
+- Do not call Wan's RF `norm_out` or 16-channel `proj_out`. At exact flow time zero, collect zero-based transformer blocks `[5,11,17,23,29]`, independently LayerNorm/project them from 1,536 to 128 channels, and fuse them with learned softmax gates. A projected clean Wan latent is retained as a local-detail skip.
+- Define the reusable structured latent as `Z_dense=[B,128,21,16,16]` plus `Z_motion=[B,21,M,128]`. Learned 6-to-21 mixing is initialized from linear interpolation over Wan's six causal latent times; explicit frame embeddings distinguish physical times. Motion queries combine a persistent slot identity with each physical frame and cross-attend to fused Wan hidden tokens.
+- Reuse the old decoder memory path by flattening all dense planes and appending motion slots. The only local decoder addition is a 1x1 projection of `Z_dense[source]` into the existing 16x16 dense query; target identity continues to enter through the separate target embedding. Motion slots carry no fabricated pixel coordinate and therefore use the dense-grid center for the decoder's spatial-only RoPE.
+- Provide `geometry_adapter`, `last_blocks`, and `full` optimization modes. Geometry-adapter parameters use the decoder-scale learning rate, Wan parameters retain the lower backbone learning rate, and bypassed output-head parameters are always frozen. Full-mode gradient auditing separately requires finite gradients in actual Wan parameters, adapter parameters, and decoder parameters.
+- Engineering gates passed: 25 tests (`R-20260808164356-7cf2e0`), real structured smoke (`R-20260808164446-852e73`), frozen-Wan arbitrary-query overfit to `1.011` m EPE (`R-20260808164542-1a7038`), and real full-DiT gradient smoke (`R-20260808164726-7f5732`). These results do not establish held-out superiority over H004.
+
 ## 2026-08-07 — H004 feed-forward Wan and dense-query v1 conventions
 
 - Task `T-20260807120421-6da6ff` tests exactly one route: frozen native Wan VAE mean latent, one Wan2.1-1.3B DiT final-output forward, and a lightweight dense `(s,t)` XYZ decoder. It reuses the audited MOVi-F adapter/rigid geometry and the strict Wan checkpoint conversion from finished H003; it does not reuse H001/H003 target-latent supervision or define a GT `Z4D`.
