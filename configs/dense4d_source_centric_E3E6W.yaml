@@ -1,4 +1,4 @@
-# Default full pipeline: B0 + E3 3D RoPE + E6 decoder depth 4 + D1 whitening.
+# Evaluated combination profile: B0 + E3 3D RoPE + E6 decoder depth 4 + D1 whitening.
 # This is a combined pipeline profile, not a single-factor formal screen arm.
 ablation_arm: E3E6W
 latent_adapter: fixed_whiten
