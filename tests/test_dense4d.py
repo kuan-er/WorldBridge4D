@@ -227,6 +227,23 @@ def test_3d_rope_decoder_and_visibility_head_shapes():
     assert output.visibility_logits.shape == (1, 2, 1, 128, 128)
 
 
+def test_ablation_decoders_share_identical_overlapping_initial_weights():
+    def make(rope_mode="2d", layers=2, visibility=False):
+        torch.manual_seed(424242)
+        return DenseQueryDecoder(
+            query_dim=32, embedding_dim=16, num_layers=layers, num_heads=1,
+            upsample_channels=(32, 16, 8, 4), rope_mode=rope_mode, visibility_head=visibility,
+        )
+    baseline = make()
+    variants = [make("3d"), make(visibility=True), make(layers=4)]
+    baseline_state = baseline.state_dict()
+    for variant in variants:
+        variant_state = variant.state_dict()
+        for name, value in baseline_state.items():
+            if name in variant_state:
+                torch.testing.assert_close(value, variant_state[name], rtol=0.0, atol=0.0)
+
+
 def test_source_centric_plan_rotates_sources_without_worker_rng():
     first = make_source_centric_plan(5, 5, 21, 0)
     second = make_source_centric_plan(5, 5, 21, 1)

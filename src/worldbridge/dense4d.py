@@ -305,9 +305,17 @@ class DenseQueryDecoder(nn.Module):
         self.query_mlp = nn.Sequential(
             nn.Linear(2 * embedding_dim, query_dim), nn.SiLU(), nn.Linear(query_dim, query_dim)
         )
+        num_layers = int(num_layers)
+        if num_layers < 1:
+            raise ValueError("decoder requires at least one cross-attention block")
+        # Construct the two common screening blocks before every variant-only
+        # module.  E6's extra blocks are appended only after the common
+        # upsampler is initialized, so overlapping B0/E3/E5/E6 weights are
+        # bit-identical under the shared decoder seed.
+        common_layers = min(num_layers, 2)
         self.blocks = nn.ModuleList([
             CrossAttentionBlock(query_dim, channels, num_heads, rope_mode=self.rope_mode)
-            for _ in range(int(num_layers))
+            for _ in range(common_layers)
         ])
         query_grid_size = int(query_grid_size or latent_height)
         if query_grid_size < latent_height:
@@ -326,6 +334,11 @@ class DenseQueryDecoder(nn.Module):
         self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
         self.visibility_head = nn.Conv2d(int(upsample_channels[-1]), 1, 3, padding=1) \
             if self.visibility_head_enabled else None
+        if num_layers > common_layers:
+            self.blocks.extend([
+                CrossAttentionBlock(query_dim, channels, num_heads, rope_mode=self.rope_mode)
+                for _ in range(num_layers - common_layers)
+            ])
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         source = torch.as_tensor(source, dtype=torch.long, device=self.source_embedding.weight.device)

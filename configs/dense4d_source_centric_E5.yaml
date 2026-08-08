@@ -23,7 +23,10 @@ visibility_head: true
 visibility_target: M
 visibility_mask: A
 visibility_off_diagonal_only: true
-visibility_pos_weight: __FIXED_SCHEDULE_VALUE_REQUIRED__
+visibility_pos_weight: 0.21453099650044724
+visibility_pos_weight_source: /tmp/worldbridge_dense4d_h004_ablation/visibility_pos_weight_schedule1000.json
+visibility_positive_count: 4316774751
+visibility_negative_count: 926081989
 lambda_visibility: 0.1
 upsample_channels: [256, 128, 64, 32]
 batch_size: 16
