@@ -418,10 +418,12 @@ def main() -> None:
         "B0": ("2d", 2, False), "E3": ("3d", 2, False),
         "E5": ("2d", 2, True), "E6": ("2d", 4, False),
         "D1": ("2d", 2, False), "D2": ("2d", 2, False), "D3": ("2d", 2, False),
+        "E3E5E6": ("3d", 4, True),
     }
     expected_adapters = {
         "B0": "none", "E3": "none", "E5": "none", "E6": "none",
         "D1": "fixed_whiten", "D2": "channel_affine", "D3": "conv1x1",
+        "E3E5E6": "none",
     }
     adapter = str(config.get("latent_adapter", "none")).lower()
     if arm not in expected or actual != expected[arm] or adapter != expected_adapters.get(arm):
@@ -435,7 +437,7 @@ def main() -> None:
         raise ValueError("D1 requires a positive deterministic latent_stats_clips count")
     if actual[0] == "3d" and int(config["query_dim"]) // int(config["num_heads"]) != 32:
         raise ValueError("E3 requires head_dim=32")
-    if arm == "E5":
+    if arm in {"E5", "E3E5E6"}:
         if config.get("visibility_target", "M") != "M" or config.get("visibility_mask", "A") != "A" \
                 or not bool(config.get("visibility_off_diagonal_only", True)):
             raise ValueError("E5 fixes visibility target=M, mask=A, and off-diagonal-only BCE")
