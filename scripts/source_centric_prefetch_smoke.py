@@ -59,8 +59,8 @@ def main() -> None:
     for plan in plans:
         batch = build_source_centric_batch(samples, stats, plan)
         sync_batches.append(batch)
-        assert batch.source.shape == (len(samples), 21)
-        assert batch.target.shape == (len(samples), 21)
+        assert batch.plan.source.shape == (len(samples), 21)
+        assert batch.plan.target.shape == (len(samples), 21)
         assert batch.normalized_xyz.shape == (len(samples), 21, 3, 128, 128)
         assert batch.visible.shape == (len(samples), 21, 128, 128)
         assert batch.valid.shape == (len(samples), 21, 128, 128)
@@ -106,8 +106,8 @@ def main() -> None:
         "sync_seconds": sync_seconds, "async_seconds": async_seconds,
         "prefetch_wait_seconds": wait_seconds,
         "shapes": {
-            "source": list(sync_batches[0].source.shape),
-            "target": list(sync_batches[0].target.shape),
+            "source": list(sync_batches[0].plan.source.shape),
+            "target": list(sync_batches[0].plan.target.shape),
             "xyz": list(sync_batches[0].normalized_xyz.shape),
             "visible": list(sync_batches[0].visible.shape),
             "valid": list(sync_batches[0].valid.shape),
