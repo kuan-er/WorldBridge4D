@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "H004 cache smoke (GPU 5)",
+      "name": "H004 cache smoke (GPU 4)",
       "type": "debugpy",
       "request": "launch",
       "python": "/opt/conda/bin/python",
@@ -19,7 +19,7 @@
       "console": "integratedTerminal",
       "justMyCode": true,
       "env": {
-        "CUDA_VISIBLE_DEVICES": "5",
+        "CUDA_VISIBLE_DEVICES": "4",
         "PYTHONPATH": "${workspaceFolder}/src",
         "WANDB_MODE": "disabled",
         "CUDA_LAUNCH_BLOCKING": "1"
