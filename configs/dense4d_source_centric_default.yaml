@@ -5,6 +5,9 @@ config_kind: source_centric_ablation_manifest
 protocol: h004_source_centric_ablation_screen
 default_arm: D1
 default_config: configs/dense4d_source_centric_D1.yaml
+main_profiles:
+  baseline: configs/dense4d_source_centric_B0.yaml
+  recommended: configs/dense4d_source_centric_D1.yaml
 formal_arms:
   B0: configs/dense4d_source_centric_B0.yaml
   E3: configs/dense4d_source_centric_E3.yaml
