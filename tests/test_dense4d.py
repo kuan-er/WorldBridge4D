@@ -1,13 +1,16 @@
 import numpy as np
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from worldbridge.data import MOViSample
 from worldbridge.dense4d import (
-    CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone, RotaryEmbedding2D,
-    flatten_z4d, masked_pair_smooth_l1, unflatten_z4d, verify_flow_velocity_algebra,
+    CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone,
+    RotaryEmbedding2D, RotaryEmbedding3D, flatten_z4d, masked_pair_smooth_l1,
+    masked_visibility_bce, unflatten_z4d, verify_flow_velocity_algebra,
 )
 from worldbridge.dense4d_data import CoordinateStats, dense_pair_targets, sample_dense_pairs
+from worldbridge.dense4d_prefetch import make_source_centric_plan, source_centric_loss_weights
 from worldbridge.geometry import GeometryBuilder
 from worldbridge.pointmap import build_dynamic_pointmap
 from worldbridge.wan import WAN_LATENT_SHAPE, rgb_to_wan_input
@@ -201,6 +204,55 @@ def test_pair_sampler_balances_diagonal_directions_and_gaps():
     gap = np.abs(target - source)
     assert np.any((gap > 0) & (gap <= 5)) and np.any(gap >= 10)
     assert np.any(source > 0)
+
+
+def test_3d_rope_uses_time_uv_and_preserves_eight_dimensions():
+    rope = RotaryEmbedding3D(32)
+    values = torch.randn(1, 2, 4, 1, 32)
+    coordinates = torch.tensor([[[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [5.0, 4.0, 1.0], [2.5, 1.0, 6.0]],
+                                [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [5.0, 4.0, 1.0], [2.5, 1.0, 6.0]]])
+    rotated = rope(values, coordinates)
+    torch.testing.assert_close(rotated[..., 24:], values[..., 24:])
+    assert not torch.equal(rotated[..., :24], values[..., :24])
+
+
+def test_3d_rope_decoder_and_visibility_head_shapes():
+    decoder = DenseQueryDecoder(
+        query_dim=32, embedding_dim=16, num_layers=1, num_heads=1,
+        upsample_channels=(32, 16, 8, 4), rope_mode="3d", visibility_head=True,
+    )
+    output = decoder(torch.randn(1, *WAN_LATENT_SHAPE), torch.tensor([[0, 7]]), torch.tensor([[1, 20]]))
+    assert output.normalized_xyz.shape == (1, 2, 3, 128, 128)
+    assert output.visibility_logits is not None
+    assert output.visibility_logits.shape == (1, 2, 1, 128, 128)
+
+
+def test_source_centric_plan_rotates_sources_without_worker_rng():
+    first = make_source_centric_plan(5, 5, 21, 0)
+    second = make_source_centric_plan(5, 5, 21, 1)
+    third = make_source_centric_plan(5, 5, 21, 5)
+    np.testing.assert_array_equal(first.sample_indices, second.sample_indices)
+    np.testing.assert_array_equal(first.source[:, 0] + 1, second.source[:, 0])
+    np.testing.assert_array_equal(first.source[:, 0], np.arange(5))
+    np.testing.assert_array_equal(third.source[:, 0], np.arange(5) + 5)
+    np.testing.assert_array_equal(first.target[0], np.arange(21))
+    weights = source_centric_loss_weights(first.source, first.target)
+    np.testing.assert_allclose(weights.sum(1), 1.0)
+    np.testing.assert_allclose(weights[np.arange(5), first.source[:, 0]], 1.0 / 3.0)
+    np.testing.assert_allclose(weights[0, 1:], (2.0 / 3.0) / 20.0)
+
+
+def test_visibility_loss_masks_only_off_diagonal_validity():
+    logits = torch.zeros(1, 2, 1, 2, 2)
+    visible = torch.tensor([[[[1, 0], [1, 0]], [[0, 1], [0, 1]]]], dtype=torch.bool)
+    valid = torch.tensor([[[[1, 1], [1, 1]], [[1, 1], [0, 1]]]], dtype=torch.bool)
+    source = torch.tensor([[2, 3]])
+    target = torch.tensor([[2, 1]])
+    loss = masked_visibility_bce(logits, visible, valid, source, target, 1.0)
+    expected = torch.tensor(float(F.binary_cross_entropy_with_logits(
+        logits[0, 1, 0][valid[0, 1]], visible[0, 1][valid[0, 1]].float(), reduction="mean"
+    )))
+    torch.testing.assert_close(loss, expected)
 
 
 def test_dense_pair_targets_are_source_grid_maps_and_normalized():

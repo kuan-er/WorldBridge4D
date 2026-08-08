@@ -81,18 +81,57 @@ class RotaryEmbedding2D(nn.Module):
         return torch.cat((self._axis(x_axis, coordinates[:, 0]), self._axis(y_axis, coordinates[:, 1])), dim=-1)
 
 
+class RotaryEmbedding3D(nn.Module):
+    """3D RoPE with 8 rotary dimensions each for time/u/v and 8 passthrough."""
+
+    def __init__(self, head_dim: int, theta: float = 10_000.0):
+        super().__init__()
+        self.head_dim = int(head_dim)
+        self.axis_dim = 8
+        self.rotary_dim = 3 * self.axis_dim
+        if self.head_dim != 32:
+            raise ValueError(f"H004 E3 fixes head_dim=32, got {head_dim}")
+        inv_freq = theta ** (-torch.arange(0, self.axis_dim, 2, dtype=torch.float32) / self.axis_dim)
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+    def _rotate_axis(self, values: torch.Tensor, positions: torch.Tensor, axis: int) -> torch.Tensor:
+        pairs = values.float().unflatten(-1, (self.axis_dim // 2, 2))
+        angles = positions[..., axis, None, None].float() * self.inv_freq
+        cos, sin = angles.cos(), angles.sin()
+        first, second = pairs.unbind(-1)
+        rotated = torch.stack((first * cos - second * sin, first * sin + second * cos), dim=-1)
+        return rotated.flatten(-2).to(dtype=values.dtype)
+
+    def forward(self, values: torch.Tensor, coordinates: torch.Tensor) -> torch.Tensor:
+        if values.shape[-1] != self.head_dim:
+            raise ValueError(f"last dimension {values.shape[-1]} != RoPE head_dim {self.head_dim}")
+        if coordinates.shape[-1] != 3 or coordinates.shape[:-1] != values.shape[:-2]:
+            raise ValueError(
+                f"3D coordinates must match values prefix/N {tuple(values.shape[:-2])}, got {tuple(coordinates.shape)}"
+            )
+        chunks = values.split(self.axis_dim, dim=-1)
+        rotated = [self._rotate_axis(chunks[axis], coordinates, axis) for axis in range(3)]
+        return torch.cat((*rotated, chunks[3]), dim=-1)
+
+
 class DenseCrossAttention(nn.Module):
     """Cross-attention from independent dense pair queries into full Z4D memory."""
 
-    def __init__(self, query_dim: int, memory_dim: int, num_heads: int):
+    def __init__(self, query_dim: int, memory_dim: int, num_heads: int, rope_mode: str = "2d"):
         super().__init__()
         self.query_dim = int(query_dim)
         self.memory_dim = int(memory_dim)
         self.num_heads = int(num_heads)
+        self.rope_mode = str(rope_mode)
         if self.query_dim % self.num_heads:
             raise ValueError("query_dim must be divisible by num_heads")
         self.head_dim = self.query_dim // self.num_heads
-        self.rope = RotaryEmbedding2D(self.head_dim)
+        if self.rope_mode == "2d":
+            self.rope = RotaryEmbedding2D(self.head_dim)
+        elif self.rope_mode == "3d":
+            self.rope = RotaryEmbedding3D(self.head_dim)
+        else:
+            raise ValueError(f"unknown rope_mode={self.rope_mode!r}")
         self.query_norm = nn.LayerNorm(self.query_dim)
         self.memory_norm = nn.LayerNorm(self.memory_dim)
         self.to_q = nn.Linear(self.query_dim, self.query_dim)
@@ -122,8 +161,12 @@ class DenseCrossAttention(nn.Module):
         v = self.to_v(self.memory_norm(memory)).reshape(
             batch, num_memory, self.num_heads, self.head_dim
         ).permute(0, 2, 1, 3)
-        q = self.rope(q, query_coordinates)
-        k = self.rope(k, memory_coordinates)
+        if self.rope_mode == "2d":
+            q = self.rope(q, query_coordinates)
+            k = self.rope(k, memory_coordinates)
+        else:
+            q = self.rope(q.transpose(2, 3), query_coordinates).transpose(2, 3)
+            k = self.rope(k.transpose(1, 2), memory_coordinates).transpose(1, 2)
         # Pair queries are independent. Expanding K/V is only a batch view; no
         # attention or normalization mixes pair indices.
         k = k[:, None].expand(-1, pairs, -1, -1, -1).reshape(
@@ -142,9 +185,10 @@ class DenseCrossAttention(nn.Module):
 class CrossAttentionBlock(nn.Module):
     """Pre-LN cross-attention and Pre-LN FFN, without query self-attention."""
 
-    def __init__(self, query_dim: int, memory_dim: int, num_heads: int, ffn_ratio: float = 4.0):
+    def __init__(self, query_dim: int, memory_dim: int, num_heads: int, ffn_ratio: float = 4.0,
+                 rope_mode: str = "2d"):
         super().__init__()
-        self.cross_attention = DenseCrossAttention(query_dim, memory_dim, num_heads)
+        self.cross_attention = DenseCrossAttention(query_dim, memory_dim, num_heads, rope_mode=rope_mode)
         self.ffn_norm = nn.LayerNorm(query_dim)
         hidden = int(round(query_dim * ffn_ratio))
         self.ffn = nn.Sequential(nn.Linear(query_dim, hidden), nn.GELU(), nn.Linear(hidden, query_dim))
@@ -212,17 +256,24 @@ class DenseUpsampler2D(nn.Module):
                 persistent=False,
             )
 
-    def forward(self, feature: torch.Tensor) -> torch.Tensor:
+    def forward_features(self, feature: torch.Tensor) -> torch.Tensor:
         x = self.projection(feature)
         for block in self.blocks:
             x = F.interpolate(x, scale_factor=2.0, mode="bilinear", align_corners=False)
             x = block(x)
         if self.fullres_coordinates:
             x = torch.cat((x, self.fullres_uv.expand(x.shape[0], -1, -1, -1).to(dtype=x.dtype)), dim=1)
-        x = self.xyz(x)
-        if x.shape[-2:] != self.output_size:
-            raise RuntimeError(f"upsampler output {tuple(x.shape[-2:])} != {self.output_size}")
         return x
+
+    def forward_with_features(self, feature: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        x = self.forward_features(feature)
+        xyz = self.xyz(x)
+        if xyz.shape[-2:] != self.output_size:
+            raise RuntimeError(f"upsampler output {tuple(xyz.shape[-2:])} != {self.output_size}")
+        return xyz, x
+
+    def forward(self, feature: torch.Tensor) -> torch.Tensor:
+        return self.forward_with_features(feature)[0]
 
 
 @dataclass
@@ -230,6 +281,7 @@ class DenseQueryOutput:
     normalized_xyz: torch.Tensor
     low_resolution_feature: torch.Tensor
     coarse_normalized_xyz: torch.Tensor | None = None
+    visibility_logits: torch.Tensor | None = None
 
 
 class DenseQueryDecoder(nn.Module):
@@ -239,19 +291,23 @@ class DenseQueryDecoder(nn.Module):
                  query_dim: int = 256, embedding_dim: int = 128, num_layers: int = 2,
                  num_heads: int = 8, upsample_channels: Sequence[int] = (256, 128, 64, 32),
                  output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False,
-                 fullres_coordinates: bool = False, query_grid_size: int | None = None):
+                 fullres_coordinates: bool = False, query_grid_size: int | None = None,
+                 rope_mode: str = "2d", visibility_head: bool = False):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
         self.latent_shape = (channels, latent_time, latent_height, latent_width)
         self.query_dim = int(query_dim)
+        self.rope_mode = str(rope_mode)
+        self.visibility_head_enabled = bool(visibility_head)
         self.source_embedding = nn.Embedding(self.num_frames, embedding_dim)
         self.target_embedding = nn.Embedding(self.num_frames, embedding_dim)
         self.query_mlp = nn.Sequential(
             nn.Linear(2 * embedding_dim, query_dim), nn.SiLU(), nn.Linear(query_dim, query_dim)
         )
         self.blocks = nn.ModuleList([
-            CrossAttentionBlock(query_dim, channels, num_heads) for _ in range(int(num_layers))
+            CrossAttentionBlock(query_dim, channels, num_heads, rope_mode=self.rope_mode)
+            for _ in range(int(num_layers))
         ])
         query_grid_size = int(query_grid_size or latent_height)
         if query_grid_size < latent_height:
@@ -268,6 +324,8 @@ class DenseQueryDecoder(nn.Module):
             fullres_coordinates=fullres_coordinates,
         )
         self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
+        self.visibility_head = nn.Conv2d(int(upsample_channels[-1]), 1, 3, padding=1) \
+            if self.visibility_head_enabled else None
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         source = torch.as_tensor(source, dtype=torch.long, device=self.source_embedding.weight.device)
@@ -293,17 +351,44 @@ class DenseQueryDecoder(nn.Module):
         content = content.expand(z4d.shape[0], -1, -1)
         num_query = self.query_coordinates.shape[0]
         query = content[:, :, None, :].expand(-1, -1, num_query, -1)
-        memory, memory_coordinates = flatten_z4d(z4d)
+        memory, memory_spatial_coordinates = flatten_z4d(z4d)
+        if self.rope_mode == "3d":
+            latent_time = self.latent_shape[1]
+            spatial_tokens = self.latent_shape[2] * self.latent_shape[3]
+            memory_time = torch.arange(latent_time, device=z4d.device, dtype=z4d.dtype) \
+                .repeat_interleave(spatial_tokens)
+            memory_coordinates = torch.cat(
+                (memory_time[:, None], memory_spatial_coordinates.to(dtype=z4d.dtype)), dim=-1
+            )[None].expand(z4d.shape[0], -1, -1)
+            target_for_coordinates = torch.as_tensor(target, device=z4d.device, dtype=z4d.dtype)
+            if target_for_coordinates.ndim == 1:
+                target_for_coordinates = target_for_coordinates[None]
+            if target_for_coordinates.shape[0] == 1 and z4d.shape[0] != 1:
+                target_for_coordinates = target_for_coordinates.expand(z4d.shape[0], -1)
+            query_spatial = self.query_coordinates.to(device=z4d.device, dtype=z4d.dtype)
+            query_spatial = query_spatial[None, None].expand(z4d.shape[0], target_for_coordinates.shape[1], -1, -1)
+            query_time = target_for_coordinates[..., None, None] * ((latent_time - 1) / max(self.num_frames - 1, 1))
+            query_time = query_time.expand(-1, -1, query_spatial.shape[2], 1)
+            query_coordinates = torch.cat((query_time, query_spatial), dim=-1)
+        else:
+            memory_coordinates = memory_spatial_coordinates
+            query_coordinates = self.query_coordinates
         for block in self.blocks:
-            query = block(query, memory, self.query_coordinates, memory_coordinates)
+            query = block(query, memory, query_coordinates, memory_coordinates)
         batch, pairs, _, _ = query.shape
         query_height, query_width = self.query_grid_shape
         feature = query.reshape(batch * pairs, query_height, query_width, self.query_dim).permute(0, 3, 1, 2)
         coarse = self.coarse_head(feature).reshape(batch, pairs, 3, query_height, query_width) \
             if self.coarse_head is not None else None
-        xyz = self.upsampler(feature).reshape(batch, pairs, 3, *self.upsampler.output_size)
+        xyz, fullres_feature = self.upsampler.forward_with_features(feature)
+        xyz = xyz.reshape(batch, pairs, 3, *self.upsampler.output_size)
+        visibility_logits = None
+        if self.visibility_head is not None:
+            visibility_logits = self.visibility_head(fullres_feature).reshape(
+                batch, pairs, 1, *self.upsampler.output_size
+            )
         feature = feature.reshape(batch, pairs, self.query_dim, query_height, query_width)
-        return DenseQueryOutput(xyz, feature, coarse)
+        return DenseQueryOutput(xyz, feature, coarse, visibility_logits)
 
 
 class CleanLatentBackbone(nn.Module):
@@ -380,6 +465,28 @@ class DenseQueryWanModel(nn.Module):
                         parameter.requires_grad_(True)
             return
         raise ValueError(f"unknown trainable_mode={mode!r}")
+
+
+def masked_visibility_bce(logits: torch.Tensor, target_visible: torch.Tensor,
+                          validity: torch.Tensor, source: torch.Tensor, target: torch.Tensor,
+                          pos_weight: float | torch.Tensor) -> torch.Tensor:
+    """Off-diagonal M-target BCE masked only by A; predictions never affect XYZ."""
+    if logits.ndim == 5 and logits.shape[2] == 1:
+        logits = logits[:, :, 0]
+    if logits.ndim != 4 or target_visible.shape != logits.shape or validity.shape != logits.shape:
+        raise ValueError("visibility tensors must all be [B,K,H,W]")
+    if source.shape != target.shape or source.shape != logits.shape[:2]:
+        raise ValueError("source/target must be [B,K]")
+    off_diagonal = (source != target).to(device=logits.device)[:, :, None, None]
+    mask = validity.to(device=logits.device, dtype=logits.dtype) * off_diagonal
+    if not bool(mask.any()):
+        return logits.sum() * 0.0
+    weight = torch.as_tensor(pos_weight, device=logits.device, dtype=logits.dtype)
+    loss = F.binary_cross_entropy_with_logits(
+        logits, target_visible.to(device=logits.device, dtype=logits.dtype),
+        pos_weight=weight, reduction="none",
+    )
+    return (loss * mask).sum() / mask.sum().clamp_min(1.0)
 
 
 def masked_pair_smooth_l1(prediction: torch.Tensor, target: torch.Tensor,
