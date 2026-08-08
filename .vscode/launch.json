@@ -1,0 +1,111 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "H004 cache smoke (GPU 4)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "/opt/conda/bin/python",
+      "program": "${workspaceFolder}/train_dense4d.py",
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/dense4d_cache_smoke.yaml",
+        "--output-dir",
+        "/tmp/worldbridge_dense4d_debug/cache_smoke",
+        "--device",
+        "cuda"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "WANDB_MODE": "disabled",
+        "CUDA_LAUNCH_BLOCKING": "1"
+      }
+    },
+    {
+      "name": "H004 resume smoke (GPU 6)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "/opt/conda/bin/python",
+      "program": "${workspaceFolder}/train_dense4d.py",
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/dense4d_resume_smoke.yaml",
+        "--resume",
+        "/tmp/worldbridge_dense4d_matched/batch16_no_checkpoint_smoke/checkpoint.pt",
+        "--output-dir",
+        "/tmp/worldbridge_dense4d_debug/resume_smoke",
+        "--device",
+        "cuda"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "6",
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "WANDB_MODE": "disabled",
+        "CUDA_LAUNCH_BLOCKING": "1"
+      }
+    },
+    {
+      "name": "H004 one-step from long checkpoint (GPU 6)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "/opt/conda/bin/python",
+      "program": "${workspaceFolder}/train_dense4d.py",
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/dense4d_resume_smoke.yaml",
+        "--resume",
+        "/tmp/worldbridge_dense4d_matched/train_10h_gpu5_batch32_cached/checkpoint.pt",
+        "--output-dir",
+        "/tmp/worldbridge_dense4d_debug/long_resume_one_step",
+        "--device",
+        "cuda"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "6",
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "WANDB_MODE": "disabled",
+        "CUDA_LAUNCH_BLOCKING": "1"
+      }
+    },
+    {
+      "name": "H004 evaluate validation checkpoint (GPU 5)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "/opt/conda/bin/python",
+      "program": "${workspaceFolder}/evaluate_dense4d.py",
+      "args": [
+        "--checkpoint",
+        "/tmp/worldbridge_dense4d_matched/train_10h_gpu5_batch32_cached/checkpoint.pt",
+        "--output",
+        "/tmp/worldbridge_dense4d_debug/validation.json",
+        "--max-clips",
+        "2",
+        "--pair-chunk",
+        "8",
+        "--pixel-stride",
+        "16",
+        "--device",
+        "cuda"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "WANDB_MODE": "disabled",
+        "CUDA_LAUNCH_BLOCKING": "1"
+      }
+    }
+  ]
+}

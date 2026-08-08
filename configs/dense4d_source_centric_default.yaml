@@ -1,0 +1,37 @@
+# Canonical H004 source-centric formal-ablation manifest.
+# This file names the default formal arm set; pass one referenced arm config
+# to train_dense4d_source_centric.py because a run can select only one arm.
+config_kind: source_centric_ablation_manifest
+protocol: h004_source_centric_ablation_screen
+default_arm: D1
+default_config: configs/dense4d_source_centric_D1.yaml
+main_profiles:
+  baseline: configs/dense4d_source_centric_B0.yaml
+  recommended: configs/dense4d_source_centric_D1.yaml
+formal_arms:
+  B0: configs/dense4d_source_centric_B0.yaml
+  E3: configs/dense4d_source_centric_E3.yaml
+  E5: configs/dense4d_source_centric_E5.yaml
+  E6: configs/dense4d_source_centric_E6.yaml
+default_combinations:
+  E3E6: configs/dense4d_source_centric_E3E6.yaml
+  E3E6W: configs/dense4d_source_centric_E3E6W.yaml
+shared:
+  clip_length: 21
+  image_size: 128
+  batch_size: 16
+  gradient_accumulation: 1
+  steps: 1000
+  seed: 2029
+  precision: bf16
+  trainable_mode: full
+  xyz_pair_weight_diagonal: 0.3333333333333333
+  xyz_pair_weight_off_diagonal: 0.6666666666666666
+  geometry_workers: 8
+  prefetch_queue_depth: 2
+  validation_clips: 32
+  validation_pairs: 441
+  direct_z4d_supervision: false
+  depth_loss: false
+  reprojection_loss: false
+  iterative_dit: false

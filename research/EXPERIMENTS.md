@@ -118,3 +118,7 @@ Full successfully provides arbitrary-source and late-appearing query capability,
 6. Investigate late-appearing and occluded groups separately, including longer training and visibility-stratified sampling.
 
 Checkpoints, model weights, W&B local directories, and generated evaluation artifacts were removed before the research checkpoint; no secrets, dataset files, or generated artifacts were committed.
+
+## H004 — Dense-query feed-forward Wan feasibility (Task T-20260807120421-6da6ff)
+
+The staged audit and v1 result are authoritative in `research/DECISIONS.md`, `research/STATE.yaml`, and `research/hypotheses/H004.md`. In brief: native clean Wan latent and final negative RF velocity output were both `[1,16,6,16,16]`; decoder memory/output were `[B,1536,16]` and `[B,K,3,128,128]`; 21 tests passed. Fixed-pair tiny EPE fell `15.449 -> 10.828` m, arbitrary-query tiny EPE fell `15.916 -> 8.022` m, and bounded two-clip exhaustive validation measured pointmap/tracking `11.457/11.419` m, visible/occluded-valid `11.980/8.670` m, source-zero/source-positive `10.694/11.455` m. These are feasibility/plumbing measurements under 24–32 updates, not full MOVi-F quality claims.
