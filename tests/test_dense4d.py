@@ -14,7 +14,7 @@ from worldbridge.dense4d import (
 from worldbridge.dense4d_data import CoordinateStats, dense_pair_targets, sample_dense_pairs
 from worldbridge.geometry import GeometryBuilder
 from worldbridge.pointmap import build_dynamic_pointmap
-from worldbridge.wan import WAN_LATENT_SHAPE, rgb_to_wan_input
+from worldbridge.wan import WAN_LATENT_SHAPE, WanDiTMapping, rgb_to_wan_input
 
 
 def synthetic_sample(background=True):
@@ -106,6 +106,36 @@ def test_feedforward_backbone_uses_exact_zero_and_negates():
     torch.testing.assert_close(actual, expected)
     assert torch.equal(mapping.last_tau, torch.zeros(2))
     assert actual.shape == latent.shape
+
+
+def test_wan_hidden_extraction_matches_patch_grid_and_never_calls_output_head():
+    from diffusers import WanTransformer3DModel
+
+    mapping = WanDiTMapping.__new__(WanDiTMapping)
+    nn.Module.__init__(mapping)
+    mapping.checkpoint = "synthetic"
+    mapping.timestep_scale = 1000.0
+    mapping.dit = WanTransformer3DModel(
+        patch_size=(1, 2, 2), num_attention_heads=2, attention_head_dim=8,
+        in_channels=16, out_channels=16, text_dim=32, freq_dim=16,
+        ffn_dim=32, num_layers=2, cross_attn_norm=True, rope_max_seq_len=32,
+    )
+    mapping.register_buffer("empty_condition", torch.zeros(1, 512, 32), persistent=False)
+    calls = {"norm": 0, "projection": 0}
+    norm_hook = mapping.dit.norm_out.register_forward_hook(
+        lambda *_: calls.__setitem__("norm", calls["norm"] + 1)
+    )
+    projection_hook = mapping.dit.proj_out.register_forward_hook(
+        lambda *_: calls.__setitem__("projection", calls["projection"] + 1)
+    )
+    hidden, grid = mapping.forward_hidden_layers(
+        torch.randn(1, *WAN_LATENT_SHAPE), torch.zeros(1), (0, 1)
+    )
+    norm_hook.remove(); projection_hook.remove()
+    assert grid == (6, 8, 8)
+    assert len(hidden) == 2
+    assert hidden[0].shape == hidden[1].shape == (1, 6 * 8 * 8, 16)
+    assert calls == {"norm": 0, "projection": 0}
 
 
 def test_source_and_target_embeddings_are_independent_and_asymmetric():
