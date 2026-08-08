@@ -178,6 +178,7 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--resume", help="load model weights from a prior H004 checkpoint")
     args = parser.parse_args()
     config = yaml.safe_load(pathlib.Path(args.config).read_text())
     missing = sorted(REQUIRED_CONFIG - set(config))
@@ -195,7 +196,12 @@ def main() -> None:
     torch.cuda.set_device(0 if device.index is None else device.index)
     torch.cuda.reset_peak_memory_stats(device)
     dtype = precision_dtype(config["precision"])
-    rng = np.random.default_rng(seed)
+    resume_step_offset = 0
+    if args.resume:
+        resume_payload = torch.load(args.resume, map_location="cpu", mmap=True, weights_only=True)
+        resume_extra = resume_payload.get("extra", {})
+        resume_step_offset = int(resume_extra.get("total_steps", resume_extra.get("steps", 0)))
+    rng = np.random.default_rng(seed + resume_step_offset)
     output_dir = pathlib.Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     wandb_run = init_wandb(config)
@@ -210,6 +216,10 @@ def main() -> None:
     stats = CoordinateStats.from_npz(config["coordinate_stats"])
     clean_latents = load_or_create_clean_latents(samples, config, device)
     model = build_real_model(config, device)
+    if args.resume:
+        model.load_state_dict(resume_payload["model"], strict=True)
+        del resume_payload
+        print(f"RESUME_CHECKPOINT_LOADED: {args.resume} (global_step={resume_step_offset})", flush=True)
     groups = parameter_groups(model, config)
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 0.0)))
     cache = DynamicPointmapCache(
@@ -228,7 +238,7 @@ def main() -> None:
         wandb_run.log({
             f"initial_eval/{key}": value for key, value in initial_eval.items()
             if isinstance(value, (int, float)) and value is not None
-        }, step=0)
+        }, step=resume_step_offset)
 
     steps = int(config["steps"])
     batch_size = int(config["batch_size"])
@@ -247,10 +257,11 @@ def main() -> None:
     model.train()
 
     for step in range(steps):
+        global_step = resume_step_offset + step
         if bool(config.get("matched_epoch_sampling", False)):
             # One deterministic pass is exactly len(samples) optimizer updates;
             # this makes steps=N*epochs comparable to the prior Kubric runs.
-            start = (step * batch_size) % len(samples)
+            start = (global_step * batch_size) % len(samples)
             sample_indices = (start + np.arange(batch_size, dtype=np.int64)) % len(samples)
         elif bool(config.get("fixed_clip_order", False)):
             sample_indices = np.arange(batch_size, dtype=np.int64) % len(samples)
@@ -326,12 +337,13 @@ def main() -> None:
             wandb_run.log({
                 "train/loss": raw_loss,
                 "train/epe_m": mean_epe,
-                "train/clips_seen": (step + 1) * batch_size,
-                "train/passes": (step + 1) * batch_size / len(samples),
+                "train/clips_seen": (global_step + 1) * batch_size,
+                "train/passes": (global_step + 1) * batch_size / len(samples),
                 "train/backbone_lr": float(groups[0]["lr"]),
                 "system/peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
-            }, step=step + 1)
+            }, step=global_step + 1)
 
+    total_steps = resume_step_offset + steps
     final_eval = grouped_eval(
         model, clean_latents[0], samples[0], evaluation_source, evaluation_target,
         stats, cache, device, dtype,
@@ -341,7 +353,8 @@ def main() -> None:
     if bool(config.get("save_checkpoint", True)):
         checkpoint = save_checkpoint(
             output_dir / "checkpoint.pt", model, config, stats.mean, stats.scale,
-            extra={"steps": steps, "seed": seed, "initial_eval": initial_eval, "final_eval": final_eval},
+            extra={"steps": steps, "total_steps": total_steps, "seed": seed,
+                   "initial_eval": initial_eval, "final_eval": final_eval},
         )
         print(f"CHECKPOINT_CREATED: {checkpoint}", flush=True)
         loaded = torch.load(checkpoint, map_location="cpu", mmap=True, weights_only=True)
@@ -361,7 +374,8 @@ def main() -> None:
             checkpoint = None
 
     result = {
-        "seed": seed, "steps": steps, "clips": len(samples), "batch_size": batch_size,
+        "seed": seed, "steps": steps, "total_steps": total_steps,
+        "initial_global_step": resume_step_offset, "clips": len(samples), "batch_size": batch_size,
         "num_query_pairs": num_pairs, "trainable_mode": config.get("trainable_mode", "full"),
         "trainable_parameters": optimizer_trainable_count(groups),
         "initial_train_loss": losses[0], "final_train_loss": losses[-1],
@@ -390,7 +404,7 @@ def main() -> None:
             "final/elapsed_seconds": result["elapsed_seconds"],
             "final/peak_cuda_memory_gib": result["peak_cuda_memory_gib"],
         })
-        wandb_run.log(final_scalars, step=steps)
+        wandb_run.log(final_scalars, step=total_steps)
         wandb_run.summary.update(final_scalars)
         wandb_run.summary["checkpoint"] = result["checkpoint"]
         wandb_run.summary["checkpoint_load_ok"] = checkpoint_load_ok
