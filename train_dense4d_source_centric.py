@@ -236,7 +236,8 @@ def _add_metric(acc: dict[str, list[float]], name: str, errors: np.ndarray,
         return
     values = acc.setdefault(name, [0.0, 0.0, 0.0])
     values[0] += float(errors[mask].sum())
-    values[1] += float(xyz_abs[mask].sum())
+    xyz_error = xyz_abs.sum(axis=1) if xyz_abs.ndim == errors.ndim + 1 else xyz_abs
+    values[1] += float(xyz_error[mask].sum())
     values[2] += points
 
 
@@ -582,6 +583,17 @@ def main() -> None:
                         "system/gpu_utilization_pct": timing["gpu_utilization_pct"],
                     }, step=step + 1)
 
+    # Persist the trained weights before any evaluation code runs.  If a
+    # diagnostics bug occurs, the completed 1,000-update screen is recoverable
+    # without repeating optimization.
+    prevalidation_checkpoint = save_checkpoint(
+        output_dir / "checkpoint.pt", model, config, stats.mean, stats.scale,
+        extra={
+            "steps": int(config["steps"]), "total_steps": int(config["steps"]), "seed": seed,
+            "protocol": "h004_source_centric_ablation_screen", "validation_pending": True,
+        },
+    )
+    print(f"TRAIN_WEIGHTS_SAVED: {prevalidation_checkpoint}", flush=True)
     validation = evaluate_fixed_validation(
         model, validation_samples, validation_latents, stats, config, device, dtype,
     )
