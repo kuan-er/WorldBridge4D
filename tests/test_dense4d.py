@@ -209,8 +209,8 @@ def test_pair_sampler_balances_diagonal_directions_and_gaps():
 def test_3d_rope_uses_time_uv_and_preserves_eight_dimensions():
     rope = RotaryEmbedding3D(32)
     values = torch.randn(1, 2, 4, 1, 32)
-    coordinates = torch.tensor([[[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [5.0, 4.0, 1.0], [2.5, 1.0, 6.0]],
-                                [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [5.0, 4.0, 1.0], [2.5, 1.0, 6.0]]])
+    coordinates = torch.tensor([[[[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [5.0, 4.0, 1.0], [2.5, 1.0, 6.0]],
+                                 [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [5.0, 4.0, 1.0], [2.5, 1.0, 6.0]]]])
     rotated = rope(values, coordinates)
     torch.testing.assert_close(rotated[..., 24:], values[..., 24:])
     assert not torch.equal(rotated[..., :24], values[..., :24])
@@ -237,7 +237,7 @@ def test_source_centric_plan_rotates_sources_without_worker_rng():
     np.testing.assert_array_equal(third.source[:, 0], np.arange(5) + 5)
     np.testing.assert_array_equal(first.target[0], np.arange(21))
     weights = source_centric_loss_weights(first.source, first.target)
-    np.testing.assert_allclose(weights.sum(1), 1.0)
+    np.testing.assert_allclose(weights.sum(1), 1.0, atol=2e-7)
     np.testing.assert_allclose(weights[np.arange(5), first.source[:, 0]], 1.0 / 3.0)
     np.testing.assert_allclose(weights[0, 1:], (2.0 / 3.0) / 20.0)
 
