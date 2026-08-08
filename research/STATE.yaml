@@ -30,10 +30,18 @@ planned_protocol:
     - reprojection_loss
     - iterative_dit
 recent_results:
-  - run_id: R-20260808081319-9ba8d0
+  - run_id: R-20260808082322-a83a9e
     kind: h004_source_centric_unit_tests
     result: succeeded
-    passed: 20
+    passed: 21
+  - run_id: R-20260808081551-b0c0db
+    kind: h004_visibility_pos_weight_fixed_schedule
+    result: succeeded
+    schedule_steps: 1000
+    batch_size: 16
+    positive_visible_valid_off_diagonal: 4316774751
+    negative_occluded_valid_off_diagonal: 926081989
+    pos_weight: 0.21453099650044724
   - run_id: R-20260808081437-3a97cb
     kind: h004_source_centric_prefetch_smoke
     result: succeeded
