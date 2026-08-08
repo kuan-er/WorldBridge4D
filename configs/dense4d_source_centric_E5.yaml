@@ -30,6 +30,7 @@ visibility_negative_count: 926081989
 lambda_visibility: 0.1
 upsample_channels: [256, 128, 64, 32]
 batch_size: 16
+microbatch_size: 8
 steps: 1000
 learning_rate: 0.001
 backbone_learning_rate: 0.000005
@@ -54,6 +55,7 @@ keep_checkpoint: true
 log_every: 10
 tracking:
   enabled: true
+  mode: online
   project: worldbridge4d
   entity: zhaigong2023-sjtu-hpc-center
   group: worldbridge4d-h004-source-centric-ablation
