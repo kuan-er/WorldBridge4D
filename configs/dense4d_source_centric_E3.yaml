@@ -27,6 +27,9 @@ visibility_head: false
 lambda_visibility: 0.0
 upsample_channels: [256, 128, 64, 32]
 batch_size: 16
+# GPU-6 shared-card variant: logical batch remains 16, two microbatches of 8
+# produce the same optimizer gradient while reducing peak activation memory.
+microbatch_size: 8
 steps: 1000
 learning_rate: 0.001
 backbone_learning_rate: 0.000005
@@ -54,5 +57,5 @@ tracking:
   project: worldbridge4d
   entity: zhaigong2023-sjtu-hpc-center
   group: worldbridge4d-h004-source-centric-ablation
-  tags: [h004, source-centric, ablation, E3, 3d-rope, xyz-only]
+  tags: [h004, source-centric, ablation, E3, 3d-rope, xyz-only, microbatch8-shared-gpu6]
   log_every: 10

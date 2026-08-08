@@ -471,24 +471,46 @@ def main() -> None:
             _cuda_sync(device)
             h2d_seconds = time.perf_counter() - h2d_start
 
+            logical_batch = int(plan.source.shape[0])
+            microbatch_size = int(config.get("microbatch_size", logical_batch))
+            if microbatch_size < 1 or logical_batch % microbatch_size:
+                raise ValueError(f"microbatch_size={microbatch_size} must divide logical batch={logical_batch}")
             _cuda_sync(device)
             forward_start = time.perf_counter()
+            predictions = []
+            xyz_loss_value = 0.0
+            visibility_loss_value = 0.0
+            z4d_shape = None
             with torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
-                prediction, z4d, output = model(clean, tensors["source"], tensors["target"])
-                xyz_loss = weighted_masked_pair_smooth_l1(
-                    prediction.float(), tensors["target_xyz"].float(), tensors["valid"], pair_weights,
-                    beta=float(config.get("smooth_l1_beta", 0.05)),
-                )
-                visibility_loss = prediction.sum() * 0.0
-                if bool(config.get("visibility_head", False)):
-                    visibility_loss = masked_visibility_bce(
-                        output.visibility_logits.float(), tensors["visible"], tensors["valid"],
-                        tensors["source"], tensors["target"], float(config["visibility_pos_weight"]),
+                for micro_start in range(0, logical_batch, microbatch_size):
+                    micro_end = min(logical_batch, micro_start + microbatch_size)
+                    fraction = (micro_end - micro_start) / logical_batch
+                    prediction_micro, z4d_micro, output_micro = model(
+                        clean[micro_start:micro_end],
+                        tensors["source"][micro_start:micro_end],
+                        tensors["target"][micro_start:micro_end],
                     )
-                loss = xyz_loss + float(config.get("lambda_visibility", 0.0)) * visibility_loss
-                (loss / int(config.get("gradient_accumulation", 1))).backward()
+                    xyz_loss_micro = weighted_masked_pair_smooth_l1(
+                        prediction_micro.float(), tensors["target_xyz"][micro_start:micro_end].float(),
+                        tensors["valid"][micro_start:micro_end], pair_weights[micro_start:micro_end],
+                        beta=float(config.get("smooth_l1_beta", 0.05)),
+                    )
+                    visibility_loss_micro = prediction_micro.sum() * 0.0
+                    if bool(config.get("visibility_head", False)):
+                        visibility_loss_micro = masked_visibility_bce(
+                            output_micro.visibility_logits.float(), tensors["visible"][micro_start:micro_end],
+                            tensors["valid"][micro_start:micro_end], tensors["source"][micro_start:micro_end],
+                            tensors["target"][micro_start:micro_end], float(config["visibility_pos_weight"]),
+                        )
+                    loss_micro = xyz_loss_micro + float(config.get("lambda_visibility", 0.0)) * visibility_loss_micro
+                    (loss_micro * fraction / int(config.get("gradient_accumulation", 1))).backward()
+                    predictions.append(prediction_micro.detach())
+                    xyz_loss_value += float(xyz_loss_micro.detach()) * fraction
+                    visibility_loss_value += float(visibility_loss_micro.detach()) * fraction
+                    z4d_shape = list(z4d_micro.shape[1:])
             _cuda_sync(device)
             forward_backward_seconds = time.perf_counter() - forward_start
+            prediction = torch.cat(predictions, dim=0)
 
             if step == 0:
                 backbone_gradient = any(
@@ -513,7 +535,7 @@ def main() -> None:
             _cuda_sync(device)
             optimizer_step_seconds = time.perf_counter() - step_start
 
-            raw_loss = float(loss.detach())
+            raw_loss = xyz_loss_value + float(config.get("lambda_visibility", 0.0)) * visibility_loss_value
             mean_epe = _train_metric(prediction, batch, stats)
             timing = {
                 "geometry_worker_sum_seconds": batch.geometry_seconds_sum,
@@ -533,21 +555,21 @@ def main() -> None:
             train_epes.append(mean_epe)
             event = {
                 "step": step + 1, "global_step": step + 1, "loss": raw_loss,
-                "xyz_loss": float(xyz_loss.detach()),
-                "visibility_loss": float(visibility_loss.detach()),
+                "xyz_loss": xyz_loss_value,
+                "visibility_loss": visibility_loss_value,
                 "train_epe": mean_epe,
                 "sample_indices": plan.sample_indices.tolist(),
                 "source": plan.source[:, 0].tolist(),
                 "target_shape": list(plan.target.shape),
-                "z4d_shape": list(z4d.shape),
+                "z4d_shape": [logical_batch, *z4d_shape],
                 "timing": timing,
             }
             if step == 0 or (step + 1) % int(config.get("log_every", 10)) == 0:
                 print(json.dumps(event), flush=True)
                 if wandb_run is not None:
                     wandb_run.log({
-                        "train/loss": raw_loss, "train/xyz_loss": float(xyz_loss.detach()),
-                        "train/visibility_loss": float(visibility_loss.detach()), "train/epe_m": mean_epe,
+                        "train/loss": raw_loss, "train/xyz_loss": xyz_loss_value,
+                        "train/visibility_loss": visibility_loss_value, "train/epe_m": mean_epe,
                         "train/passes": (step + 1) * int(config["batch_size"]) / len(samples),
                         "timing/geometry_worker_sum_s": timing["geometry_worker_sum_seconds"],
                         "timing/geometry_worker_max_s": timing["geometry_worker_max_seconds"],
@@ -584,7 +606,9 @@ def main() -> None:
     result = {
         "protocol": "h004_source_centric_ablation_screen", "mode": args.mode,
         "seed": seed, "steps": int(config["steps"]), "clips": len(samples),
-        "batch_size": int(config["batch_size"]), "trainable_parameters": optimizer_trainable_count(groups),
+        "batch_size": int(config["batch_size"]),
+        "microbatch_size": int(config.get("microbatch_size", config["batch_size"])),
+        "trainable_parameters": optimizer_trainable_count(groups),
         "initial_train_loss": losses[0], "final_train_loss": losses[-1],
         "initial_train_epe": train_epes[0], "final_train_epe": train_epes[-1],
         "backbone_gradient": backbone_gradient, "decoder_gradient": decoder_gradient,
