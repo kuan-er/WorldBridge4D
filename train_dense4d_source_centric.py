@@ -8,8 +8,8 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
+import threading
 import time
 from typing import Any, Iterable
 
@@ -130,18 +130,62 @@ def _cuda_sync(device: torch.device) -> None:
         torch.cuda.synchronize(device)
 
 
-def _gpu_utilization() -> float | None:
-    """Read physical GPU utilization without changing CUDA allocation state."""
-    visible = os.getenv("CUDA_VISIBLE_DEVICES", "")
-    try:
-        physical = int(visible.split(",")[0]) if visible else 0
-        output = subprocess.check_output(
-            ["nvidia-smi", "-i", str(physical), "--query-gpu=utilization.gpu",
-             "--format=csv,noheader,nounits"], stderr=subprocess.DEVNULL, text=True,
-        ).strip()
-        return float(output.splitlines()[0].strip())
-    except (OSError, ValueError, subprocess.SubprocessError, IndexError):
-        return None
+class GPUUtilizationSampler:
+    """Sample NVML utilization during each full step instead of at an idle boundary."""
+
+    def __init__(self, interval_seconds: float = 0.2):
+        self.interval_seconds = float(interval_seconds)
+        self._values: list[float] = []
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._pynvml = None
+        self._handle = None
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            visible = os.getenv("CUDA_VISIBLE_DEVICES", "")
+            physical = int(visible.split(",")[0]) if visible else 0
+            self._handle = pynvml.nvmlDeviceGetHandleByIndex(physical)
+            self._pynvml = pynvml
+        except Exception:
+            self._pynvml = None
+            self._handle = None
+
+    def _sample(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            try:
+                value = float(self._pynvml.nvmlDeviceGetUtilizationRates(self._handle).gpu)
+            except Exception:
+                continue
+            with self._lock:
+                self._values.append(value)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._values.clear()
+
+    def mean_and_reset(self) -> float | None:
+        with self._lock:
+            result = float(np.mean(self._values)) if self._values else None
+            self._values.clear()
+        return result
+
+    def __enter__(self) -> "GPUUtilizationSampler":
+        if self._pynvml is not None:
+            self._thread = threading.Thread(target=self._sample, name="h004-nvml", daemon=True)
+            self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+        if self._pynvml is not None:
+            try:
+                self._pynvml.nvmlShutdown()
+            except Exception:
+                pass
 
 
 def _fixed_train_plan(config: dict[str, Any], samples_count: int, step: int) -> SourceCentricPlan:
@@ -326,6 +370,11 @@ def main() -> None:
     (output_dir / "resolved_config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     wandb_run = init_wandb(config)
 
+    # Reserve the selected GPU with Wan before the 30 GB CPU sample-cache load;
+    # this minimizes the post-handoff interval during which the card looks free.
+    model = build_real_model(config, device)
+    groups = parameter_groups(model, config)
+    optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 0.0)))
     dataset = MOViFDataset(
         config["data_root"], split="train", clip_length=21, clip_start=int(config.get("clip_start", 0)),
         max_examples=None, seed=seed,
@@ -333,9 +382,6 @@ def main() -> None:
     samples = load_or_create_samples(dataset, config)
     stats = CoordinateStats.from_npz(config["coordinate_stats"])
     clean_latents = load_or_create_clean_latents(samples, config, device)
-    model = build_real_model(config, device)
-    groups = parameter_groups(model, config)
-    optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 0.0)))
     validation_samples, validation_latents = _load_validation(config, device)
 
     losses: list[float] = []
@@ -352,7 +398,7 @@ def main() -> None:
         return _fixed_train_plan(config, len(samples), step)
 
     optimizer.zero_grad(set_to_none=True)
-    with SourceCentricPrefetcher(
+    with GPUUtilizationSampler() as gpu_sampler, SourceCentricPrefetcher(
         samples, stats, workers=8, queue_depth=2,
         depth_tolerance=float(config.get("depth_tolerance", 0.05)),
         depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
@@ -362,6 +408,7 @@ def main() -> None:
                 prefetcher.submit(plan_for(prefill_step))
         for step in range(int(config["steps"])):
             iteration_start = time.perf_counter()
+            gpu_sampler.reset()
             if args.mode == "async":
                 batch, prefetch_wait = prefetcher.next()
                 next_step = step + 2
@@ -450,7 +497,7 @@ def main() -> None:
                 "step_seconds": float(time.perf_counter() - iteration_start),
                 "cuda_allocated_gib": float(torch.cuda.memory_allocated(device) / (1024 ** 3)),
                 "cuda_reserved_gib": float(torch.cuda.memory_reserved(device) / (1024 ** 3)),
-                "gpu_utilization_pct": _gpu_utilization(),
+                "gpu_utilization_pct": gpu_sampler.mean_and_reset(),
             }
             timings.append(timing)
             losses.append(raw_loss)
