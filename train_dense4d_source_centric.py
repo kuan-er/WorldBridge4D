@@ -316,10 +316,7 @@ def evaluate_fixed_validation(model: torch.nn.Module, samples: list[Any], latent
             for start in range(0, len(source_all), pair_chunk):
                 source = source_all[start:start + pair_chunk]
                 target = target_all[start:start + pair_chunk]
-                normalized, metric, visible, valid = dense_pair_targets(
-                    sample, source, target, stats, cache,
-                    coordinate_frame=str(config.get("coordinate_frame", "anchor")),
-                )
+                normalized, metric, visible, valid = dense_pair_targets(sample, source, target, stats, cache)
                 source_tensor = torch.from_numpy(source[None]).to(device)
                 target_tensor = torch.from_numpy(target[None]).to(device)
                 with torch.autocast(device_type="cuda", dtype=dtype, enabled=device.type == "cuda" and dtype == torch.bfloat16):
@@ -401,10 +398,6 @@ def main() -> None:
         raise ValueError(f"missing required config keys: {missing}")
     if int(config["clip_length"]) != 21 or int(config["image_size"]) != 128:
         raise ValueError("source-centric H004 protocol requires clip_length=21 and image_size=128")
-    coordinate_frame = str(config.get("coordinate_frame", "anchor")).lower()
-    if coordinate_frame not in {"anchor", "source"}:
-        raise ValueError("coordinate_frame must be 'anchor' or 'source'")
-    config["coordinate_frame"] = coordinate_frame
     if int(config["batch_size"]) != 16 or int(config["steps"]) != 1000:
         raise ValueError("formal source-centric screen requires batch_size=16 and steps=1000")
     if int(config.get("gradient_accumulation", 1)) != 1 or str(config["precision"]).lower() not in {"bf16", "bfloat16"}:
@@ -526,7 +519,6 @@ def main() -> None:
         samples, stats, workers=8, queue_depth=2,
         depth_tolerance=float(config.get("depth_tolerance", 0.05)),
         depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
-        coordinate_frame=coordinate_frame,
     ) as prefetcher:
         if args.mode == "async":
             for prefill_step in range(min(2, int(config["steps"]))):
@@ -548,7 +540,6 @@ def main() -> None:
                     samples, stats, plan,
                     depth_tolerance=float(config.get("depth_tolerance", 0.05)),
                     depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
-                    coordinate_frame=coordinate_frame,
                 )
                 prefetch_wait = time.perf_counter() - geometry_start
                 prefetch_submit = 0.0

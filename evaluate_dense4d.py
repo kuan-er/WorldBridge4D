@@ -70,9 +70,6 @@ def main() -> None:
     device = torch.device(args.device)
     checkpoint = torch.load(args.checkpoint, map_location="cpu", mmap=True, weights_only=True)
     config = checkpoint["config"]
-    coordinate_frame = str(config.get("coordinate_frame", "anchor")).lower()
-    if coordinate_frame not in {"anchor", "source"}:
-        raise ValueError(f"unsupported checkpoint coordinate_frame={coordinate_frame!r}")
     stats = CoordinateStats(checkpoint["coordinate_mean"], checkpoint["coordinate_scale"])
     model = build_real_model(config, device)
     model.load_state_dict(checkpoint["model"], strict=True)
@@ -121,7 +118,7 @@ def main() -> None:
                 else:
                     z4d.include_motion = False
             for source in range(sample.num_frames):
-                dynamic = cache.get(sample, source, coordinate_frame=coordinate_frame)
+                dynamic = cache.get(sample, source)
                 ids = sample.segmentation[source]
                 first_visible = np.full(ids.shape, sample.num_frames, dtype=np.int64)
                 for instance_id in np.unique(ids):
@@ -181,7 +178,6 @@ def main() -> None:
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
         "drop_hidden_layer": args.drop_hidden_layer,
         "motion_memory_mode": args.motion_memory_mode,
-        "coordinate_frame": coordinate_frame,
         "effective_layer_weights": getattr(model.backbone, "layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
         "z4d_motion_shape": z4d_motion_shape,

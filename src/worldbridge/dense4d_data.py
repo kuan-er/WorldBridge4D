@@ -45,26 +45,22 @@ class CoordinateStats:
 
 
 class DynamicPointmapCache:
-    """Bounded CPU cache keyed by clip, source, and coordinate convention."""
+    """Bounded CPU cache keyed by `(video_name,clip_start,source)`."""
 
     def __init__(self, max_entries: int = 32, depth_tolerance: float = 0.05,
                  depth_relative_tolerance: float = 0.01):
         self.max_entries = int(max_entries)
         self.depth_tolerance = float(depth_tolerance)
         self.depth_relative_tolerance = float(depth_relative_tolerance)
-        self._values: OrderedDict[tuple[str, int, int, str], DynamicPointmap] = OrderedDict()
+        self._values: OrderedDict[tuple[str, int, int], DynamicPointmap] = OrderedDict()
 
-    def get(self, sample: MOViSample, source: int, coordinate_frame: str = "anchor") -> DynamicPointmap:
-        coordinate_frame = str(coordinate_frame).lower()
-        if coordinate_frame not in {"anchor", "source"}:
-            raise ValueError(f"coordinate_frame must be 'anchor' or 'source', got {coordinate_frame!r}")
-        key = (sample.video_name, sample.clip_start, int(source), coordinate_frame)
+    def get(self, sample: MOViSample, source: int) -> DynamicPointmap:
+        key = (sample.video_name, sample.clip_start, int(source))
         value = self._values.pop(key, None)
         if value is None:
             value = build_dynamic_pointmap(
                 sample, int(source), depth_tolerance=self.depth_tolerance,
                 depth_relative_tolerance=self.depth_relative_tolerance,
-                coordinate_frame=coordinate_frame,
             )
         self._values[key] = value
         while len(self._values) > self.max_entries:
@@ -73,13 +69,9 @@ class DynamicPointmapCache:
 
 
 def dense_pair_targets(sample: MOViSample, source: Sequence[int], target: Sequence[int],
-                       stats: CoordinateStats, cache: DynamicPointmapCache | None = None,
-                       coordinate_frame: str = "anchor"
+                       stats: CoordinateStats, cache: DynamicPointmapCache | None = None
                        ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return normalized/metric XYZ, visibility M, and validity A for K maps."""
-    coordinate_frame = str(coordinate_frame).lower()
-    if coordinate_frame not in {"anchor", "source"}:
-        raise ValueError(f"coordinate_frame must be 'anchor' or 'source', got {coordinate_frame!r}")
     source = np.asarray(source, dtype=np.int64).reshape(-1)
     target = np.asarray(target, dtype=np.int64).reshape(-1)
     if source.shape != target.shape:
@@ -89,7 +81,7 @@ def dense_pair_targets(sample: MOViSample, source: Sequence[int], target: Sequen
     cache = cache or DynamicPointmapCache(max_entries=max(len(np.unique(source)), 1))
     metric, visible, valid = [], [], []
     for s, t in zip(source, target):
-        pointmap = cache.get(sample, int(s), coordinate_frame=coordinate_frame)
+        pointmap = cache.get(sample, int(s))
         metric.append(pointmap.xyz[int(t)].transpose(2, 0, 1))
         visible.append(pointmap.visible[int(t)])
         valid.append(pointmap.valid[int(t)])
