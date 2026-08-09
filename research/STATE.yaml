@@ -283,8 +283,58 @@ recent_results:
     result: succeeded
     marker: RELIABILITY_MATRIX_OK
     errors: []
-next_step: Run a matched-budget held-out H004 velocity-versus-H005 structured
-  hidden-state comparison with identical data, pair sampling, decoder depth,
-  seeds, and optimization exposure. Separately ablate Z_motion only after the
-  full structured route has a held-out baseline.
-updated_at: 2026-08-09T05:31:48.657Z
+final_h005_layer_selection:
+  selected_layers: [13, 14, 15]
+  selected_protocol: "32 train clips, 1536 steps, seeds 2026/2027, geometry_adapter, final validation 147 clips, pixel_stride=16"
+  selection_splits:
+    split_a: "train indices 32-47, probe indices 48-55"
+    split_b: "train indices 56-71, probe indices 72-79"
+    candidate_holdout: "train-split indices 80-111"
+    final_validation: "validation indices 0-146, used only after selection"
+  final_runs:
+    seed2026: R-20260809083901-11ac6b
+    seed2027: R-20260809083901-674f13
+  final_two_seed_mean_epe_m:
+    original_layers_5_11_17_23_29:
+      pointmap: 4.291868
+      first_frame: 4.426168
+      arbitrary_all_st: 4.333806
+      arbitrary_occluded: 5.223015
+      late_appearing: 4.153842
+    triad_13_14_15:
+      pointmap: 4.133832
+      first_frame: 4.243102
+      arbitrary_all_st: 4.179413
+      arbitrary_occluded: 5.050039
+      late_appearing: 3.885460
+  relative_improvement_percent:
+    pointmap: 3.68
+    first_frame: 4.14
+    arbitrary_all_st: 3.56
+    arbitrary_occluded: 3.31
+    late_appearing: 6.46
+  trainable_parameters: 4396228
+  decision: "Triad is the final default; aggregate five-layer, single-layer 13, uniform entropy gate, and seeded top-5 gate are rejected."
+  artifacts:
+    seed2026: /tmp/worldbridge_h005_layer_selection_triad_validation147_seed2026.json
+    seed2027: /tmp/worldbridge_h005_layer_selection_triad_validation147_seed2027.json
+final_h005_long_budget_check:
+  steps: 4096
+  runs:
+    seed2026: R-20260809084822-3fa51e
+    seed2027: R-20260809084822-19ce22
+  validation_runs:
+    seed2026: R-20260809091539-4c5f3e
+    seed2027: R-20260809091539-9520b6
+  two_seed_mean_epe_m:
+    pointmap: 3.615700
+    first_frame: 3.677105
+    arbitrary_all_st: 3.656755
+    arbitrary_occluded: 4.539515
+    late_appearing: 4.271214
+  decision: "Long budget improves ordinary geometry but is not the default because seed-2027 late-appearing EPE regresses; retain as supplementary evidence."
+  artifacts:
+    seed2026: /tmp/worldbridge_h005_layer_selection_triad_4096_validation147_seed2026.json
+    seed2027: /tmp/worldbridge_h005_layer_selection_triad_4096_validation147_seed2027.json
+next_step: Freeze H005 default at the two-seed 1536-step triad [13,14,15], preserve the reproducibility records and final artifacts, and do not perform further layer or budget selection using the final validation split.
+updated_at: 2026-08-09T09:20:34Z

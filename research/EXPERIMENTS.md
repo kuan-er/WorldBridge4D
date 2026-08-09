@@ -122,3 +122,19 @@ Checkpoints, model weights, W&B local directories, and generated evaluation arti
 ## H004 — Dense-query feed-forward Wan feasibility (Task T-20260807120421-6da6ff)
 
 The staged audit and v1 result are authoritative in `research/DECISIONS.md`, `research/STATE.yaml`, and `research/hypotheses/H004.md`. In brief: native clean Wan latent and final negative RF velocity output were both `[1,16,6,16,16]`; decoder memory/output were `[B,1536,16]` and `[B,K,3,128,128]`; 21 tests passed. Fixed-pair tiny EPE fell `15.449 -> 10.828` m, arbitrary-query tiny EPE fell `15.916 -> 8.022` m, and bounded two-clip exhaustive validation measured pointmap/tracking `11.457/11.419` m, visible/occluded-valid `11.980/8.670` m, source-zero/source-positive `10.694/11.455` m. These are feasibility/plumbing measurements under 24–32 updates, not full MOVi-F quality claims.
+
+## H005 — Hidden-layer selection and budget ablation (Task T-20260809063847-2ba220)
+
+The selection protocol used Split A (`32–47/48–55`), Split B (`56–71/72–79`), candidate holdout (`80–111`), and only then the complete 147-clip validation. Aggregate selection proposed `[8,9,13,14,15]`, but its two-seed holdout result was not reproducible. Single `[13]`, uniform 30-layer gating, and seeded top-5 gating were rejected for late-appearing regressions. Triad `[13,14,15]` was selected.
+
+Matched final validation at 1536 steps, seeds 2026/2027, gave the following two-seed mean EPE (metres), with the original `[5,11,17,23,29]` as baseline:
+
+| Metric | Original five | Triad `[13,14,15]` | Change |
+|---|---:|---:|---:|
+| Pointmap | 4.2919 | **4.1338** | −3.7% |
+| First-frame | 4.4262 | **4.2431** | −4.1% |
+| Arbitrary `(s,t)` | 4.3338 | **4.1794** | −3.6% |
+| Arbitrary occluded | 5.2230 | **5.0500** | −3.3% |
+| Late appearing | 4.1538 | **3.8855** | −6.5% |
+
+The final triad validation runs were `R-20260809083901-11ac6b` and `R-20260809083901-674f13`. A 4096-step budget check (`R-20260809084822-3fa51e`, `R-20260809084822-19ce22`) improved two-seed means for Pointmap/First-frame/Arbitrary/Occluded to `3.6157/3.6771/3.6568/4.5395 m`, but late-appearing regressed to `4.2712 m`, driven by seed 2027 (`4.9469 m`). The 1536-step triad remains the default because it is the stable protocol across all highlighted subsets; 4096-step outputs are supplementary evidence rather than the selected model. Final validation command: `CUDA_VISIBLE_DEVICES=6 python evaluate_dense4d.py --split validation --max-clips 147 --pixel-stride 16 --pair-chunk 8 --device cuda`. No further selection is performed on the final validation split.
