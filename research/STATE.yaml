@@ -1,80 +1,43 @@
-current_task: T-20260808174012-9206f8
-active_hypotheses:
-  - H004
-  - H002
-  - H001
-planned_protocol:
-  name: h004_source_centric_ablation_screen
-  status: completed_source_centric_screen_and_E3E6_combinations
-  common_route:
-    source_sampling: deterministic_one_source_per_clip_all_21_targets
-    cpu_geometry_prefetch: 8_threads_bounded_async_queue_depth_2
-    batch_size: 16
-    gradient_accumulation: 1
-    optimizer_updates: 1000
-    seed: 2029
-    precision: bf16
-    trainable_mode: full
-    xyz_pair_weights:
-      diagonal: 0.3333333333333333
-      off_diagonal: 0.6666666666666666
-    validation_clips: 32
-    validation_pairs_per_clip: 441
-  arms:
-    - B0_optimized_2d_rope_xyz_decoder2
-    - E3_3d_rope_only
-    - E5_visibility_head_loss_only
-    - E6_decoder4_only
-    - D1_fixed_preupdate_channel_whitening_only
-    - D2_trainable_identity_channel_affine_only
-    - D3_identity_initialized_nonlinear_1x1x1_adapter_only
-  execution_order:
-    - finish_B0_E3_E5_E6_before_latent_alignment_arms
-    - run_D1_D2_D3_as_independent_1000_update_screens
-  excluded:
-    - depth_loss
-    - reprojection_loss
-    - iterative_dit
+current_task: null
+active_hypotheses: []
 recent_results:
-  - run_id: R-20260808111521-e50068
-    kind: h004_D1_D2_D3_code_and_config_tests
+  - run_id: R-20260808164859-ac2cfe
+    kind: h005_unit_tests
     result: succeeded
-    passed: 22
-    configs_validated:
-      - D1
-      - D2
-      - D3
-    wandb_mode: online
-  - run_id: R-20260808082322-a83a9e
-    kind: h004_source_centric_unit_tests
+    passed: 25
+  - run_id: R-20260808164446-852e73
+    kind: h005_real_structured_smoke
     result: succeeded
-    passed: 21
-  - run_id: R-20260808081551-b0c0db
-    kind: h004_visibility_pos_weight_fixed_schedule
-    result: succeeded
-    schedule_steps: 1000
-    batch_size: 16
-    positive_visible_valid_off_diagonal: 4316774751
-    negative_occluded_valid_off_diagonal: 926081989
-    pos_weight: 0.21453099650044724
-  - run_id: R-20260808081437-3a97cb
-    kind: h004_source_centric_prefetch_smoke
-    result: succeeded
-    clips: 2
-    steps: 2
-    exact_target_equality: true
-    exact_loss_equality: true
-    source_target_shape:
-      - 2
-      - 21
-    xyz_shape:
-      - 2
-      - 21
-      - 3
+    z_dense_shape:
+      - 1
       - 128
+      - 21
+      - 16
+      - 16
+    z_motion_shape:
+      - 1
+      - 21
+      - 8
       - 128
-    prefetch_workers: 8
-    prefetch_queue_depth: 2
+    trainable_parameters: 4795846
+    peak_cuda_memory_gib: 2.804969310760498
+  - run_id: R-20260808164542-1a7038
+    kind: h005_frozen_wan_tiny_overfit
+    result: succeeded
+    steps: 256
+    evaluation_loss_ratio: 0.04047859560801072
+    initial_epe: 16.0607852935791
+    final_epe: 1.0107083320617676
+    diagonal_epe: 0.9598708748817444
+    off_diagonal_epe: 1.0324958562850952
+    peak_cuda_memory_gib: 3.125835418701172
+  - run_id: R-20260808164726-7f5732
+    kind: h005_full_wan_gradient_smoke
+    result: succeeded
+    wan_gradient: true
+    geometry_adapter_gradient: true
+    decoder_gradient: true
+    peak_cuda_memory_gib: 13.263145446777344
   - run_id: R-20260807120649-ce3667
     kind: h004_dataset_audit
     result: succeeded
@@ -320,42 +283,108 @@ recent_results:
     result: succeeded
     marker: RELIABILITY_MATRIX_OK
     errors: []
-final_screen:
-  formal_single_factor:
-    B0:
-      run_id: R-20260808104239-6d8c9d
-      off_diagonal_epe_m: 2.899696
-    E3:
-      run_id: R-20260808104239-8af70b
-      off_diagonal_epe_m: 2.815216
-    E5:
-      run_id: R-20260808111847-813197
-      off_diagonal_epe_m: 2.861455
-    E6:
-      run_id: R-20260808104239-673514
-      off_diagonal_epe_m: 2.800534
-    D1:
-      run_id: R-20260808114435-614853
-      off_diagonal_epe_m: 2.797342
-    D2:
-      run_id: R-20260808142503-19dac4
-      off_diagonal_epe_m: 2.822316
-      caveat: bf16_channel_scale_remained_exactly_one_effectively_bias_only
-    D3:
-      run_id: R-20260808142545-3cb5aa
-      off_diagonal_epe_m: 2.805536
-  combinations:
-    E3E6:
-      run_id: R-20260808153039-8b0807
-      off_diagonal_epe_m: 2.925703
-    E3E6W:
-      run_id: R-20260808161920-d3a72d
-      off_diagonal_epe_m: 2.958181
-      checkpoint_load_ok: true
-  recommended_default: D1
-  canonical_baseline: B0
-next_step: Review the completed H004 task diff, preserve B0 as the canonical
-  baseline, use D1 as the recommended source-centric default, and merge only
-  after explicit review. Keep E3/E5/E6 and combination profiles as research
-  configurations; do not claim 1000-update screening results as final quality.
-updated_at: 2026-08-09T02:48:38.334Z
+final_h005_layer_selection:
+  selected_layers: [13, 14, 15]
+  selected_protocol: "32 train clips, 1536 steps, seeds 2026/2027, geometry_adapter, final validation 147 clips, pixel_stride=16"
+  selection_splits:
+    split_a: "train indices 32-47, probe indices 48-55"
+    split_b: "train indices 56-71, probe indices 72-79"
+    candidate_holdout: "train-split indices 80-111"
+    final_validation: "validation indices 0-146, used only after selection"
+  final_runs:
+    seed2026: R-20260809083901-11ac6b
+    seed2027: R-20260809083901-674f13
+  final_two_seed_mean_epe_m:
+    original_layers_5_11_17_23_29:
+      pointmap: 4.291868
+      first_frame: 4.426168
+      arbitrary_all_st: 4.333806
+      arbitrary_occluded: 5.223015
+      late_appearing: 4.153842
+    triad_13_14_15:
+      pointmap: 4.133832
+      first_frame: 4.243102
+      arbitrary_all_st: 4.179413
+      arbitrary_occluded: 5.050039
+      late_appearing: 3.885460
+  relative_improvement_percent:
+    pointmap: 3.68
+    first_frame: 4.14
+    arbitrary_all_st: 3.56
+    arbitrary_occluded: 3.31
+    late_appearing: 6.46
+  trainable_parameters: 4396228
+  decision: "Triad is the final default; aggregate five-layer, single-layer 13, uniform entropy gate, and seeded top-5 gate are rejected."
+  artifacts:
+    seed2026: /tmp/worldbridge_h005_layer_selection_triad_validation147_seed2026.json
+    seed2027: /tmp/worldbridge_h005_layer_selection_triad_validation147_seed2027.json
+final_h005_long_budget_check:
+  steps: 4096
+  runs:
+    seed2026: R-20260809084822-3fa51e
+    seed2027: R-20260809084822-19ce22
+  validation_runs:
+    seed2026: R-20260809091539-4c5f3e
+    seed2027: R-20260809091539-9520b6
+  two_seed_mean_epe_m:
+    pointmap: 3.615700
+    first_frame: 3.677105
+    arbitrary_all_st: 3.656755
+    arbitrary_occluded: 4.539515
+    late_appearing: 4.271214
+  decision: "Long budget improves ordinary geometry but is not the default because seed-2027 late-appearing EPE regresses; retain as supplementary evidence."
+  artifacts:
+    seed2026: /tmp/worldbridge_h005_layer_selection_triad_4096_validation147_seed2026.json
+    seed2027: /tmp/worldbridge_h005_layer_selection_triad_4096_validation147_seed2027.json
+final_h006_motion_slot_ablation:
+  protocol: "triad [13,14,15], 32 train clips, 1536 steps, seeds 2026/2027, train holdout indices 80-111, pixel_stride=16; final validation unused"
+  aggregation_run: R-20260809104655-139b16
+  two_seed_mean_epe_m:
+    learned_slots8:
+      pointmap: 3.945311
+      first_frame: 4.168921
+      arbitrary_all_st: 3.990391
+      arbitrary_occluded: 4.918280
+      late_appearing: 3.892751
+    retrained_slots0:
+      pointmap: 4.306731
+      first_frame: 4.300665
+      arbitrary_all_st: 4.354077
+      arbitrary_occluded: 5.406879
+      late_appearing: 4.163443
+    zeroed_slots8:
+      arbitrary_all_st: 4.589829
+      arbitrary_occluded: 5.561162
+    dropped_slots8:
+      arbitrary_all_st: 4.643132
+      arbitrary_occluded: 5.603749
+    pair_motion:
+      pointmap: 3.575669
+      arbitrary_all_st: 3.616442
+      arbitrary_occluded: 4.518730
+      late_appearing: 5.731132
+    pair_motion_zero_init:
+      pointmap: 3.705219
+      arbitrary_all_st: 3.733894
+      arbitrary_occluded: 4.566937
+      late_appearing: 7.282869
+  relative_change_vs_learned_slots8_percent:
+    retrained_slots0_arbitrary: 9.11
+    zeroed_slots8_arbitrary: 15.02
+    dropped_slots8_arbitrary: 16.36
+    pair_motion_arbitrary: -9.37
+    pair_motion_late_appearing: 47.23
+    pair_motion_zero_init_arbitrary: -6.43
+    pair_motion_zero_init_late_appearing: 87.09
+  slot_diagnostics:
+    within_frame_off_diagonal_cosine: [0.999859, 0.999914]
+    temporal_identity_margin: [0.000136, 0.000081]
+    clip_signal_fraction: [0.1903, 0.1741]
+  trainable_parameters:
+    learned_slots8: 4396228
+    retrained_slots0: 4326212
+    pair_motion: 4561348
+  decision: "Slots are necessary and causally used. Keep learned M=8 as default; direct and zero-initialized pooled pair-motion shortcuts are rejected because ordinary gains cause severe late-appearing regressions."
+  artifact: /tmp/worldbridge_h006_slots_aggregate.json
+next_step: Keep the H005 triad with eight learned motion slots. Future slot work should preserve late-appearing behavior and test source-valid/appearance-aware gating or slot-specific residuals on a fresh development split; do not select on final validation.
+updated_at: 2026-08-09T10:47:30Z

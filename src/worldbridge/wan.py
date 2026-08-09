@@ -177,7 +177,7 @@ class WanDiTMapping(nn.Module):
             raise ValueError("null condition batch dimension does not match latent batch")
         return self.empty_condition.expand(batch, -1, -1).to(device=device, dtype=dtype)
 
-    def forward(self, latent: torch.Tensor, tau: torch.Tensor) -> torch.Tensor:
+    def _inputs(self, latent: torch.Tensor, tau: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if latent.ndim != 5 or tuple(latent.shape[1:]) != WAN_LATENT_SHAPE:
             raise ValueError(f"WAN mapper input must be [B,{','.join(map(str, WAN_LATENT_SHAPE))}], got {tuple(latent.shape)}")
         tau = torch.as_tensor(tau, device=latent.device, dtype=latent.dtype).flatten()
@@ -185,16 +185,67 @@ class WanDiTMapping(nn.Module):
             raise ValueError(f"tau must be [B]={latent.shape[0]}, got {tuple(tau.shape)}")
         if not torch.isfinite(tau).all() or (tau < 0).any() or (tau > 1).any():
             raise ValueError("external flow tau must be in [0,1]")
-        timestep = tau * self.timestep_scale
         dit_dtype = next(self.dit.parameters()).dtype
         hidden_states = latent.to(dtype=dit_dtype)
+        timestep = (tau * self.timestep_scale).to(dtype=dit_dtype)
         condition = self._condition(latent.shape[0], latent.device, dit_dtype)
-        output = self.dit(hidden_states, timestep=timestep.to(dtype=dit_dtype),
+        return hidden_states, timestep, condition
+
+    def forward(self, latent: torch.Tensor, tau: torch.Tensor) -> torch.Tensor:
+        hidden_states, timestep, condition = self._inputs(latent, tau)
+        output = self.dit(hidden_states, timestep=timestep,
                           encoder_hidden_states=condition, return_dict=True).sample
         output = output.to(dtype=latent.dtype)
         if output.shape != latent.shape:
             raise RuntimeError(f"WAN DiT output shape {tuple(output.shape)} != input {tuple(latent.shape)}")
         return output
+
+    def forward_hidden_layers(
+        self,
+        latent: torch.Tensor,
+        tau: torch.Tensor,
+        layers: tuple[int, ...],
+    ) -> tuple[tuple[torch.Tensor, ...], tuple[int, int, int]]:
+        """Run Wan through selected transformer blocks without its RF output head.
+
+        ``layers`` contains zero-based block indices. Returned tensors preserve
+        Wan's patch-token order ``(latent_time, row, column)`` and never pass
+        through ``norm_out`` or the 16-channel ``proj_out``.
+        """
+        layers = tuple(int(index) for index in layers)
+        if not layers or tuple(sorted(set(layers))) != layers:
+            raise ValueError("hidden layers must be a non-empty, sorted, unique tuple")
+        if layers[0] < 0 or layers[-1] >= len(self.dit.blocks):
+            raise ValueError(f"hidden layer outside [0,{len(self.dit.blocks) - 1}]: {layers}")
+
+        hidden_states, timestep, condition = self._inputs(latent, tau)
+        batch, _, frames, height, width = hidden_states.shape
+        patch_t, patch_h, patch_w = map(int, self.dit.config.patch_size)
+        grid_shape = (frames // patch_t, height // patch_h, width // patch_w)
+        rotary_emb = self.dit.rope(hidden_states)
+        hidden_states = self.dit.patch_embedding(hidden_states).flatten(2).transpose(1, 2)
+        _, timestep_proj, condition, _ = self.dit.condition_embedder(timestep, condition)
+        timestep_proj = timestep_proj.unflatten(1, (6, -1))
+
+        selected: list[torch.Tensor] = []
+        wanted = set(layers)
+        for index, block in enumerate(self.dit.blocks):
+            if torch.is_grad_enabled() and self.dit.gradient_checkpointing:
+                hidden_states = self.dit._gradient_checkpointing_func(
+                    block, hidden_states, condition, timestep_proj, rotary_emb
+                )
+            else:
+                hidden_states = block(hidden_states, condition, timestep_proj, rotary_emb)
+            if index in wanted:
+                selected.append(hidden_states)
+            if index == layers[-1]:
+                break
+
+        expected_tokens = grid_shape[0] * grid_shape[1] * grid_shape[2]
+        if len(selected) != len(layers) or any(value.shape != (batch, expected_tokens, hidden_states.shape[-1])
+                                                  for value in selected):
+            raise RuntimeError("Wan hidden-state extraction produced an unexpected shape")
+        return tuple(selected), grid_shape
 
     @property
     def trainable_parameters(self) -> list[nn.Parameter]:

@@ -48,6 +48,55 @@ def unflatten_z4d(memory: torch.Tensor, latent_time: int, height: int, width: in
     return memory.reshape(batch, latent_time, height, width, channels).permute(0, 4, 1, 2, 3).contiguous()
 
 
+@dataclass
+class StructuredZ4D:
+    """Decoder-facing geometry latent with local planes and motion slots.
+
+    ``dense`` is ``[B,C,T,H,W]`` and is aligned to physical source frames.
+    ``motion`` is ``[B,T,M,C]``; a fixed slot index is shared across time.
+    """
+
+    dense: torch.Tensor
+    motion: torch.Tensor
+    include_motion: bool = True
+
+    def validate(self) -> None:
+        if self.dense.ndim != 5:
+            raise ValueError(f"dense Z4D must be [B,C,T,H,W], got {tuple(self.dense.shape)}")
+        if self.motion.ndim != 4:
+            raise ValueError(f"motion Z4D must be [B,T,M,C], got {tuple(self.motion.shape)}")
+        batch, channels, frames, _, _ = self.dense.shape
+        if self.motion.shape[0] != batch or self.motion.shape[1] != frames or self.motion.shape[-1] != channels:
+            raise ValueError("dense and motion Z4D batch/time/channel dimensions differ")
+
+    @property
+    def shape(self) -> torch.Size:
+        """Dense shape compatibility for existing metric and logging code."""
+        return self.dense.shape
+
+    def shapes(self) -> dict[str, list[int]]:
+        self.validate()
+        return {"dense": list(self.dense.shape), "motion": list(self.motion.shape)}
+
+
+def flatten_structured_z4d(z4d: StructuredZ4D) -> tuple[torch.Tensor, torch.Tensor]:
+    """Flatten dense planes and append non-spatial motion tokens."""
+    z4d.validate()
+    dense_memory, dense_coordinates = flatten_z4d(z4d.dense)
+    batch, frames, slots, channels = z4d.motion.shape
+    if not z4d.include_motion or slots == 0:
+        return dense_memory, dense_coordinates
+    motion_memory = z4d.motion.reshape(batch, frames * slots, channels)
+    # Motion slots have no pixel location. Keeping them at the grid center
+    # avoids assigning a false object position while retaining 2D-RoPE for the
+    # dense memory. Physical time and slot identity are embedded in the values.
+    center = dense_coordinates.float().mean(dim=0, keepdim=True)
+    motion_coordinates = center.expand(frames * slots, -1)
+    return torch.cat((dense_memory, motion_memory), dim=1), torch.cat(
+        (dense_coordinates.to(dtype=center.dtype), motion_coordinates), dim=0
+    )
+
+
 class RotaryEmbedding2D(nn.Module):
     """Spatial-only 2D RoPE with half of each head assigned to each axis."""
 
@@ -81,57 +130,18 @@ class RotaryEmbedding2D(nn.Module):
         return torch.cat((self._axis(x_axis, coordinates[:, 0]), self._axis(y_axis, coordinates[:, 1])), dim=-1)
 
 
-class RotaryEmbedding3D(nn.Module):
-    """3D RoPE with 8 rotary dimensions each for time/u/v and 8 passthrough."""
-
-    def __init__(self, head_dim: int, theta: float = 10_000.0):
-        super().__init__()
-        self.head_dim = int(head_dim)
-        self.axis_dim = 8
-        self.rotary_dim = 3 * self.axis_dim
-        if self.head_dim != 32:
-            raise ValueError(f"H004 E3 fixes head_dim=32, got {head_dim}")
-        inv_freq = theta ** (-torch.arange(0, self.axis_dim, 2, dtype=torch.float32) / self.axis_dim)
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
-
-    def _rotate_axis(self, values: torch.Tensor, positions: torch.Tensor, axis: int) -> torch.Tensor:
-        pairs = values.float().unflatten(-1, (self.axis_dim // 2, 2))
-        angles = positions[..., axis, None, None].float() * self.inv_freq
-        cos, sin = angles.cos(), angles.sin()
-        first, second = pairs.unbind(-1)
-        rotated = torch.stack((first * cos - second * sin, first * sin + second * cos), dim=-1)
-        return rotated.flatten(-2).to(dtype=values.dtype)
-
-    def forward(self, values: torch.Tensor, coordinates: torch.Tensor) -> torch.Tensor:
-        if values.shape[-1] != self.head_dim:
-            raise ValueError(f"last dimension {values.shape[-1]} != RoPE head_dim {self.head_dim}")
-        if coordinates.shape[-1] != 3 or coordinates.shape[:-1] != values.shape[:-2]:
-            raise ValueError(
-                f"3D coordinates must match values prefix/N {tuple(values.shape[:-2])}, got {tuple(coordinates.shape)}"
-            )
-        chunks = values.split(self.axis_dim, dim=-1)
-        rotated = [self._rotate_axis(chunks[axis], coordinates, axis) for axis in range(3)]
-        return torch.cat((*rotated, chunks[3]), dim=-1)
-
-
 class DenseCrossAttention(nn.Module):
     """Cross-attention from independent dense pair queries into full Z4D memory."""
 
-    def __init__(self, query_dim: int, memory_dim: int, num_heads: int, rope_mode: str = "2d"):
+    def __init__(self, query_dim: int, memory_dim: int, num_heads: int):
         super().__init__()
         self.query_dim = int(query_dim)
         self.memory_dim = int(memory_dim)
         self.num_heads = int(num_heads)
-        self.rope_mode = str(rope_mode)
         if self.query_dim % self.num_heads:
             raise ValueError("query_dim must be divisible by num_heads")
         self.head_dim = self.query_dim // self.num_heads
-        if self.rope_mode == "2d":
-            self.rope = RotaryEmbedding2D(self.head_dim)
-        elif self.rope_mode == "3d":
-            self.rope = RotaryEmbedding3D(self.head_dim)
-        else:
-            raise ValueError(f"unknown rope_mode={self.rope_mode!r}")
+        self.rope = RotaryEmbedding2D(self.head_dim)
         self.query_norm = nn.LayerNorm(self.query_dim)
         self.memory_norm = nn.LayerNorm(self.memory_dim)
         self.to_q = nn.Linear(self.query_dim, self.query_dim)
@@ -161,12 +171,8 @@ class DenseCrossAttention(nn.Module):
         v = self.to_v(self.memory_norm(memory)).reshape(
             batch, num_memory, self.num_heads, self.head_dim
         ).permute(0, 2, 1, 3)
-        if self.rope_mode == "2d":
-            q = self.rope(q, query_coordinates)
-            k = self.rope(k, memory_coordinates)
-        else:
-            q = self.rope(q.transpose(2, 3), query_coordinates).transpose(2, 3)
-            k = self.rope(k.transpose(1, 2), memory_coordinates).transpose(1, 2)
+        q = self.rope(q, query_coordinates)
+        k = self.rope(k, memory_coordinates)
         # Pair queries are independent. Expanding K/V is only a batch view; no
         # attention or normalization mixes pair indices.
         k = k[:, None].expand(-1, pairs, -1, -1, -1).reshape(
@@ -185,10 +191,9 @@ class DenseCrossAttention(nn.Module):
 class CrossAttentionBlock(nn.Module):
     """Pre-LN cross-attention and Pre-LN FFN, without query self-attention."""
 
-    def __init__(self, query_dim: int, memory_dim: int, num_heads: int, ffn_ratio: float = 4.0,
-                 rope_mode: str = "2d"):
+    def __init__(self, query_dim: int, memory_dim: int, num_heads: int, ffn_ratio: float = 4.0):
         super().__init__()
-        self.cross_attention = DenseCrossAttention(query_dim, memory_dim, num_heads, rope_mode=rope_mode)
+        self.cross_attention = DenseCrossAttention(query_dim, memory_dim, num_heads)
         self.ffn_norm = nn.LayerNorm(query_dim)
         hidden = int(round(query_dim * ffn_ratio))
         self.ffn = nn.Sequential(nn.Linear(query_dim, hidden), nn.GELU(), nn.Linear(hidden, query_dim))
@@ -256,24 +261,17 @@ class DenseUpsampler2D(nn.Module):
                 persistent=False,
             )
 
-    def forward_features(self, feature: torch.Tensor) -> torch.Tensor:
+    def forward(self, feature: torch.Tensor) -> torch.Tensor:
         x = self.projection(feature)
         for block in self.blocks:
             x = F.interpolate(x, scale_factor=2.0, mode="bilinear", align_corners=False)
             x = block(x)
         if self.fullres_coordinates:
             x = torch.cat((x, self.fullres_uv.expand(x.shape[0], -1, -1, -1).to(dtype=x.dtype)), dim=1)
+        x = self.xyz(x)
+        if x.shape[-2:] != self.output_size:
+            raise RuntimeError(f"upsampler output {tuple(x.shape[-2:])} != {self.output_size}")
         return x
-
-    def forward_with_features(self, feature: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        x = self.forward_features(feature)
-        xyz = self.xyz(x)
-        if xyz.shape[-2:] != self.output_size:
-            raise RuntimeError(f"upsampler output {tuple(xyz.shape[-2:])} != {self.output_size}")
-        return xyz, x
-
-    def forward(self, feature: torch.Tensor) -> torch.Tensor:
-        return self.forward_with_features(feature)[0]
 
 
 @dataclass
@@ -281,70 +279,6 @@ class DenseQueryOutput:
     normalized_xyz: torch.Tensor
     low_resolution_feature: torch.Tensor
     coarse_normalized_xyz: torch.Tensor | None = None
-    visibility_logits: torch.Tensor | None = None
-
-
-class FixedChannelWhitening(nn.Module):
-    """Fixed per-channel standardization for a latent covariate-shift control."""
-
-    def __init__(self, channels: int):
-        super().__init__()
-        self.register_buffer("mean", torch.zeros(int(channels)), persistent=True)
-        self.register_buffer("scale", torch.ones(int(channels)), persistent=True)
-
-    def set_stats(self, mean: torch.Tensor, scale: torch.Tensor) -> None:
-        mean = torch.as_tensor(mean, dtype=self.mean.dtype, device=self.mean.device).flatten()
-        scale = torch.as_tensor(scale, dtype=self.scale.dtype, device=self.scale.device).flatten()
-        if mean.shape != self.mean.shape or scale.shape != self.scale.shape:
-            raise ValueError("latent whitening statistics must match the latent channel count")
-        self.mean.copy_(mean)
-        self.scale.copy_(scale.clamp_min(1e-6))
-
-    def forward(self, latent: torch.Tensor) -> torch.Tensor:
-        shape = (1, -1, 1, 1, 1)
-        return (latent - self.mean.to(dtype=latent.dtype).view(shape)) / self.scale.to(dtype=latent.dtype).view(shape)
-
-
-class ChannelAffineAdapter(nn.Module):
-    """Learnable channel-wise affine bridge, initialized as the identity."""
-
-    def __init__(self, channels: int):
-        super().__init__()
-        self.scale = nn.Parameter(torch.ones(int(channels)))
-        self.bias = nn.Parameter(torch.zeros(int(channels)))
-
-    def forward(self, latent: torch.Tensor) -> torch.Tensor:
-        shape = (1, -1, 1, 1, 1)
-        return latent * self.scale.to(dtype=latent.dtype).view(shape) + self.bias.to(dtype=latent.dtype).view(shape)
-
-
-class ConvLatentAdapter(nn.Module):
-    """Small nonlinear 1x1x1 latent remapping for the D3 control."""
-
-    def __init__(self, channels: int):
-        super().__init__()
-        channels = int(channels)
-        self.net = nn.Sequential(
-            nn.Conv3d(channels, channels, 1), nn.GELU(), nn.Conv3d(channels, channels, 1),
-        )
-        nn.init.zeros_(self.net[-1].weight)
-        nn.init.zeros_(self.net[-1].bias)
-
-    def forward(self, latent: torch.Tensor) -> torch.Tensor:
-        return latent + self.net(latent)
-
-
-def make_latent_adapter(kind: str, channels: int) -> nn.Module:
-    kind = str(kind).lower()
-    if kind in {"none", "identity"}:
-        return nn.Identity()
-    if kind in {"fixed_whiten", "whiten"}:
-        return FixedChannelWhitening(channels)
-    if kind in {"channel_affine", "affine"}:
-        return ChannelAffineAdapter(channels)
-    if kind in {"conv1x1", "nonlinear"}:
-        return ConvLatentAdapter(channels)
-    raise ValueError(f"unknown latent_adapter={kind!r}")
 
 
 class DenseQueryDecoder(nn.Module):
@@ -355,32 +289,32 @@ class DenseQueryDecoder(nn.Module):
                  num_heads: int = 8, upsample_channels: Sequence[int] = (256, 128, 64, 32),
                  output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False,
                  fullres_coordinates: bool = False, query_grid_size: int | None = None,
-                 rope_mode: str = "2d", visibility_head: bool = False,
-                 latent_adapter: str = "none"):
+                 structured_motion_slots: int = 0, structured_local_queries: bool = False,
+                 structured_pair_motion_queries: bool = False,
+                 structured_pair_motion_zero_init: bool = False):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
         self.latent_shape = (channels, latent_time, latent_height, latent_width)
         self.query_dim = int(query_dim)
-        self.rope_mode = str(rope_mode)
-        self.visibility_head_enabled = bool(visibility_head)
         self.source_embedding = nn.Embedding(self.num_frames, embedding_dim)
         self.target_embedding = nn.Embedding(self.num_frames, embedding_dim)
         self.query_mlp = nn.Sequential(
             nn.Linear(2 * embedding_dim, query_dim), nn.SiLU(), nn.Linear(query_dim, query_dim)
         )
-        num_layers = int(num_layers)
-        if num_layers < 1:
-            raise ValueError("decoder requires at least one cross-attention block")
-        # Construct the two common screening blocks before every variant-only
-        # module.  E6's extra blocks are appended only after the common
-        # upsampler is initialized, so overlapping B0/E3/E5/E6 weights are
-        # bit-identical under the shared decoder seed.
-        common_layers = min(num_layers, 2)
         self.blocks = nn.ModuleList([
-            CrossAttentionBlock(query_dim, channels, num_heads, rope_mode=self.rope_mode)
-            for _ in range(common_layers)
+            CrossAttentionBlock(query_dim, channels, num_heads) for _ in range(int(num_layers))
         ])
+        self.structured_motion_slots = int(structured_motion_slots)
+        self.structured_local_queries = bool(structured_local_queries)
+        self.structured_pair_motion_queries = bool(structured_pair_motion_queries)
+        self.structured_pair_motion_zero_init = bool(structured_pair_motion_zero_init)
+        if self.structured_motion_slots < 0:
+            raise ValueError("structured motion slot count cannot be negative")
+        if self.structured_pair_motion_queries and self.structured_motion_slots == 0:
+            raise ValueError("pair-conditioned motion queries require motion slots")
+        self.source_local_projection = nn.Conv2d(channels, query_dim, 1) \
+            if self.structured_local_queries else None
         query_grid_size = int(query_grid_size or latent_height)
         if query_grid_size < latent_height:
             raise ValueError("query_grid_size cannot be smaller than the Wan latent grid")
@@ -396,23 +330,15 @@ class DenseQueryDecoder(nn.Module):
             fullres_coordinates=fullres_coordinates,
         )
         self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
-        self.visibility_head = nn.Conv2d(int(upsample_channels[-1]), 1, 3, padding=1) \
-            if self.visibility_head_enabled else None
-        if num_layers > common_layers:
-            self.blocks.extend([
-                CrossAttentionBlock(query_dim, channels, num_heads, rope_mode=self.rope_mode)
-                for _ in range(num_layers - common_layers)
-            ])
-        # Construct latent adapters last so B0/E3/E5/E6 common decoder weights
-        # remain bit-identical under decoder_seed=424242.  D2 is identity at
-        # initialization; D1 receives fixed statistics before training starts.
-        self.latent_adapter_kind = str(latent_adapter).lower()
-        self.latent_adapter = make_latent_adapter(self.latent_adapter_kind, channels)
-
-    def set_latent_stats(self, mean: torch.Tensor, scale: torch.Tensor) -> None:
-        if not hasattr(self.latent_adapter, "set_stats"):
-            raise ValueError("latent statistics are only supported by fixed_whiten")
-        self.latent_adapter.set_stats(mean, scale)
+        # Constructed after all baseline modules so enabling this ablation does
+        # not shift the seeded initialization of any shared decoder parameter.
+        self.motion_pair_projection = nn.Sequential(
+            nn.LayerNorm(3 * channels), nn.Linear(3 * channels, query_dim),
+            nn.SiLU(), nn.Linear(query_dim, query_dim),
+        ) if self.structured_pair_motion_queries else None
+        if self.motion_pair_projection is not None and self.structured_pair_motion_zero_init:
+            nn.init.zeros_(self.motion_pair_projection[-1].weight)
+            nn.init.zeros_(self.motion_pair_projection[-1].bias)
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         source = torch.as_tensor(source, dtype=torch.long, device=self.source_embedding.weight.device)
@@ -429,54 +355,84 @@ class DenseQueryDecoder(nn.Module):
             raise ValueError("target index outside clip")
         return self.query_mlp(torch.cat((self.source_embedding(source), self.target_embedding(target)), dim=-1))
 
-    def forward(self, z4d: torch.Tensor, source: torch.Tensor, target: torch.Tensor) -> DenseQueryOutput:
-        if z4d.ndim != 5 or tuple(z4d.shape[1:]) != self.latent_shape:
-            raise ValueError(f"Z4D must be [B,{','.join(map(str, self.latent_shape))}], got {tuple(z4d.shape)}")
-        z4d = self.latent_adapter(z4d)
+    def _structured_source_query(self, z4d: StructuredZ4D, source: torch.Tensor, pairs: int) -> torch.Tensor:
+        if self.source_local_projection is None:
+            raise RuntimeError("structured local projection was not constructed")
+        batch, channels, frames, height, width = z4d.dense.shape
+        source = torch.as_tensor(source, device=z4d.dense.device, dtype=torch.long)
+        if source.ndim == 1:
+            source = source[None]
+        if source.shape[0] == 1:
+            source = source.expand(batch, -1)
+        if source.shape != (batch, pairs) or (source < 0).any() or (source >= frames).any():
+            raise ValueError("structured source indices do not match dense Z4D")
+        by_time = z4d.dense.permute(0, 2, 1, 3, 4)
+        local = by_time[torch.arange(batch, device=z4d.dense.device)[:, None], source]
+        local = self.source_local_projection(local.reshape(batch * pairs, channels, height, width))
+        if local.shape[-2:] != self.query_grid_shape:
+            local = F.interpolate(local, size=self.query_grid_shape, mode="bilinear", align_corners=False)
+        return local.flatten(2).transpose(1, 2).reshape(batch, pairs, -1, self.query_dim)
+
+    def _structured_pair_motion_query(
+        self, z4d: StructuredZ4D, source: torch.Tensor, target: torch.Tensor, pairs: int,
+    ) -> torch.Tensor:
+        if self.motion_pair_projection is None:
+            raise RuntimeError("pair-conditioned motion projection was not constructed")
+        batch, frames, slots, channels = z4d.motion.shape
+        if slots == 0:
+            raise ValueError("pair-conditioned motion query received no slots")
+        source = torch.as_tensor(source, device=z4d.motion.device, dtype=torch.long)
+        target = torch.as_tensor(target, device=z4d.motion.device, dtype=torch.long)
+        if source.ndim == 1:
+            source, target = source[None], target[None]
+        if source.shape[0] == 1:
+            source, target = source.expand(batch, -1), target.expand(batch, -1)
+        if source.shape != (batch, pairs) or target.shape != (batch, pairs):
+            raise ValueError("structured pair indices do not match motion Z4D")
+        batch_indices = torch.arange(batch, device=z4d.motion.device)[:, None]
+        source_motion = z4d.motion[batch_indices, source].mean(dim=2)
+        target_motion = z4d.motion[batch_indices, target].mean(dim=2)
+        pair_motion = torch.cat(
+            (source_motion, target_motion, target_motion - source_motion), dim=-1
+        )
+        return self.motion_pair_projection(pair_motion)
+
+    def forward(self, z4d: torch.Tensor | StructuredZ4D, source: torch.Tensor,
+                target: torch.Tensor) -> DenseQueryOutput:
+        structured = isinstance(z4d, StructuredZ4D)
+        dense = z4d.dense if structured else z4d
+        if dense.ndim != 5 or tuple(dense.shape[1:]) != self.latent_shape:
+            raise ValueError(f"Z4D dense tensor must be [B,{','.join(map(str, self.latent_shape))}], got {tuple(dense.shape)}")
+        if structured:
+            z4d.validate()
+            if z4d.motion.shape[2] != self.structured_motion_slots:
+                raise ValueError(
+                    f"motion slots {z4d.motion.shape[2]} != decoder slots {self.structured_motion_slots}"
+                )
         content = self.query_content(source, target)
-        if content.shape[0] not in (1, z4d.shape[0]):
+        if content.shape[0] not in (1, dense.shape[0]):
             raise ValueError("query batch does not match Z4D batch")
-        content = content.expand(z4d.shape[0], -1, -1)
+        content = content.expand(dense.shape[0], -1, -1)
         num_query = self.query_coordinates.shape[0]
         query = content[:, :, None, :].expand(-1, -1, num_query, -1)
-        memory, memory_spatial_coordinates = flatten_z4d(z4d)
-        if self.rope_mode == "3d":
-            latent_time = self.latent_shape[1]
-            spatial_tokens = self.latent_shape[2] * self.latent_shape[3]
-            memory_time = torch.arange(latent_time, device=z4d.device, dtype=z4d.dtype) \
-                .repeat_interleave(spatial_tokens)
-            memory_coordinates = torch.cat(
-                (memory_time[:, None], memory_spatial_coordinates.to(dtype=z4d.dtype)), dim=-1
-            )[None].expand(z4d.shape[0], -1, -1)
-            target_for_coordinates = torch.as_tensor(target, device=z4d.device, dtype=z4d.dtype)
-            if target_for_coordinates.ndim == 1:
-                target_for_coordinates = target_for_coordinates[None]
-            if target_for_coordinates.shape[0] == 1 and z4d.shape[0] != 1:
-                target_for_coordinates = target_for_coordinates.expand(z4d.shape[0], -1)
-            query_spatial = self.query_coordinates.to(device=z4d.device, dtype=z4d.dtype)
-            query_spatial = query_spatial[None, None].expand(z4d.shape[0], target_for_coordinates.shape[1], -1, -1)
-            query_time = target_for_coordinates[..., None, None] * ((latent_time - 1) / max(self.num_frames - 1, 1))
-            query_time = query_time.expand(-1, -1, query_spatial.shape[2], 1)
-            query_coordinates = torch.cat((query_time, query_spatial), dim=-1)
-        else:
-            memory_coordinates = memory_spatial_coordinates
-            query_coordinates = self.query_coordinates
+        if structured and self.structured_local_queries:
+            query = query + self._structured_source_query(z4d, source, content.shape[1])
+        if structured and self.structured_pair_motion_queries:
+            pair_motion = self._structured_pair_motion_query(
+                z4d, source, target, content.shape[1]
+            )
+            query = query + pair_motion[:, :, None, :]
+        memory, memory_coordinates = flatten_structured_z4d(z4d) if structured else flatten_z4d(z4d)
         for block in self.blocks:
-            query = block(query, memory, query_coordinates, memory_coordinates)
+            query = block(query, memory, self.query_coordinates, memory_coordinates)
         batch, pairs, _, _ = query.shape
         query_height, query_width = self.query_grid_shape
         feature = query.reshape(batch * pairs, query_height, query_width, self.query_dim).permute(0, 3, 1, 2)
         coarse = self.coarse_head(feature).reshape(batch, pairs, 3, query_height, query_width) \
             if self.coarse_head is not None else None
-        xyz, fullres_feature = self.upsampler.forward_with_features(feature)
-        xyz = xyz.reshape(batch, pairs, 3, *self.upsampler.output_size)
-        visibility_logits = None
-        if self.visibility_head is not None:
-            visibility_logits = self.visibility_head(fullres_feature).reshape(
-                batch, pairs, 1, *self.upsampler.output_size
-            )
+        xyz = self.upsampler(feature).reshape(batch, pairs, 3, *self.upsampler.output_size)
         feature = feature.reshape(batch, pairs, self.query_dim, query_height, query_width)
-        return DenseQueryOutput(xyz, feature, coarse, visibility_logits)
+        return DenseQueryOutput(xyz, feature, coarse)
 
 
 class CleanLatentBackbone(nn.Module):
@@ -513,6 +469,202 @@ class FeedForwardWanBackbone(nn.Module):
         return z4d
 
 
+class ResidualBlock3D(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.norm1 = nn.GroupNorm(_group_count(channels), channels)
+        self.conv1 = nn.Conv3d(channels, channels, 3, padding=1)
+        self.norm2 = nn.GroupNorm(_group_count(channels), channels)
+        self.conv2 = nn.Conv3d(channels, channels, 3, padding=1)
+
+    def forward(self, value: torch.Tensor) -> torch.Tensor:
+        residual = value
+        value = self.conv1(F.silu(self.norm1(value)))
+        value = self.conv2(F.silu(self.norm2(value)))
+        return value + residual
+
+
+def _temporal_interpolation_logits(output_frames: int, native_frames: int) -> torch.Tensor:
+    """Logits initialized to linear interpolation over Wan's six causal times."""
+    native_positions = torch.linspace(0, output_frames - 1, native_frames)
+    weights = torch.zeros(output_frames, native_frames)
+    for frame in range(output_frames):
+        right = int(torch.searchsorted(native_positions, torch.tensor(float(frame))).clamp(max=native_frames - 1))
+        left = max(0, right - 1)
+        if left == right:
+            weights[frame, left] = 1.0
+        else:
+            alpha = (frame - float(native_positions[left])) / float(native_positions[right] - native_positions[left])
+            weights[frame, left] = 1.0 - alpha
+            weights[frame, right] = alpha
+    return weights.clamp_min(1e-4).log()
+
+
+class WanHiddenGeometryBackbone(nn.Module):
+    """Selected pre-output Wan states -> frame-aligned dense planes and motion slots."""
+
+    raw_velocity_convention = "not_used"
+    z4d_transform = "selected_hidden_states_to_structured_geometry"
+
+    def __init__(self, mapping: WanDiTMapping, hidden_layers: Sequence[int] = (5, 11, 17, 23, 29),
+                 geometry_dim: int = 128, num_frames: int = 21, spatial_size: int = 16,
+                 motion_slots: int = 16, num_heads: int = 8, use_clean_skip: bool = True,
+                 layer_gate_temperature: float = 1.0, layer_gate_top_k: int | None = None,
+                 layer_gate_init_std: float = 0.0, layer_gate_seed: int = 0):
+        super().__init__()
+        self.mapping = mapping
+        self.hidden_layers = tuple(int(index) for index in hidden_layers)
+        self.geometry_dim = int(geometry_dim)
+        self.num_frames = int(num_frames)
+        self.spatial_size = int(spatial_size)
+        self.motion_slots = int(motion_slots)
+        self.use_clean_skip = bool(use_clean_skip)
+        self.layer_gate_temperature = float(layer_gate_temperature)
+        self.layer_gate_top_k = len(self.hidden_layers) if layer_gate_top_k is None else int(layer_gate_top_k)
+        self.layer_gate_init_std = float(layer_gate_init_std)
+        if self.geometry_dim % int(num_heads):
+            raise ValueError("geometry_dim must be divisible by geometry attention heads")
+        if self.layer_gate_temperature <= 0:
+            raise ValueError("layer gate temperature must be positive")
+        if not 1 <= self.layer_gate_top_k <= len(self.hidden_layers):
+            raise ValueError("layer gate top-k must be within the selected hidden layers")
+        if self.layer_gate_init_std < 0:
+            raise ValueError("layer gate initialization std must be non-negative")
+        hidden_dim = int(mapping.dit.config.num_attention_heads * mapping.dit.config.attention_head_dim)
+        native_frames = WAN_LATENT_SHAPE[1] // int(mapping.dit.config.patch_size[0])
+        self.native_frames = native_frames
+        self.layer_projections = nn.ModuleList([
+            nn.Sequential(nn.LayerNorm(hidden_dim), nn.Linear(hidden_dim, self.geometry_dim))
+            for _ in self.hidden_layers
+        ])
+        initial_layer_logits = torch.zeros(len(self.hidden_layers))
+        if self.layer_gate_init_std:
+            generator = torch.Generator(device="cpu")
+            generator.manual_seed(int(layer_gate_seed))
+            initial_layer_logits.normal_(std=self.layer_gate_init_std, generator=generator)
+        self.layer_logits = nn.Parameter(initial_layer_logits)
+        self.clean_projection = nn.Conv3d(WAN_LATENT_SHAPE[0], self.geometry_dim, 1) \
+            if self.use_clean_skip else None
+        self.temporal_logits = nn.Parameter(_temporal_interpolation_logits(self.num_frames, native_frames))
+        self.dense_frame_embedding = nn.Parameter(torch.randn(self.num_frames, self.geometry_dim) / math.sqrt(self.geometry_dim))
+        self.native_frame_embedding = nn.Parameter(torch.randn(native_frames, self.geometry_dim) / math.sqrt(self.geometry_dim))
+        self.dense_refine = ResidualBlock3D(self.geometry_dim)
+        if self.motion_slots < 0:
+            raise ValueError("motion_slots cannot be negative")
+        if self.motion_slots:
+            self.motion_slot_embedding = nn.Parameter(
+                torch.randn(self.motion_slots, self.geometry_dim) / math.sqrt(self.geometry_dim)
+            )
+            self.motion_frame_embedding = nn.Parameter(
+                torch.randn(self.num_frames, self.geometry_dim) / math.sqrt(self.geometry_dim)
+            )
+            self.motion_attention = nn.MultiheadAttention(self.geometry_dim, int(num_heads), batch_first=True)
+            self.motion_norm = nn.LayerNorm(self.geometry_dim)
+        else:
+            # A true dense-only control should not retain unused slot parameters.
+            self.register_parameter("motion_slot_embedding", None)
+            self.register_parameter("motion_frame_embedding", None)
+            self.motion_attention = None
+            self.motion_norm = None
+
+        # These modules only define Wan's RF output parameterization and are
+        # deliberately outside the H005 forward graph.
+        for name in ("norm_out", "proj_out"):
+            for parameter in getattr(mapping.dit, name).parameters():
+                parameter.requires_grad_(False)
+        mapping.dit.scale_shift_table.requires_grad_(False)
+
+    @property
+    def dit(self) -> nn.Module:
+        return self.mapping.dit
+
+    @property
+    def adapter_parameters(self) -> list[nn.Parameter]:
+        mapping_ids = {id(parameter) for parameter in self.mapping.parameters()}
+        return [parameter for parameter in self.parameters() if id(parameter) not in mapping_ids]
+
+    @property
+    def bypassed_parameters(self) -> list[nn.Parameter]:
+        return [
+            *self.mapping.dit.norm_out.parameters(),
+            *self.mapping.dit.proj_out.parameters(),
+            self.mapping.dit.scale_shift_table,
+        ]
+
+    def soft_layer_weights(self) -> torch.Tensor:
+        """Differentiable dense gates used for entropy regularization and selection."""
+        return (self.layer_logits.float() / self.layer_gate_temperature).softmax(dim=0)
+
+    def layer_weights(self) -> torch.Tensor:
+        """Return dense softmax or straight-through top-k fusion gates."""
+        soft = self.soft_layer_weights()
+        if self.layer_gate_top_k == len(self.hidden_layers):
+            return soft
+        indices = soft.topk(self.layer_gate_top_k).indices
+        mask = torch.zeros_like(soft).scatter_(0, indices, 1.0)
+        hard = soft * mask
+        hard = hard / hard.sum().clamp_min(1e-12)
+        if self.training:
+            return hard.detach() - soft.detach() + soft
+        return hard
+
+    def layer_gate_entropy(self) -> torch.Tensor:
+        weights = self.soft_layer_weights()
+        return -(weights * weights.clamp_min(1e-12).log()).sum()
+
+    def forward(self, clean_video_latent: torch.Tensor) -> StructuredZ4D:
+        flow_time = torch.zeros(clean_video_latent.shape[0], device=clean_video_latent.device,
+                                dtype=clean_video_latent.dtype)
+        hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
+            clean_video_latent, flow_time, self.hidden_layers
+        )
+        if grid_shape[0] != self.native_frames:
+            raise RuntimeError(f"Wan hidden temporal grid {grid_shape[0]} != {self.native_frames}")
+        projected = torch.stack([
+            projection(hidden) for projection, hidden in zip(self.layer_projections, hidden_layers)
+        ], dim=0)
+        weights = self.layer_weights().to(dtype=projected.dtype).reshape(-1, 1, 1, 1)
+        fused = (projected * weights).sum(dim=0)
+        batch = fused.shape[0]
+        native_time, native_height, native_width = grid_shape
+
+        native_tokens = fused.reshape(batch, native_time, native_height, native_width, self.geometry_dim)
+        native_tokens = native_tokens + self.native_frame_embedding[None, :, None, None, :]
+        if self.motion_slots:
+            motion_query = (
+                self.motion_frame_embedding[:, None, :] + self.motion_slot_embedding[None, :, :]
+            ).reshape(1, self.num_frames * self.motion_slots, self.geometry_dim).expand(batch, -1, -1)
+            motion, _ = self.motion_attention(
+                motion_query, native_tokens.reshape(batch, -1, self.geometry_dim),
+                native_tokens.reshape(batch, -1, self.geometry_dim), need_weights=False,
+            )
+            motion = self.motion_norm(motion + motion_query).reshape(
+                batch, self.num_frames, self.motion_slots, self.geometry_dim
+            )
+        else:
+            motion = fused.new_empty(batch, self.num_frames, 0, self.geometry_dim)
+
+        dense_native = fused.reshape(
+            batch, native_time, native_height, native_width, self.geometry_dim
+        ).permute(0, 4, 1, 2, 3)
+        dense_native = F.interpolate(
+            dense_native, size=(native_time, self.spatial_size, self.spatial_size),
+            mode="trilinear", align_corners=False,
+        )
+        if self.clean_projection is not None:
+            clean = self.clean_projection(clean_video_latent.to(dtype=dense_native.dtype))
+            if clean.shape[-3:] != dense_native.shape[-3:]:
+                clean = F.interpolate(clean, size=dense_native.shape[-3:], mode="trilinear", align_corners=False)
+            dense_native = dense_native + clean
+        temporal_weights = self.temporal_logits.softmax(dim=-1).to(dtype=dense_native.dtype)
+        dense = torch.einsum("qn,bcnhw->bcqhw", temporal_weights, dense_native)
+        dense = dense + self.dense_frame_embedding.T[None, :, :, None, None].to(dtype=dense.dtype)
+        dense = self.dense_refine(dense)
+        result = StructuredZ4D(dense=dense, motion=motion)
+        result.validate()
+        return result
+
+
 class DenseQueryWanModel(nn.Module):
     def __init__(self, backbone: nn.Module, decoder: DenseQueryDecoder):
         super().__init__()
@@ -520,7 +672,7 @@ class DenseQueryWanModel(nn.Module):
         self.decoder = decoder
 
     def forward(self, clean_video_latent: torch.Tensor, source: torch.Tensor,
-                target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, DenseQueryOutput]:
+                target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | StructuredZ4D, DenseQueryOutput]:
         z4d = self.backbone(clean_video_latent)
         output = self.decoder(z4d, source, target)
         return output.normalized_xyz, z4d, output
@@ -529,11 +681,23 @@ class DenseQueryWanModel(nn.Module):
         mode = str(mode)
         for parameter in self.parameters():
             parameter.requires_grad_(True)
+        bypassed = list(getattr(self.backbone, "bypassed_parameters", []))
+        for parameter in bypassed:
+            parameter.requires_grad_(False)
         if mode == "full":
             return
         if mode == "decoder_only":
             for parameter in self.backbone.parameters():
                 parameter.requires_grad_(False)
+            return
+        if mode == "geometry_adapter":
+            adapter = list(getattr(self.backbone, "adapter_parameters", []))
+            if not adapter:
+                raise ValueError("geometry_adapter mode requires a structured geometry backbone")
+            for parameter in self.backbone.parameters():
+                parameter.requires_grad_(False)
+            for parameter in adapter:
+                parameter.requires_grad_(True)
             return
         if mode == "last_blocks":
             for parameter in self.backbone.parameters():
@@ -541,40 +705,21 @@ class DenseQueryWanModel(nn.Module):
             dit = getattr(self.backbone, "dit", None)
             if dit is None or not hasattr(dit, "blocks"):
                 raise ValueError("last_blocks mode requires a Wan-like backbone.dit.blocks")
+            for parameter in getattr(self.backbone, "adapter_parameters", []):
+                parameter.requires_grad_(True)
             for block in dit.blocks[-int(last_blocks):]:
                 for parameter in block.parameters():
                     parameter.requires_grad_(True)
-            for name in ("norm_out", "proj_out", "scale_shift_table"):
-                module_or_parameter = getattr(dit, name, None)
-                if isinstance(module_or_parameter, nn.Parameter):
-                    module_or_parameter.requires_grad_(True)
-                elif isinstance(module_or_parameter, nn.Module):
-                    for parameter in module_or_parameter.parameters():
-                        parameter.requires_grad_(True)
+            if not bypassed:
+                for name in ("norm_out", "proj_out", "scale_shift_table"):
+                    module_or_parameter = getattr(dit, name, None)
+                    if isinstance(module_or_parameter, nn.Parameter):
+                        module_or_parameter.requires_grad_(True)
+                    elif isinstance(module_or_parameter, nn.Module):
+                        for parameter in module_or_parameter.parameters():
+                            parameter.requires_grad_(True)
             return
         raise ValueError(f"unknown trainable_mode={mode!r}")
-
-
-def masked_visibility_bce(logits: torch.Tensor, target_visible: torch.Tensor,
-                          validity: torch.Tensor, source: torch.Tensor, target: torch.Tensor,
-                          pos_weight: float | torch.Tensor) -> torch.Tensor:
-    """Off-diagonal M-target BCE masked only by A; predictions never affect XYZ."""
-    if logits.ndim == 5 and logits.shape[2] == 1:
-        logits = logits[:, :, 0]
-    if logits.ndim != 4 or target_visible.shape != logits.shape or validity.shape != logits.shape:
-        raise ValueError("visibility tensors must all be [B,K,H,W]")
-    if source.shape != target.shape or source.shape != logits.shape[:2]:
-        raise ValueError("source/target must be [B,K]")
-    off_diagonal = (source != target).to(device=logits.device)[:, :, None, None]
-    mask = validity.to(device=logits.device, dtype=logits.dtype) * off_diagonal
-    if not bool(mask.any()):
-        return logits.sum() * 0.0
-    weight = torch.as_tensor(pos_weight, device=logits.device, dtype=logits.dtype)
-    loss = F.binary_cross_entropy_with_logits(
-        logits, target_visible.to(device=logits.device, dtype=logits.dtype),
-        pos_weight=weight, reduction="none",
-    )
-    return (loss * mask).sum() / mask.sum().clamp_min(1.0)
 
 
 def masked_pair_smooth_l1(prediction: torch.Tensor, target: torch.Tensor,

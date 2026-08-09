@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tiny/bounded end-to-end H004 training with only masked XYZ loss."""
+"""Tiny/bounded end-to-end dense 4D training with masked XYZ loss."""
 from __future__ import annotations
 
 import argparse
@@ -169,6 +169,7 @@ def grouped_eval(model, latent, sample, source, target, stats, cache, device, dt
             prediction_float, target_tensor_xyz.float(), valid_tensor
         )),
         "z4d_shape": list(z4d.shape),
+        "z4d_motion_shape": list(z4d.motion.shape) if hasattr(z4d, "motion") else None,
     }
     for name, select in groups.items():
         mask = valid[select]
@@ -183,14 +184,14 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--resume", help="load model weights from a prior H004 checkpoint")
+    parser.add_argument("--resume", help="load model weights from a prior compatible checkpoint")
     args = parser.parse_args()
     config = yaml.safe_load(pathlib.Path(args.config).read_text())
     missing = sorted(REQUIRED_CONFIG - set(config))
     if missing:
         raise ValueError(f"missing required config keys: {missing}")
     if int(config["image_size"]) != 128 or int(config["clip_length"]) != 21:
-        raise ValueError("H004 v1 is intentionally fixed to 21 frames and 128x128")
+        raise ValueError("dense 4D training is intentionally fixed to 21 frames and 128x128")
 
     seed = int(config["seed"])
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
@@ -255,8 +256,12 @@ def main() -> None:
     ) if fixed is not None else (None, None)
     optimizer.zero_grad(set_to_none=True)
     losses: list[float] = []
+    total_losses: list[float] = []
+    gate_entropies: list[float] = []
     epe_values: list[float] = []
     backbone_gradient = False
+    wan_gradient = False
+    geometry_adapter_gradient = False
     decoder_gradient = False
     start_time = time.time()
     model.train()
@@ -300,18 +305,35 @@ def main() -> None:
 
         with torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
             prediction, z4d, _ = model(clean, source_tensor, target_tensor)
-            loss = masked_pair_smooth_l1(
+            geometry_loss = masked_pair_smooth_l1(
                 prediction.float(), target_xyz.float(), valid_tensor,
                 beta=float(config.get("smooth_l1_beta", 0.05)),
             )
+            entropy_fn = getattr(model.backbone, "layer_gate_entropy", None)
+            gate_entropy = entropy_fn() if entropy_fn is not None else geometry_loss.new_zeros(())
+            loss = geometry_loss + float(config.get("layer_gate_entropy_weight", 0.0)) * gate_entropy
         (loss / accumulation).backward()
         if step == 0:
             backbone_gradient = any(parameter.grad is not None and torch.isfinite(parameter.grad).all()
                                     for parameter in model.backbone.parameters() if parameter.requires_grad)
+            mapping = getattr(model.backbone, "mapping", None)
+            wan_gradient = mapping is not None and any(
+                parameter.grad is not None and torch.isfinite(parameter.grad).all()
+                for parameter in mapping.parameters() if parameter.requires_grad
+            )
+            geometry_adapter_gradient = any(
+                parameter.grad is not None and torch.isfinite(parameter.grad).all()
+                for parameter in getattr(model.backbone, "adapter_parameters", []) if parameter.requires_grad
+            )
             decoder_gradient = any(parameter.grad is not None and torch.isfinite(parameter.grad).all()
                                    for parameter in model.decoder.parameters() if parameter.requires_grad)
-            if str(config.get("trainable_mode", "full")) == "full" and not backbone_gradient:
+            trainable_mode = str(config.get("trainable_mode", "full"))
+            if trainable_mode == "full" and mapping is not None and not wan_gradient:
                 raise RuntimeError("XYZ loss did not reach a trainable Wan DiT parameter")
+            if trainable_mode == "full" and mapping is None and not backbone_gradient:
+                raise RuntimeError("XYZ loss did not reach the trainable backbone")
+            if trainable_mode == "geometry_adapter" and not geometry_adapter_gradient:
+                raise RuntimeError("XYZ loss did not reach the geometry adapter")
             if not decoder_gradient:
                 raise RuntimeError("XYZ loss did not reach decoder parameters")
         if (step + 1) % accumulation == 0 or step + 1 == steps:
@@ -321,8 +343,12 @@ def main() -> None:
             )
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
 
-        raw_loss = float(loss.detach())
+        raw_loss = float(geometry_loss.detach())
+        total_loss = float(loss.detach())
+        gate_entropy_value = float(gate_entropy.detach())
         losses.append(raw_loss)
+        total_losses.append(total_loss)
+        gate_entropies.append(gate_entropy_value)
         prediction_metric = (
             prediction.detach().float().cpu().numpy() * stats.scale[None, None, :, None, None]
             + stats.mean[None, None, :, None, None]
@@ -333,7 +359,8 @@ def main() -> None:
         mean_epe = float(epe[valid].mean())
         epe_values.append(mean_epe)
         print(json.dumps({
-            "step": step + 1, "loss": raw_loss, "train_epe": mean_epe,
+            "step": step + 1, "loss": raw_loss, "total_loss": total_loss,
+            "layer_gate_entropy": gate_entropy_value, "train_epe": mean_epe,
             "pairs": np.stack((source_rows[0], target_rows[0]), axis=-1).tolist(),
             "z4d_shape": list(z4d.shape),
         }), flush=True)
@@ -341,10 +368,15 @@ def main() -> None:
         if wandb_run is not None and (step == 0 or (step + 1) % wandb_log_every == 0):
             wandb_run.log({
                 "train/loss": raw_loss,
+                "train/total_loss": total_loss,
+                "train/layer_gate_entropy": gate_entropy_value,
                 "train/epe_m": mean_epe,
                 "train/clips_seen": (global_step + 1) * batch_size,
                 "train/passes": (global_step + 1) * batch_size / len(samples),
-                "train/backbone_lr": float(groups[0]["lr"]),
+                "train/backbone_lr": float(next(
+                    (group["lr"] for group in groups if group["name"] == "wan_backbone"),
+                    next(group["lr"] for group in groups if group["name"] in {"geometry_adapter", "dense_decoder"}),
+                )),
                 "system/peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
             }, step=global_step + 1)
 
@@ -366,7 +398,8 @@ def main() -> None:
         readout = str(config.get("backbone_readout", "wan_velocity"))
         backbone_payload_ok = (
             readout == "clean_latent"
-            or "backbone.mapping.dit.proj_out.weight" in loaded["model"]
+            or (readout == "wan_hidden_structured" and "backbone.temporal_logits" in loaded["model"])
+            or (readout == "wan_velocity" and "backbone.mapping.dit.proj_out.weight" in loaded["model"])
         )
         checkpoint_load_ok = (
             loaded["extra"]["steps"] == steps
@@ -385,10 +418,14 @@ def main() -> None:
         "trainable_parameters": optimizer_trainable_count(groups),
         "initial_train_loss": losses[0], "final_train_loss": losses[-1],
         "train_loss_ratio": losses[-1] / losses[0],
+        "initial_total_loss": total_losses[0], "final_total_loss": total_losses[-1],
+        "initial_layer_gate_entropy": gate_entropies[0], "final_layer_gate_entropy": gate_entropies[-1],
+        "final_layer_weights": getattr(model.backbone, "soft_layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
         "initial_train_epe": epe_values[0], "final_train_epe": epe_values[-1],
         "initial_evaluation": initial_eval, "final_evaluation": final_eval,
         "evaluation_loss_ratio": final_eval["normalized_smooth_l1"] / initial_eval["normalized_smooth_l1"],
-        "backbone_gradient": backbone_gradient, "decoder_gradient": decoder_gradient,
+        "backbone_gradient": backbone_gradient, "wan_gradient": wan_gradient,
+        "geometry_adapter_gradient": geometry_adapter_gradient, "decoder_gradient": decoder_gradient,
         "clean_latent_shape": list(clean_latents[0].shape), "z4d_shape": final_eval["z4d_shape"],
         "coordinate_mean": stats.mean.tolist(), "coordinate_scale": stats.scale.tolist(),
         "elapsed_seconds": time.time() - start_time,
@@ -405,6 +442,8 @@ def main() -> None:
         }
         final_scalars.update({
             "final/train_loss": losses[-1],
+            "final/total_loss": total_losses[-1],
+            "final/layer_gate_entropy": gate_entropies[-1],
             "final/train_epe_m": epe_values[-1],
             "final/elapsed_seconds": result["elapsed_seconds"],
             "final/peak_cuda_memory_gib": result["peak_cuda_memory_gib"],

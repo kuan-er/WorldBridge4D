@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import numpy as np
 import torch
 from torch import nn
@@ -5,16 +7,14 @@ import torch.nn.functional as F
 
 from worldbridge.data import MOViSample
 from worldbridge.dense4d import (
-    ChannelAffineAdapter, CleanLatentBackbone, ConvLatentAdapter, DenseQueryDecoder,
-    DenseQueryWanModel, FeedForwardWanBackbone, FixedChannelWhitening,
-    RotaryEmbedding2D, RotaryEmbedding3D, flatten_z4d, masked_pair_smooth_l1,
-    masked_visibility_bce, unflatten_z4d, verify_flow_velocity_algebra,
+    CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone, RotaryEmbedding2D,
+    StructuredZ4D, WanHiddenGeometryBackbone, flatten_structured_z4d, flatten_z4d,
+    masked_pair_smooth_l1, unflatten_z4d, verify_flow_velocity_algebra,
 )
 from worldbridge.dense4d_data import CoordinateStats, dense_pair_targets, sample_dense_pairs
-from worldbridge.dense4d_prefetch import make_source_centric_plan, source_centric_loss_weights
 from worldbridge.geometry import GeometryBuilder
 from worldbridge.pointmap import build_dynamic_pointmap
-from worldbridge.wan import WAN_LATENT_SHAPE, rgb_to_wan_input
+from worldbridge.wan import WAN_LATENT_SHAPE, WanDiTMapping, rgb_to_wan_input
 
 
 def synthetic_sample(background=True):
@@ -108,6 +108,36 @@ def test_feedforward_backbone_uses_exact_zero_and_negates():
     assert actual.shape == latent.shape
 
 
+def test_wan_hidden_extraction_matches_patch_grid_and_never_calls_output_head():
+    from diffusers import WanTransformer3DModel
+
+    mapping = WanDiTMapping.__new__(WanDiTMapping)
+    nn.Module.__init__(mapping)
+    mapping.checkpoint = "synthetic"
+    mapping.timestep_scale = 1000.0
+    mapping.dit = WanTransformer3DModel(
+        patch_size=(1, 2, 2), num_attention_heads=2, attention_head_dim=8,
+        in_channels=16, out_channels=16, text_dim=32, freq_dim=16,
+        ffn_dim=32, num_layers=2, cross_attn_norm=True, rope_max_seq_len=32,
+    )
+    mapping.register_buffer("empty_condition", torch.zeros(1, 512, 32), persistent=False)
+    calls = {"norm": 0, "projection": 0}
+    norm_hook = mapping.dit.norm_out.register_forward_hook(
+        lambda *_: calls.__setitem__("norm", calls["norm"] + 1)
+    )
+    projection_hook = mapping.dit.proj_out.register_forward_hook(
+        lambda *_: calls.__setitem__("projection", calls["projection"] + 1)
+    )
+    hidden, grid = mapping.forward_hidden_layers(
+        torch.randn(1, *WAN_LATENT_SHAPE), torch.zeros(1), (0, 1)
+    )
+    norm_hook.remove(); projection_hook.remove()
+    assert grid == (6, 8, 8)
+    assert len(hidden) == 2
+    assert hidden[0].shape == hidden[1].shape == (1, 6 * 8 * 8, 16)
+    assert calls == {"norm": 0, "projection": 0}
+
+
 def test_source_and_target_embeddings_are_independent_and_asymmetric():
     decoder = small_decoder()
     assert decoder.source_embedding is not decoder.target_embedding
@@ -132,22 +162,6 @@ def test_memory_flatten_unflatten_and_temporal_spatial_coordinates():
     torch.testing.assert_close(restored, z4d)
     torch.testing.assert_close(coordinates[:4], coordinates[4:8])
     assert memory.shape == (1, 12, 2)
-
-
-def test_latent_alignment_adapters_have_expected_initial_contracts():
-    latent = torch.randn(2, 16, 6, 4, 4)
-    whitening = FixedChannelWhitening(16)
-    mean = torch.arange(16, dtype=torch.float32)
-    scale = torch.arange(16, dtype=torch.float32) + 1.0
-    whitening.set_stats(mean, scale)
-    expected = (latent - mean.view(1, 16, 1, 1, 1)) / scale.view(1, 16, 1, 1, 1)
-    torch.testing.assert_close(whitening(latent), expected)
-    affine = ChannelAffineAdapter(16)
-    torch.testing.assert_close(affine(latent), latent)
-    nonlinear = ConvLatentAdapter(16)
-    torch.testing.assert_close(nonlinear(latent), latent)
-    assert sum(parameter.numel() for parameter in affine.parameters()) == 32
-    assert all(parameter.grad is None for parameter in whitening.parameters())
 
 
 def test_clean_latent_control_and_fullres_coordinate_upsampler():
@@ -193,6 +207,170 @@ class TinyFinalBackbone(nn.Module):
         return -self.dit(latent)
 
 
+class TinyHiddenMapping(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.hidden_projection = nn.Linear(16, 64)
+        self.dit = nn.Module()
+        self.dit.config = SimpleNamespace(
+            num_attention_heads=4, attention_head_dim=16, patch_size=(1, 2, 2),
+        )
+        self.dit.norm_out = nn.LayerNorm(64)
+        self.dit.proj_out = nn.Linear(64, 64)
+        self.dit.scale_shift_table = nn.Parameter(torch.randn(1, 2, 64))
+        self.final_output_called = False
+
+    def forward(self, latent, tau):
+        self.final_output_called = True
+        raise AssertionError("structured geometry must bypass the Wan output head")
+
+    def forward_hidden_layers(self, latent, tau, layers):
+        pooled = F.avg_pool3d(latent, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+        tokens = pooled.permute(0, 2, 3, 4, 1).reshape(latent.shape[0], 6 * 8 * 8, 16)
+        hidden = self.hidden_projection(tokens)
+        return tuple(hidden * (index + 1) for index in layers), (6, 8, 8)
+
+
+def test_structured_hidden_readout_bypasses_final_head_and_keeps_st_query_contract():
+    mapping = TinyHiddenMapping()
+    backbone = WanHiddenGeometryBackbone(
+        mapping, hidden_layers=(0, 1), geometry_dim=32, num_frames=21,
+        spatial_size=16, motion_slots=4, num_heads=4,
+    )
+    decoder = DenseQueryDecoder(
+        latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(32, 16, 8, 4),
+        structured_motion_slots=4, structured_local_queries=True,
+    )
+    model = DenseQueryWanModel(backbone, decoder)
+    clean = torch.randn(1, *WAN_LATENT_SHAPE)
+    prediction, z4d, _ = model(clean, torch.tensor([[0, 20]]), torch.tensor([[20, 0]]))
+    assert isinstance(z4d, StructuredZ4D)
+    assert z4d.dense.shape == (1, 32, 21, 16, 16)
+    assert z4d.motion.shape == (1, 21, 4, 32)
+    memory, coordinates = flatten_structured_z4d(z4d)
+    assert memory.shape == (1, 21 * 16 * 16 + 21 * 4, 32)
+    assert coordinates.shape == (memory.shape[1], 2)
+    dense_only_memory, dense_only_coordinates = flatten_structured_z4d(
+        StructuredZ4D(z4d.dense, z4d.motion, include_motion=False)
+    )
+    assert dense_only_memory.shape == (1, 21 * 16 * 16, 32)
+    assert dense_only_coordinates.shape == (dense_only_memory.shape[1], 2)
+    assert prediction.shape == (1, 2, 3, 128, 128)
+    loss = prediction.square().mean()
+    loss.backward()
+    assert mapping.hidden_projection.weight.grad is not None
+    assert backbone.temporal_logits.grad is not None
+    assert decoder.upsampler.xyz.weight.grad is not None
+    assert mapping.dit.proj_out.weight.grad is None
+    assert not mapping.final_output_called
+
+
+def test_pair_conditioned_motion_query_preserves_shared_initialization_and_gradients():
+    kwargs = dict(
+        latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(32, 16, 8, 4),
+        structured_motion_slots=4, structured_local_queries=True,
+    )
+    torch.manual_seed(17)
+    baseline = DenseQueryDecoder(**kwargs)
+    torch.manual_seed(17)
+    conditioned = DenseQueryDecoder(**kwargs, structured_pair_motion_queries=True)
+    torch.testing.assert_close(baseline.source_embedding.weight, conditioned.source_embedding.weight)
+    torch.testing.assert_close(baseline.upsampler.xyz.weight, conditioned.upsampler.xyz.weight)
+    torch.manual_seed(17)
+    zero_init = DenseQueryDecoder(**kwargs, structured_pair_motion_queries=True,
+                                  structured_pair_motion_zero_init=True)
+    assert zero_init.motion_pair_projection[-1].weight.abs().sum() == 0
+    assert zero_init.motion_pair_projection[-1].bias.abs().sum() == 0
+
+    z4d = StructuredZ4D(
+        torch.randn(1, 32, 21, 16, 16),
+        torch.randn(1, 21, 4, 32, requires_grad=True),
+    )
+    output = conditioned(z4d, torch.tensor([[0, 7]]), torch.tensor([[20, 14]]))
+    assert output.normalized_xyz.shape == (1, 2, 3, 128, 128)
+    output.normalized_xyz.square().mean().backward()
+    assert conditioned.motion_pair_projection[-1].weight.grad is not None
+    assert z4d.motion.grad is not None
+
+
+def test_dense_only_structured_control_keeps_local_query_without_slot_parameters():
+    mapping = TinyHiddenMapping()
+    backbone = WanHiddenGeometryBackbone(
+        mapping, hidden_layers=(0, 1), geometry_dim=32, num_frames=21,
+        spatial_size=16, motion_slots=0, num_heads=4,
+    )
+    decoder = DenseQueryDecoder(
+        latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(32, 16, 8, 4),
+        structured_motion_slots=0, structured_local_queries=True,
+    )
+    model = DenseQueryWanModel(backbone, decoder)
+    prediction, z4d, _ = model(
+        torch.randn(1, *WAN_LATENT_SHAPE), torch.tensor([[0, 20]]), torch.tensor([[20, 0]])
+    )
+    assert z4d.motion.shape == (1, 21, 0, 32)
+    assert backbone.motion_attention is None
+    assert backbone.motion_slot_embedding is None
+    memory, coordinates = flatten_structured_z4d(z4d)
+    assert memory.shape == (1, 21 * 16 * 16, 32)
+    assert coordinates.shape == (memory.shape[1], 2)
+    assert prediction.shape == (1, 2, 3, 128, 128)
+    prediction.square().mean().backward()
+    assert backbone.temporal_logits.grad is not None
+    assert decoder.source_local_projection.weight.grad is not None
+
+
+def test_structured_layer_gates_support_entropy_and_straight_through_topk():
+    mapping = TinyHiddenMapping()
+    backbone = WanHiddenGeometryBackbone(
+        mapping, hidden_layers=(0, 1, 2), geometry_dim=32, motion_slots=4, num_heads=4,
+        layer_gate_temperature=0.7, layer_gate_top_k=2,
+    )
+    backbone.layer_logits.data.copy_(torch.tensor([0.1, 0.8, -0.2]))
+    soft = backbone.soft_layer_weights()
+    torch.testing.assert_close(soft.sum(), torch.tensor(1.0))
+    entropy = backbone.layer_gate_entropy()
+    entropy.backward()
+    assert backbone.layer_logits.grad is not None
+    backbone.eval()
+    hard = backbone.layer_weights()
+    assert int((hard > 0).sum()) == 2
+    torch.testing.assert_close(hard.sum(), torch.tensor(1.0))
+
+
+def test_layer_gate_initialization_is_seeded_and_nonuniform():
+    first = WanHiddenGeometryBackbone(
+        TinyHiddenMapping(), hidden_layers=(0, 1, 2), geometry_dim=32,
+        motion_slots=4, num_heads=4, layer_gate_init_std=0.01, layer_gate_seed=7,
+    )
+    second = WanHiddenGeometryBackbone(
+        TinyHiddenMapping(), hidden_layers=(0, 1, 2), geometry_dim=32,
+        motion_slots=4, num_heads=4, layer_gate_init_std=0.01, layer_gate_seed=7,
+    )
+    torch.testing.assert_close(first.layer_logits, second.layer_logits)
+    assert not torch.equal(first.layer_logits, torch.zeros_like(first.layer_logits))
+
+
+def test_geometry_adapter_mode_freezes_wan_but_trains_structured_adapter_and_decoder():
+    mapping = TinyHiddenMapping()
+    backbone = WanHiddenGeometryBackbone(
+        mapping, hidden_layers=(0,), geometry_dim=32, motion_slots=4, num_heads=4,
+    )
+    decoder = DenseQueryDecoder(
+        latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(32, 16, 8, 4),
+        structured_motion_slots=4, structured_local_queries=True,
+    )
+    model = DenseQueryWanModel(backbone, decoder)
+    model.configure_trainable("geometry_adapter")
+    assert not mapping.hidden_projection.weight.requires_grad
+    assert not mapping.dit.proj_out.weight.requires_grad
+    assert backbone.temporal_logits.requires_grad
+    assert decoder.upsampler.xyz.weight.requires_grad
+
+
 def test_xyz_gradient_reaches_backbone_and_decoder():
     model = DenseQueryWanModel(TinyFinalBackbone(), small_decoder())
     latent = torch.randn(1, *WAN_LATENT_SHAPE)
@@ -221,76 +399,6 @@ def test_pair_sampler_balances_diagonal_directions_and_gaps():
     gap = np.abs(target - source)
     assert np.any((gap > 0) & (gap <= 5)) and np.any(gap >= 10)
     assert np.any(source > 0)
-
-
-def test_3d_rope_uses_time_uv_and_preserves_eight_dimensions():
-    rope = RotaryEmbedding3D(32)
-    values = torch.randn(1, 2, 4, 1, 32)
-    coordinates = torch.tensor([[[[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [5.0, 4.0, 1.0], [2.5, 1.0, 6.0]],
-                                 [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [5.0, 4.0, 1.0], [2.5, 1.0, 6.0]]]])
-    rotated = rope(values, coordinates)
-    torch.testing.assert_close(rotated[..., 24:], values[..., 24:])
-    assert not torch.equal(rotated[..., :24], values[..., :24])
-
-
-def test_3d_rope_decoder_and_visibility_head_shapes():
-    decoder = DenseQueryDecoder(
-        query_dim=32, embedding_dim=16, num_layers=1, num_heads=1,
-        upsample_channels=(32, 16, 8, 4), rope_mode="3d", visibility_head=True,
-    )
-    output = decoder(torch.randn(1, *WAN_LATENT_SHAPE), torch.tensor([[0, 7]]), torch.tensor([[1, 20]]))
-    assert output.normalized_xyz.shape == (1, 2, 3, 128, 128)
-    assert output.visibility_logits is not None
-    assert output.visibility_logits.shape == (1, 2, 1, 128, 128)
-
-
-def test_ablation_decoders_share_identical_overlapping_initial_weights():
-    def make(rope_mode="2d", layers=2, visibility=False, adapter="none"):
-        torch.manual_seed(424242)
-        return DenseQueryDecoder(
-            query_dim=32, embedding_dim=16, num_layers=layers, num_heads=1,
-            upsample_channels=(32, 16, 8, 4), rope_mode=rope_mode, visibility_head=visibility,
-            latent_adapter=adapter,
-        )
-    baseline = make()
-    variants = [
-        make("3d"), make(visibility=True), make(layers=4),
-        make(adapter="fixed_whiten"), make(adapter="channel_affine"), make(adapter="conv1x1"),
-    ]
-    baseline_state = baseline.state_dict()
-    for variant in variants:
-        variant_state = variant.state_dict()
-        for name, value in baseline_state.items():
-            if name in variant_state:
-                torch.testing.assert_close(value, variant_state[name], rtol=0.0, atol=0.0)
-
-
-def test_source_centric_plan_rotates_sources_without_worker_rng():
-    first = make_source_centric_plan(5, 5, 21, 0)
-    second = make_source_centric_plan(5, 5, 21, 1)
-    third = make_source_centric_plan(5, 5, 21, 5)
-    np.testing.assert_array_equal(first.sample_indices, second.sample_indices)
-    np.testing.assert_array_equal(first.source[:, 0] + 1, second.source[:, 0])
-    np.testing.assert_array_equal(first.source[:, 0], np.arange(5))
-    np.testing.assert_array_equal(third.source[:, 0], np.arange(5) + 5)
-    np.testing.assert_array_equal(first.target[0], np.arange(21))
-    weights = source_centric_loss_weights(first.source, first.target)
-    np.testing.assert_allclose(weights.sum(1), 1.0, atol=2e-7)
-    np.testing.assert_allclose(weights[np.arange(5), first.source[:, 0]], 1.0 / 3.0)
-    np.testing.assert_allclose(weights[0, 1:], (2.0 / 3.0) / 20.0)
-
-
-def test_visibility_loss_masks_only_off_diagonal_validity():
-    logits = torch.zeros(1, 2, 1, 2, 2)
-    visible = torch.tensor([[[[1, 0], [1, 0]], [[0, 1], [0, 1]]]], dtype=torch.bool)
-    valid = torch.tensor([[[[1, 1], [1, 1]], [[1, 1], [0, 1]]]], dtype=torch.bool)
-    source = torch.tensor([[2, 3]])
-    target = torch.tensor([[2, 1]])
-    loss = masked_visibility_bce(logits, visible, valid, source, target, 1.0)
-    expected = torch.tensor(float(F.binary_cross_entropy_with_logits(
-        logits[0, 1, 0][valid[0, 1]], visible[0, 1][valid[0, 1]].float(), reduction="mean"
-    )))
-    torch.testing.assert_close(loss, expected)
 
 
 def test_dense_pair_targets_are_source_grid_maps_and_normalized():

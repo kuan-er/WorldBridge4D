@@ -1,0 +1,51 @@
+# H006 dense-only control matched to the H005 triad M=8 baseline.
+data_root: /dataset/MOVi-F
+wan_root: /dataset/Wan2.1-T2V-1.3B
+empty_text_condition: /tmp/worldbridge_dense4d_matched/wan_empty_condition.pt
+coordinate_stats: /tmp/worldbridge_dense4d_matched/coordinate_stats_train.npz
+clip_length: 21
+clip_start: 0
+image_size: 128
+max_clips: 32
+num_query_pairs: 9
+pair_sampling: h001_balanced
+evaluation_pairs: [[0, 0], [7, 7], [20, 20], [0, 1], [0, 20], [7, 14], [20, 0], [14, 7], [20, 19], [3, 18]]
+backbone_readout: wan_hidden_structured
+wan_hidden_layers: [13, 14, 15]
+geometry_dim: 128
+geometry_spatial_size: 16
+geometry_num_heads: 8
+geometry_clean_skip: true
+motion_slots: 0
+structured_local_queries: true
+query_dim: 256
+embedding_dim: 128
+num_cross_attn_layers: 2
+num_heads: 8
+upsample_channels: [256, 128, 64, 32]
+batch_size: 1
+steps: 1536
+matched_epoch_sampling: true
+learning_rate: 0.001
+geometry_learning_rate: 0.001
+backbone_learning_rate: 0.000005
+weight_decay: 0.0001
+precision: bf16
+gradient_checkpointing: true
+gradient_accumulation: 1
+gradient_clip: 1.0
+trainable_mode: geometry_adapter
+geometry_seed: 2026
+decoder_seed: 424242
+seed: 2026
+smooth_l1_beta: 0.05
+geometry_cache_entries: 8
+save_checkpoint: true
+keep_checkpoint: true
+tracking:
+  enabled: true
+  project: worldbridge4d
+  entity: zhaigong2023-sjtu-hpc-center
+  group: h006-motion-slots
+  tags: [h006, triad-13-14-15, slots0, dense-only, train32, steps1536, seed2026]
+  log_every: 10

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded exhaustive `(s,t)` XYZ evaluation for H004."""
+"""Bounded exhaustive `(s,t)` XYZ evaluation for dense 4D models."""
 from __future__ import annotations
 
 import argparse
@@ -47,14 +47,26 @@ def main() -> None:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--max-clips", type=int, default=2)
+    parser.add_argument("--dataset-offset", type=int, default=0,
+                        help="start index within the requested split")
     parser.add_argument("--split", default="validation", choices=("train", "validation"))
     parser.add_argument("--pair-chunk", type=int, default=8)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--pixel-stride", type=int, default=1,
                         help="evaluate every Nth pixel; use 16 for the prior H001 metric protocol")
+    parser.add_argument("--drop-hidden-layer", type=int,
+                        help="zero-shot structured-readout diagnostic: suppress one fused Wan block")
+    parser.add_argument(
+        "--motion-memory-mode", default="learned", choices=("learned", "zero", "drop"),
+        help="zero-shot structured-slot diagnostic; zero preserves token count, drop removes slot tokens",
+    )
     args = parser.parse_args()
     if args.pixel_stride < 1:
         raise ValueError("--pixel-stride must be >= 1")
+    if args.dataset_offset < 0:
+        raise ValueError("--dataset-offset must be non-negative")
+    if args.max_clips < 1:
+        raise ValueError("--max-clips must be positive")
     device = torch.device(args.device)
     checkpoint = torch.load(args.checkpoint, map_location="cpu", mmap=True, weights_only=True)
     config = checkpoint["config"]
@@ -63,13 +75,22 @@ def main() -> None:
     model.load_state_dict(checkpoint["model"], strict=True)
     del checkpoint
     model.eval()
+    if args.drop_hidden_layer is not None:
+        hidden_layers = tuple(getattr(model.backbone, "hidden_layers", ()))
+        if args.drop_hidden_layer not in hidden_layers:
+            raise ValueError(f"cannot drop block {args.drop_hidden_layer}; checkpoint layers are {hidden_layers}")
+        with torch.no_grad():
+            model.backbone.layer_logits[hidden_layers.index(args.drop_hidden_layer)] = -100.0
     dtype = precision_dtype(config["precision"])
 
     dataset = MOViFDataset(
         config["data_root"], split=args.split, clip_length=int(config["clip_length"]),
-        clip_start=int(config.get("clip_start", 0)), max_examples=args.max_clips, seed=int(config["seed"]),
+        clip_start=int(config.get("clip_start", 0)),
+        max_examples=args.dataset_offset + args.max_clips, seed=int(config["seed"]),
     )
-    samples = [dataset[index] for index in range(len(dataset))]
+    samples = [dataset[index] for index in range(
+        args.dataset_offset, args.dataset_offset + args.max_clips
+    )]
     latents = encode_clean_video_latents(samples, config["wan_root"], device)
     groups = defaultdict(Accumulator)
     gap_groups = defaultdict(Accumulator)
@@ -79,6 +100,7 @@ def main() -> None:
     )
     forward_seconds = []
     z4d_shape = None
+    z4d_motion_shape = None
 
     with torch.inference_mode():
         for sample, latent in zip(samples, latents):
@@ -87,6 +109,14 @@ def main() -> None:
                 z4d = model.backbone(latent.to(device=device, dtype=dtype))
             forward_seconds.append(time.time() - start)
             z4d_shape = list(z4d.shape)
+            z4d_motion_shape = list(z4d.motion.shape) if hasattr(z4d, "motion") else None
+            if args.motion_memory_mode != "learned":
+                if not hasattr(z4d, "motion"):
+                    raise ValueError("motion-memory diagnostics require a structured Z4D checkpoint")
+                if args.motion_memory_mode == "zero":
+                    z4d.motion = torch.zeros_like(z4d.motion)
+                else:
+                    z4d.include_motion = False
             for source in range(sample.num_frames):
                 dynamic = cache.get(sample, source)
                 ids = sample.segmentation[source]
@@ -142,9 +172,15 @@ def main() -> None:
                             )
 
     result = {
-        "split": args.split, "clips": len(samples), "pixel_stride": int(args.pixel_stride),
+        "split": args.split, "clips": len(samples), "dataset_offset": args.dataset_offset,
+        "dataset_indices": [args.dataset_offset, args.dataset_offset + len(samples) - 1],
+        "pixel_stride": int(args.pixel_stride),
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
+        "drop_hidden_layer": args.drop_hidden_layer,
+        "motion_memory_mode": args.motion_memory_mode,
+        "effective_layer_weights": getattr(model.backbone, "layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
+        "z4d_motion_shape": z4d_motion_shape,
         "decoder_query_shape": [
             1, args.pair_chunk, int(model.decoder.query_coordinates.shape[0]), int(config["query_dim"])
         ],
@@ -166,7 +202,8 @@ def main() -> None:
         "tracking_source_gt_zero": groups["tracking_source_gt_zero"].result(),
         "epe_by_temporal_gap": {str(gap): gap_groups[gap].result() for gap in sorted(gap_groups)},
         "mean_wan_forward_seconds": float(np.mean(forward_seconds)),
-        "flow_timestep": 0, "z4d_transform": "negative_raw_velocity",
+        "flow_timestep": 0,
+        "z4d_transform": getattr(model.backbone, "z4d_transform", "unknown"),
     }
     output = pathlib.Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
