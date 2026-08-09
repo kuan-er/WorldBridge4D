@@ -8,8 +8,17 @@ recent_results:
   - run_id: R-20260808164446-852e73
     kind: h005_real_structured_smoke
     result: succeeded
-    z_dense_shape: [1, 128, 21, 16, 16]
-    z_motion_shape: [1, 21, 8, 128]
+    z_dense_shape:
+      - 1
+      - 128
+      - 21
+      - 16
+      - 16
+    z_motion_shape:
+      - 1
+      - 21
+      - 8
+      - 128
     trainable_parameters: 4795846
     peak_cuda_memory_gib: 2.804969310760498
   - run_id: R-20260808164542-1a7038
@@ -278,4 +287,4 @@ next_step: Run a matched-budget held-out H004 velocity-versus-H005 structured
   hidden-state comparison with identical data, pair sampling, decoder depth,
   seeds, and optimization exposure. Separately ablate Z_motion only after the
   full structured route has a held-out baseline.
-updated_at: 2026-08-08T16:48:30Z
+updated_at: 2026-08-09T05:31:48.657Z
