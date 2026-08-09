@@ -1,5 +1,8 @@
-current_task: null
-active_hypotheses: []
+current_task: T-20260807125947-a177c2
+active_hypotheses:
+  - H004
+  - H002
+  - H001
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -284,13 +287,17 @@ recent_results:
     marker: RELIABILITY_MATRIX_OK
     errors: []
 final_h005_layer_selection:
-  selected_layers: [13, 14, 15]
-  selected_protocol: "32 train clips, 1536 steps, seeds 2026/2027, geometry_adapter, final validation 147 clips, pixel_stride=16"
+  selected_layers:
+    - 13
+    - 14
+    - 15
+  selected_protocol: 32 train clips, 1536 steps, seeds 2026/2027,
+    geometry_adapter, final validation 147 clips, pixel_stride=16
   selection_splits:
-    split_a: "train indices 32-47, probe indices 48-55"
-    split_b: "train indices 56-71, probe indices 72-79"
-    candidate_holdout: "train-split indices 80-111"
-    final_validation: "validation indices 0-146, used only after selection"
+    split_a: train indices 32-47, probe indices 48-55
+    split_b: train indices 56-71, probe indices 72-79
+    candidate_holdout: train-split indices 80-111
+    final_validation: validation indices 0-146, used only after selection
   final_runs:
     seed2026: R-20260809083901-11ac6b
     seed2027: R-20260809083901-674f13
@@ -306,7 +313,7 @@ final_h005_layer_selection:
       first_frame: 4.243102
       arbitrary_all_st: 4.179413
       arbitrary_occluded: 5.050039
-      late_appearing: 3.885460
+      late_appearing: 3.88546
   relative_improvement_percent:
     pointmap: 3.68
     first_frame: 4.14
@@ -314,7 +321,8 @@ final_h005_layer_selection:
     arbitrary_occluded: 3.31
     late_appearing: 6.46
   trainable_parameters: 4396228
-  decision: "Triad is the final default; aggregate five-layer, single-layer 13, uniform entropy gate, and seeded top-5 gate are rejected."
+  decision: Triad is the final default; aggregate five-layer, single-layer 13,
+    uniform entropy gate, and seeded top-5 gate are rejected.
   artifacts:
     seed2026: /tmp/worldbridge_h005_layer_selection_triad_validation147_seed2026.json
     seed2027: /tmp/worldbridge_h005_layer_selection_triad_validation147_seed2027.json
@@ -327,24 +335,26 @@ final_h005_long_budget_check:
     seed2026: R-20260809091539-4c5f3e
     seed2027: R-20260809091539-9520b6
   two_seed_mean_epe_m:
-    pointmap: 3.615700
+    pointmap: 3.6157
     first_frame: 3.677105
     arbitrary_all_st: 3.656755
     arbitrary_occluded: 4.539515
     late_appearing: 4.271214
-  decision: "Long budget improves ordinary geometry but is not the default because seed-2027 late-appearing EPE regresses; retain as supplementary evidence."
+  decision: Long budget improves ordinary geometry but is not the default because
+    seed-2027 late-appearing EPE regresses; retain as supplementary evidence.
   artifacts:
     seed2026: /tmp/worldbridge_h005_layer_selection_triad_4096_validation147_seed2026.json
     seed2027: /tmp/worldbridge_h005_layer_selection_triad_4096_validation147_seed2027.json
 final_h006_motion_slot_ablation:
-  protocol: "triad [13,14,15], 32 train clips, 1536 steps, seeds 2026/2027, train holdout indices 80-111, pixel_stride=16; final validation unused"
+  protocol: triad [13,14,15], 32 train clips, 1536 steps, seeds 2026/2027, train
+    holdout indices 80-111, pixel_stride=16; final validation unused
   aggregation_run: R-20260809104655-139b16
   two_seed_mean_epe_m:
     learned_slots8:
       pointmap: 3.945311
       first_frame: 4.168921
       arbitrary_all_st: 3.990391
-      arbitrary_occluded: 4.918280
+      arbitrary_occluded: 4.91828
       late_appearing: 3.892751
     retrained_slots0:
       pointmap: 4.306731
@@ -361,7 +371,7 @@ final_h006_motion_slot_ablation:
     pair_motion:
       pointmap: 3.575669
       arbitrary_all_st: 3.616442
-      arbitrary_occluded: 4.518730
+      arbitrary_occluded: 4.51873
       late_appearing: 5.731132
     pair_motion_zero_init:
       pointmap: 3.705219
@@ -377,14 +387,25 @@ final_h006_motion_slot_ablation:
     pair_motion_zero_init_arbitrary: -6.43
     pair_motion_zero_init_late_appearing: 87.09
   slot_diagnostics:
-    within_frame_off_diagonal_cosine: [0.999859, 0.999914]
-    temporal_identity_margin: [0.000136, 0.000081]
-    clip_signal_fraction: [0.1903, 0.1741]
+    within_frame_off_diagonal_cosine:
+      - 0.999859
+      - 0.999914
+    temporal_identity_margin:
+      - 0.000136
+      - 0.000081
+    clip_signal_fraction:
+      - 0.1903
+      - 0.1741
   trainable_parameters:
     learned_slots8: 4396228
     retrained_slots0: 4326212
     pair_motion: 4561348
-  decision: "Slots are necessary and causally used. Keep learned M=8 as default; direct and zero-initialized pooled pair-motion shortcuts are rejected because ordinary gains cause severe late-appearing regressions."
+  decision: Slots are necessary and causally used. Keep learned M=8 as default;
+    direct and zero-initialized pooled pair-motion shortcuts are rejected
+    because ordinary gains cause severe late-appearing regressions.
   artifact: /tmp/worldbridge_h006_slots_aggregate.json
-next_step: Keep the H005 triad with eight learned motion slots. Future slot work should preserve late-appearing behavior and test source-valid/appearance-aware gating or slot-specific residuals on a fresh development split; do not select on final validation.
-updated_at: 2026-08-09T10:47:30Z
+next_step: Keep the H005 triad with eight learned motion slots. Future slot work
+  should preserve late-appearing behavior and test source-valid/appearance-aware
+  gating or slot-specific residuals on a fresh development split; do not select
+  on final validation.
+updated_at: 2026-08-09T15:43:24.433Z
