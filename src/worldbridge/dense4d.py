@@ -289,7 +289,8 @@ class DenseQueryDecoder(nn.Module):
                  num_heads: int = 8, upsample_channels: Sequence[int] = (256, 128, 64, 32),
                  output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False,
                  fullres_coordinates: bool = False, query_grid_size: int | None = None,
-                 structured_motion_slots: int = 0, structured_local_queries: bool = False):
+                 structured_motion_slots: int = 0, structured_local_queries: bool = False,
+                 structured_pair_motion_queries: bool = False):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
@@ -305,8 +306,11 @@ class DenseQueryDecoder(nn.Module):
         ])
         self.structured_motion_slots = int(structured_motion_slots)
         self.structured_local_queries = bool(structured_local_queries)
+        self.structured_pair_motion_queries = bool(structured_pair_motion_queries)
         if self.structured_motion_slots < 0:
             raise ValueError("structured motion slot count cannot be negative")
+        if self.structured_pair_motion_queries and self.structured_motion_slots == 0:
+            raise ValueError("pair-conditioned motion queries require motion slots")
         self.source_local_projection = nn.Conv2d(channels, query_dim, 1) \
             if self.structured_local_queries else None
         query_grid_size = int(query_grid_size or latent_height)
@@ -324,6 +328,12 @@ class DenseQueryDecoder(nn.Module):
             fullres_coordinates=fullres_coordinates,
         )
         self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
+        # Constructed after all baseline modules so enabling this ablation does
+        # not shift the seeded initialization of any shared decoder parameter.
+        self.motion_pair_projection = nn.Sequential(
+            nn.LayerNorm(3 * channels), nn.Linear(3 * channels, query_dim),
+            nn.SiLU(), nn.Linear(query_dim, query_dim),
+        ) if self.structured_pair_motion_queries else None
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         source = torch.as_tensor(source, dtype=torch.long, device=self.source_embedding.weight.device)
@@ -358,6 +368,30 @@ class DenseQueryDecoder(nn.Module):
             local = F.interpolate(local, size=self.query_grid_shape, mode="bilinear", align_corners=False)
         return local.flatten(2).transpose(1, 2).reshape(batch, pairs, -1, self.query_dim)
 
+    def _structured_pair_motion_query(
+        self, z4d: StructuredZ4D, source: torch.Tensor, target: torch.Tensor, pairs: int,
+    ) -> torch.Tensor:
+        if self.motion_pair_projection is None:
+            raise RuntimeError("pair-conditioned motion projection was not constructed")
+        batch, frames, slots, channels = z4d.motion.shape
+        if slots == 0:
+            raise ValueError("pair-conditioned motion query received no slots")
+        source = torch.as_tensor(source, device=z4d.motion.device, dtype=torch.long)
+        target = torch.as_tensor(target, device=z4d.motion.device, dtype=torch.long)
+        if source.ndim == 1:
+            source, target = source[None], target[None]
+        if source.shape[0] == 1:
+            source, target = source.expand(batch, -1), target.expand(batch, -1)
+        if source.shape != (batch, pairs) or target.shape != (batch, pairs):
+            raise ValueError("structured pair indices do not match motion Z4D")
+        batch_indices = torch.arange(batch, device=z4d.motion.device)[:, None]
+        source_motion = z4d.motion[batch_indices, source].mean(dim=2)
+        target_motion = z4d.motion[batch_indices, target].mean(dim=2)
+        pair_motion = torch.cat(
+            (source_motion, target_motion, target_motion - source_motion), dim=-1
+        )
+        return self.motion_pair_projection(pair_motion)
+
     def forward(self, z4d: torch.Tensor | StructuredZ4D, source: torch.Tensor,
                 target: torch.Tensor) -> DenseQueryOutput:
         structured = isinstance(z4d, StructuredZ4D)
@@ -378,6 +412,11 @@ class DenseQueryDecoder(nn.Module):
         query = content[:, :, None, :].expand(-1, -1, num_query, -1)
         if structured and self.structured_local_queries:
             query = query + self._structured_source_query(z4d, source, content.shape[1])
+        if structured and self.structured_pair_motion_queries:
+            pair_motion = self._structured_pair_motion_query(
+                z4d, source, target, content.shape[1]
+            )
+            query = query + pair_motion[:, :, None, :]
         memory, memory_coordinates = flatten_structured_z4d(z4d) if structured else flatten_z4d(z4d)
         for block in self.blocks:
             query = block(query, memory, self.query_coordinates, memory_coordinates)

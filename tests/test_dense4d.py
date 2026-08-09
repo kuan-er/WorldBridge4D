@@ -266,6 +266,30 @@ def test_structured_hidden_readout_bypasses_final_head_and_keeps_st_query_contra
     assert not mapping.final_output_called
 
 
+def test_pair_conditioned_motion_query_preserves_shared_initialization_and_gradients():
+    kwargs = dict(
+        latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(32, 16, 8, 4),
+        structured_motion_slots=4, structured_local_queries=True,
+    )
+    torch.manual_seed(17)
+    baseline = DenseQueryDecoder(**kwargs)
+    torch.manual_seed(17)
+    conditioned = DenseQueryDecoder(**kwargs, structured_pair_motion_queries=True)
+    torch.testing.assert_close(baseline.source_embedding.weight, conditioned.source_embedding.weight)
+    torch.testing.assert_close(baseline.upsampler.xyz.weight, conditioned.upsampler.xyz.weight)
+
+    z4d = StructuredZ4D(
+        torch.randn(1, 32, 21, 16, 16),
+        torch.randn(1, 21, 4, 32, requires_grad=True),
+    )
+    output = conditioned(z4d, torch.tensor([[0, 7]]), torch.tensor([[20, 14]]))
+    assert output.normalized_xyz.shape == (1, 2, 3, 128, 128)
+    output.normalized_xyz.square().mean().backward()
+    assert conditioned.motion_pair_projection[-1].weight.grad is not None
+    assert z4d.motion.grad is not None
+
+
 def test_dense_only_structured_control_keeps_local_query_without_slot_parameters():
     mapping = TinyHiddenMapping()
     backbone = WanHiddenGeometryBackbone(

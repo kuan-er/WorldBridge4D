@@ -121,6 +121,7 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
         query_grid_size=int(config.get("query_grid_size", latent_shape[-1])),
         structured_motion_slots=int(config.get("motion_slots", 16)) if structured else 0,
         structured_local_queries=bool(config.get("structured_local_queries", True)) if structured else False,
+        structured_pair_motion_queries=bool(config.get("structured_pair_motion_queries", False)) if structured else False,
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
     model.configure_trainable(str(config.get("trainable_mode", "full")), int(config.get("trainable_blocks", 2)))
