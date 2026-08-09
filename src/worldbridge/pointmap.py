@@ -2,7 +2,9 @@
 
 For a source frame ``s`` and source pixel ``p=(u,v)``, every output location
 ``Y[s][t,v,u]`` is the *same source pixel's* physical 3D point at target time
-``t``.  The output grid is never re-anchored to the target image grid.
+``t``.  The output grid is never re-anchored to the target image grid.  XYZ is
+normally in the clip-frame-0 camera anchor, or in the fixed camera coordinate
+system of ``s`` when ``coordinate_frame='source'``.
 """
 from __future__ import annotations
 
