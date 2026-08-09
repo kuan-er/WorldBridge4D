@@ -63,6 +63,28 @@ def test_diagonal_pointmap_and_dynamic_transform():
     np.testing.assert_allclose(dynamic.xyz[2, ..., 0] - dynamic.xyz[1, ..., 0], 0.5, atol=1e-6)
 
 
+def test_source_frame_trajectory_is_rigid_change_and_diagonal_is_local_depth():
+    sample = synthetic_sample(False)
+    sample.camera_positions[:] = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0]], np.float32)
+    angle = np.pi / 3
+    sample.camera_quaternions[1] = np.array(
+        [np.cos(angle / 2), 0, 0, np.sin(angle / 2)], np.float32
+    )
+    geometry = GeometryBuilder(sample)
+    anchor = build_dynamic_pointmap(sample, source=1, coordinate_frame="anchor")
+    local = build_dynamic_pointmap(sample, source=1, coordinate_frame="source")
+    expected = geometry.anchor_to_source(anchor.xyz, source=1)
+    np.testing.assert_allclose(local.xyz, expected, atol=1e-5)
+    np.testing.assert_array_equal(local.visible, anchor.visible)
+    np.testing.assert_array_equal(local.valid, anchor.valid)
+
+    world_diagonal = geometry.camera.backproject(
+        sample.depth[1], sample.camera_positions[1], sample.camera_quaternions[1]
+    )
+    expected_diagonal = geometry.world_to_camera_frame(world_diagonal, frame=1)
+    np.testing.assert_allclose(local.xyz[1], expected_diagonal, atol=1e-5)
+
+
 def test_visibility_is_not_validity_and_loss_uses_validity():
     sample = synthetic_sample(False)
     sample.segmentation[2] = 0

@@ -87,10 +87,13 @@ class _WorkerGeometry:
     """Thread-local geometry cache; no DynamicPointmapCache is shared."""
 
     def __init__(self, stats: CoordinateStats, depth_tolerance: float,
-                 depth_relative_tolerance: float):
+                 depth_relative_tolerance: float, coordinate_frame: str = "anchor"):
         self.stats = stats
         self.depth_tolerance = float(depth_tolerance)
         self.depth_relative_tolerance = float(depth_relative_tolerance)
+        self.coordinate_frame = str(coordinate_frame).lower()
+        if self.coordinate_frame not in {"anchor", "source"}:
+            raise ValueError(f"coordinate_frame must be 'anchor' or 'source', got {coordinate_frame!r}")
         self.local = threading.local()
 
     def cache(self) -> DynamicPointmapCache:
@@ -109,7 +112,8 @@ class _WorkerGeometry:
                  target: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
         start = time.perf_counter()
         normalized, metric, visible, valid = dense_pair_targets(
-            sample, source, target, self.stats, self.cache()
+            sample, source, target, self.stats, self.cache(),
+            coordinate_frame=self.coordinate_frame,
         )
         return normalized, metric, visible, valid, time.perf_counter() - start
 
@@ -146,9 +150,13 @@ def _make_batch(plan: SourceCentricPlan, results: Sequence[tuple[np.ndarray, np.
 def build_source_centric_batch(samples: Sequence[MOViSample], stats: CoordinateStats,
                                plan: SourceCentricPlan, *,
                                depth_tolerance: float = 0.05,
-                               depth_relative_tolerance: float = 0.01) -> SourceCentricBatch:
+                               depth_relative_tolerance: float = 0.01,
+                               coordinate_frame: str = "anchor") -> SourceCentricBatch:
     """Synchronous reference implementation used for equality verification."""
-    worker = _WorkerGeometry(stats, depth_tolerance, depth_relative_tolerance)
+    worker = _WorkerGeometry(
+        stats, depth_tolerance, depth_relative_tolerance,
+        coordinate_frame=coordinate_frame,
+    )
     results = [worker(samples[int(index)], plan.source[row], plan.target[row])
                for row, index in enumerate(plan.sample_indices)]
     return _make_batch(plan, results)
@@ -160,13 +168,17 @@ class SourceCentricPrefetcher:
     def __init__(self, samples: Sequence[MOViSample], stats: CoordinateStats, *,
                  workers: int = 8, queue_depth: int = 2,
                  depth_tolerance: float = 0.05,
-                 depth_relative_tolerance: float = 0.01):
+                 depth_relative_tolerance: float = 0.01,
+                 coordinate_frame: str = "anchor"):
         if int(workers) != 8:
             raise ValueError("H004 source-centric protocol fixes workers=8")
         if int(queue_depth) != 2:
             raise ValueError("H004 source-centric protocol fixes queue_depth=2")
         self.samples = samples
-        self._worker_geometry = _WorkerGeometry(stats, depth_tolerance, depth_relative_tolerance)
+        self._worker_geometry = _WorkerGeometry(
+            stats, depth_tolerance, depth_relative_tolerance,
+            coordinate_frame=coordinate_frame,
+        )
         self._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="h004-geometry")
         self._ready: queue.Queue[tuple[SourceCentricPlan, list[Future]]] = queue.Queue(maxsize=2)
         self._closed = False
