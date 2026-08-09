@@ -138,3 +138,11 @@ Matched final validation at 1536 steps, seeds 2026/2027, gave the following two-
 | Late appearing | 4.1538 | **3.8855** | −6.5% |
 
 The final triad validation runs were `R-20260809083901-11ac6b` and `R-20260809083901-674f13`. A 4096-step budget check (`R-20260809084822-3fa51e`, `R-20260809084822-19ce22`) improved two-seed means for Pointmap/First-frame/Arbitrary/Occluded to `3.6157/3.6771/3.6568/4.5395 m`, but late-appearing regressed to `4.2712 m`, driven by seed 2027 (`4.9469 m`). The 1536-step triad remains the default because it is the stable protocol across all highlighted subsets; 4096-step outputs are supplementary evidence rather than the selected model. Final validation command: `CUDA_VISIBLE_DEVICES=6 python evaluate_dense4d.py --split validation --max-clips 147 --pixel-stride 16 --pair-chunk 8 --device cuda`. No further selection is performed on the final validation split.
+
+## H006 — Motion-slot necessity and improvement probes (Task T-20260809095937-66b0d0)
+
+H006 reused the H005 triad protocol and only the existing train holdout indices `80–111`; final validation was not touched. Retraining without slots increased two-seed mean Pointmap/Arbitrary/Occluded/Late EPE from `3.9453/3.9904/4.9183/3.8928` to `4.3067/4.3541/5.4069/4.1634` m. Zeroing or dropping learned slot memory increased arbitrary EPE to `4.5898/4.6431` m, confirming causal use beyond token-count effects.
+
+The slot mechanism is nevertheless highly redundant: within-frame cross-slot cosine was `0.99986/0.99991`, temporal identity margin was only `1.36e-4/8.07e-5`, and clip-dependent variation was `19.0%/17.4%` of slot RMS. Pooled source/target pair injection exposed improvement space—ordinary arbitrary/occluded EPE improved by `9.4%/8.1%`—but late-appearing EPE regressed `47.2%`. Zero initialization did not solve the conflict: ordinary arbitrary/occluded improved `6.4%/7.1%`, while late-appearing regressed `87.1%`.
+
+Decision: slots are necessary, but their intended persistent identities are not well realized. Keep the original `M=8` design; reject both pooled pair shortcuts. Full run tables and commands are recorded in `research/hypotheses/H006.md`, with aggregation Run `R-20260809104655-139b16`.

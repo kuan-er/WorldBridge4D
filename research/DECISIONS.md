@@ -1,5 +1,12 @@
 # Research Decisions
 
+## 2026-08-09 — H006 motion slots are useful but nearly collapsed
+
+- Keep the H005 triad's eight learned motion slots. Under the matched two-seed 32-clip/1,536-step protocol, retraining a true dense-only model worsened arbitrary and tracking EPE by `9.1%`, and worsened occluded EPE by `9.9%`. Zeroing learned slot values or dropping slot tokens at inference worsened arbitrary EPE by `15.0%` and `16.4%`. Slots are therefore necessary and causally used under the current design.
+- Do not interpret this as evidence that eight persistent object-like identities were learned. Within-frame cross-slot cosine was `0.99986/0.99991`, and temporal same-slot identity margins were only `1.36e-4/8.07e-5` across seeds. Current slots are useful, highly redundant global summaries.
+- Reject direct pooled pair-motion injection despite `9.4%` mean arbitrary and `8.1%` occluded improvement: late-appearing EPE regressed `47.2%`. Also reject a zero-initialized residual variant; it improved arbitrary/occluded by `6.4%/7.1%` but regressed late-appearing by `87.1%`.
+- Keep `M=8` as the default. The next slot route should preserve slot-specific residuals or use source-valid/appearance-aware gating, and must explicitly protect late-appearing points. H006 used only train-split holdout indices `80–111`; no final validation selection was performed.
+
 ## 2026-08-08 — H005 structured pre-output Wan readout
 
 - Preserve the user-facing and training contract from H004: independent integer `(source,target)` inputs still produce a complete source-grid XYZ pointmap, and the existing dense cross-attention/FFN blocks plus bilinear residual upsampler remain the decoder core.

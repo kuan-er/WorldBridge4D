@@ -10,6 +10,8 @@ H004 将 RGB `[B,21,3,128,128]` 编为 Wan clean latent `[B,16,6,16,16]`，对 c
 
 H005 保留相同的 `(source,target) -> source-grid XYZ pointmap` 接口、dense cross-attention blocks 和 bilinear residual upsampler，但不执行 Wan 的最终 RF `norm_out/proj_out`。它融合所选 DiT block hidden states，经可学习的 6→21 时间整理构造 source-frame-aligned `Z_dense`，同时用固定身份的跨时间 queries 构造 `Z_motion` slots；source slice 经过 1×1 projection 加入原 dense query，结构化 dense/motion tokens 作为全局 memory。
 
+H006 的匹配双 seed 消融确认 `Z_motion` slots 对 held-out arbitrary tracking 有稳定增益：重新训练去掉 slots、推理时置零或移除 slots 均显著退化。但八个 slots 的余弦相似度接近 1，说明当前实现更像冗余全局摘要而非清晰持久对象身份。直接将 pooled source/target slot motion 注入 pair query 虽改善普通几何，却严重损害 late-appearing 点，因此默认仍保留 H005 的八 slots 原路径。
+
 默认固定 128×128、连续 21/24 帧；Wan 原生 temporal compression 给出 6 个 latent frames，不 padding、pooling 或插值。H005 的几何 adapter 显式将这 6 个内部时间位置重排到 21 个物理帧，但不改变 frozen Wan VAE 输入。几何和评估按 source/pair chunk 处理。
 
 ## Code map
