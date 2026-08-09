@@ -112,22 +112,58 @@ class GeometryBuilder:
         self._object_rot = self.camera.quaternion_matrix(sample.instance_quaternions)
         self._world_points: np.ndarray | None = None
 
-    def pointmaps(self) -> tuple[np.ndarray, np.ndarray]:
-        """Return P[t,p] in clip-frame-0 camera coordinates and V_valid."""
+    @staticmethod
+    def _check_coordinate_frame(coordinate_frame: str) -> str:
+        coordinate_frame = str(coordinate_frame).lower()
+        if coordinate_frame not in {"anchor", "source"}:
+            raise ValueError(f"coordinate_frame must be 'anchor' or 'source', got {coordinate_frame!r}")
+        return coordinate_frame
+
+    def world_to_camera_frame(self, world_points: np.ndarray, frame: int) -> np.ndarray:
+        """Express world points in the camera coordinate system at ``frame``."""
+        frame = int(frame)
+        if not 0 <= frame < self.sample.num_frames:
+            raise ValueError(f"frame={frame} outside [0,{self.sample.num_frames})")
+        return np.einsum(
+            "...j,ji->...i", np.asarray(world_points) - self.sample.camera_positions[frame],
+            self._camera_rot[frame],
+        )
+
+    def camera_frame_to_world(self, camera_points: np.ndarray, frame: int) -> np.ndarray:
+        """Convert points in camera ``frame`` coordinates back to world."""
+        frame = int(frame)
+        if not 0 <= frame < self.sample.num_frames:
+            raise ValueError(f"frame={frame} outside [0,{self.sample.num_frames})")
+        return np.einsum("...j,ij->...i", np.asarray(camera_points), self._camera_rot[frame]) \
+            + self.sample.camera_positions[frame]
+
+    def pointmaps(self, coordinate_frame: str = "anchor") -> tuple[np.ndarray, np.ndarray]:
+        """Return diagonal pointmaps in a common or per-frame camera frame.
+
+        ``anchor`` preserves the historical clip-frame-0 convention.  ``source``
+        expresses ``P[t]`` in camera ``t`` coordinates, which is the diagonal
+        special case of source-conditioned local pointmaps.
+        """
+        coordinate_frame = self._check_coordinate_frame(coordinate_frame)
         if self._world_points is None:
             self._world_points = np.stack([
                 self.camera.backproject(self.sample.depth[t], self.sample.camera_positions[t], self.sample.camera_quaternions[t])
                 for t in range(self.sample.num_frames)
             ], axis=0)
-        p = self.world_to_anchor(self._world_points)
+        if coordinate_frame == "anchor":
+            p = self.world_to_anchor(self._world_points)
+        else:
+            p = np.einsum(
+                "t...j,tji->t...i", self._world_points - self.sample.camera_positions[:, None, None, :],
+                self._camera_rot,
+            )
         return p.astype(np.float32), self.sample.depth_valid.copy()
 
     def world_to_anchor(self, world_points: np.ndarray) -> np.ndarray:
-        pos0 = self.sample.camera_positions[0]
-        return np.einsum("...j,ji->...i", np.asarray(world_points) - pos0, self._camera_rot[0])
+        return self.world_to_camera_frame(world_points, 0)
 
     def anchor_to_world(self, anchor_points: np.ndarray) -> np.ndarray:
-        return np.einsum("...j,ij->...i", np.asarray(anchor_points), self._camera_rot[0]) + self.sample.camera_positions[0]
+        return self.camera_frame_to_world(anchor_points, 0)
 
     def _source_world(self, source: int, uv: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         uv = np.asarray(uv, dtype=np.int64)
@@ -157,8 +193,16 @@ class GeometryBuilder:
         out[ii] = same_instance & depth_ok
         return out
 
-    def trajectory(self, source: int, uv: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Compute X[source,target,p], M and V for a block of integer pixels."""
+    def trajectory(self, source: int, uv: np.ndarray, coordinate_frame: str = "anchor") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Compute X[source,target,p], M and V for integer pixels.
+
+        The source-grid semantics and visibility masks are identical for both
+        coordinate conventions; only the XYZ basis changes.  ``source`` mode
+        applies one fixed SE(3) transform (camera ``source``) to every target
+        point in the trajectory.
+        """
+        coordinate_frame = self._check_coordinate_frame(coordinate_frame)
+        source = int(source)
         source_world, instance, source_valid = self._source_world(source, uv)
         n = len(instance); T = self.sample.num_frames
         x_world = np.repeat(source_world[:, None, :], T, axis=1)
@@ -174,18 +218,24 @@ class GeometryBuilder:
             x_world[mask] = np.einsum("nj,tij->nti", local, self._object_rot[obj]) + self.sample.instance_positions[obj]
             state_valid = np.isfinite(self.sample.instance_positions[obj]).all(axis=-1) & np.isfinite(self._object_rot[obj]).all(axis=(1,2))
             v_valid[mask] &= state_valid[None, :]
-        x_anchor = self.world_to_anchor(x_world)
+        x_coordinates = (
+            self.world_to_anchor(x_world)
+            if coordinate_frame == "anchor"
+            else self.world_to_camera_frame(x_world, source)
+        )
         visible = np.stack([self._visible(x_world[:, t], t, instance) for t in range(T)], axis=1)
-        return x_anchor.astype(np.float32), visible, v_valid
+        return x_coordinates.astype(np.float32), visible, v_valid
 
-    def trajectory_block(self, source: int, start: int = 0, end: int | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def trajectory_block(self, source: int, start: int = 0, end: int | None = None,
+                         coordinate_frame: str = "anchor") -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         end = self.sample.height * self.sample.width if end is None else int(end)
         flat = np.arange(start, end, dtype=np.int64)
         uv = np.stack([flat % self.sample.width, flat // self.sample.width], axis=-1)
-        x, m, v = self.trajectory(source, uv)
+        x, m, v = self.trajectory(source, uv, coordinate_frame=coordinate_frame)
         return x, m, v, uv
 
-    def query(self, source: np.ndarray, uv: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def query(self, source: np.ndarray, uv: np.ndarray, coordinate_frame: str = "anchor") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        coordinate_frame = self._check_coordinate_frame(coordinate_frame)
         source = np.asarray(source, dtype=np.int64).reshape(-1)
         uv = np.asarray(uv, dtype=np.int64).reshape(-1, 2)
         if len(source) != len(uv):
@@ -193,7 +243,7 @@ class GeometryBuilder:
         xs = []; ms = []; vs = []
         for s in np.unique(source):
             idx = np.flatnonzero(source == s)
-            x, m, v = self.trajectory(int(s), uv[idx])
+            x, m, v = self.trajectory(int(s), uv[idx], coordinate_frame=coordinate_frame)
             xs.append((idx, x)); ms.append((idx, m)); vs.append((idx, v))
         shape = (len(source), self.sample.num_frames)
         xout = np.empty(shape + (3,), np.float32); mout = np.empty(shape, bool); vout = np.empty(shape, bool)
@@ -202,6 +252,21 @@ class GeometryBuilder:
         for idx, v in vs: vout[idx] = v
         return xout, mout, vout
 
-    def project_trajectory(self, x_anchor: np.ndarray, target: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        world = self.anchor_to_world(x_anchor)
+    def project_trajectory(self, x_coordinates: np.ndarray, target: int,
+                           coordinate_frame: str = "anchor") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        coordinate_frame = self._check_coordinate_frame(coordinate_frame)
+        if coordinate_frame == "anchor":
+            world = self.anchor_to_world(x_coordinates)
+        else:
+            raise ValueError("source-frame trajectories require the source index for inverse conversion")
         return self.camera.project(world, self.sample.camera_positions[target], self.sample.camera_quaternions[target])
+
+    def source_to_anchor(self, source_points: np.ndarray, source: int) -> np.ndarray:
+        """Convert source-camera coordinates to the historical frame-0 anchor."""
+        world = self.camera_frame_to_world(source_points, int(source))
+        return self.world_to_anchor(world)
+
+    def anchor_to_source(self, anchor_points: np.ndarray, source: int) -> np.ndarray:
+        """Convert frame-0 anchor coordinates to camera ``source`` coordinates."""
+        world = self.anchor_to_world(anchor_points)
+        return self.world_to_camera_frame(world, int(source))

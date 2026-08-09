@@ -1,6 +1,13 @@
 
 # Research Decisions
 
+## 2026-08-09 — H007 source-frame coordinates improve ordinary geometry but regress late appearance
+
+- The matched H007 aggregation `R-20260809154101-5ff9a4` passed the protocol/population checks over 147 validation clips, all 441 legal pairs per clip, `pixel_stride=16`, and identical masks/executable for anchor and source coordinates. The common-anchor rigid audit was `6.26e-6 m` maximum absolute EPE difference.
+- Across seeds 2026/2027, primary arbitrary all-source/all-target EPE changed from `4.1794 ± 0.0929 m` (anchor) to `3.6745 ± 0.2527 m` (source), a `12.08%` reduction. Pointmap changed `4.1338 -> 3.6280 m`, first-frame tracking `4.2431 -> 3.8291 m`, visible arbitrary `3.9754 -> 3.4862 m`, and occluded-valid arbitrary `5.0500 -> 4.4781 m`.
+- The gain is not uniform: late-appearing EPE regressed from `3.8855 ± 0.3962 m` to `4.3803 ± 0.5192 m` (`+12.74%`; visible `+13.91%`, occluded-valid `+11.50%`). Source's two-seed spread is also larger on the primary metric, so this remains a screen rather than stabilized generalization evidence.
+- Decision: retain source-frame coordinates as a research configuration and report the ordinary-geometry gain, but do not make it the unconditional default. Future adoption requires source-valid/appearance-aware handling and an explicit late-appearing safeguard on a fresh development split.
+
 ## 2026-08-09 — H006 motion slots are useful but nearly collapsed
 
 - Keep the H005 triad's eight learned motion slots. Under the matched two-seed 32-clip/1,536-step protocol, retraining a true dense-only model worsened arbitrary and tracking EPE by `9.1%`, and worsened occluded EPE by `9.9%`. Zeroing learned slot values or dropping slot tokens at inference worsened arbitrary EPE by `15.0%` and `16.4%`. Slots are therefore necessary and causally used under the current design.

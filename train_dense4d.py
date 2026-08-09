@@ -139,8 +139,11 @@ def pair_suite(config: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     return parse_fixed_pairs(values, int(config["clip_length"]))
 
 
-def grouped_eval(model, latent, sample, source, target, stats, cache, device, dtype):
-    normalized, metric, visible, valid = dense_pair_targets(sample, source, target, stats, cache)
+def grouped_eval(model, latent, sample, source, target, stats, cache, device, dtype,
+                 coordinate_frame="anchor"):
+    normalized, metric, visible, valid = dense_pair_targets(
+        sample, source, target, stats, cache, coordinate_frame=coordinate_frame,
+    )
     source_tensor = torch.from_numpy(source)[None].to(device)
     target_tensor = torch.from_numpy(target)[None].to(device)
     target_tensor_xyz = torch.from_numpy(normalized)[None].to(device)
@@ -192,6 +195,10 @@ def main() -> None:
         raise ValueError(f"missing required config keys: {missing}")
     if int(config["image_size"]) != 128 or int(config["clip_length"]) != 21:
         raise ValueError("dense 4D training is intentionally fixed to 21 frames and 128x128")
+    coordinate_frame = str(config.get("coordinate_frame", "anchor")).lower()
+    if coordinate_frame not in {"anchor", "source"}:
+        raise ValueError("coordinate_frame must be 'anchor' or 'source'")
+    config["coordinate_frame"] = coordinate_frame
 
     seed = int(config["seed"])
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
@@ -237,7 +244,7 @@ def main() -> None:
     evaluation_source, evaluation_target = pair_suite(config)
     initial_eval = grouped_eval(
         model, clean_latents[0], samples[0], evaluation_source, evaluation_target,
-        stats, cache, device, dtype,
+        stats, cache, device, dtype, coordinate_frame,
     )
     print(json.dumps({"event": "initial_evaluation", **initial_eval}), flush=True)
     if wandb_run is not None:
@@ -293,7 +300,8 @@ def main() -> None:
             else:
                 source, target = fixed_source.copy(), fixed_target.copy()
             normalized, metric, _, valid = dense_pair_targets(
-                samples[int(sample_index)], source, target, stats, cache
+                samples[int(sample_index)], source, target, stats, cache,
+                coordinate_frame=coordinate_frame,
             )
             source_rows.append(source); target_rows.append(target)
             target_rows_xyz.append(normalized); metric_rows.append(metric); valid_rows.append(valid)
@@ -383,7 +391,7 @@ def main() -> None:
     total_steps = resume_step_offset + steps
     final_eval = grouped_eval(
         model, clean_latents[0], samples[0], evaluation_source, evaluation_target,
-        stats, cache, device, dtype,
+        stats, cache, device, dtype, coordinate_frame,
     )
     checkpoint = None
     checkpoint_load_ok = False

@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from worldbridge.data import MOViFDataset
 from worldbridge.dense4d_data import CoordinateStats, DynamicPointmapCache
 from worldbridge.dense4d_runtime import build_real_model, encode_clean_video_latents, precision_dtype
+from worldbridge.geometry import GeometryBuilder
 
 
 class Accumulator:
@@ -70,6 +71,9 @@ def main() -> None:
     device = torch.device(args.device)
     checkpoint = torch.load(args.checkpoint, map_location="cpu", mmap=True, weights_only=True)
     config = checkpoint["config"]
+    coordinate_frame = str(config.get("coordinate_frame", "anchor")).lower()
+    if coordinate_frame not in {"anchor", "source"}:
+        raise ValueError(f"unsupported checkpoint coordinate_frame={coordinate_frame!r}")
     stats = CoordinateStats(checkpoint["coordinate_mean"], checkpoint["coordinate_scale"])
     model = build_real_model(config, device)
     model.load_state_dict(checkpoint["model"], strict=True)
@@ -94,6 +98,8 @@ def main() -> None:
     latents = encode_clean_video_latents(samples, config["wan_root"], device)
     groups = defaultdict(Accumulator)
     gap_groups = defaultdict(Accumulator)
+    common_anchor_audit = Accumulator()
+    coordinate_invariance_max_abs_epe = 0.0
     cache = DynamicPointmapCache(
         max_entries=2, depth_tolerance=float(config.get("depth_tolerance", 0.05)),
         depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
@@ -104,6 +110,10 @@ def main() -> None:
 
     with torch.inference_mode():
         for sample, latent in zip(samples, latents):
+            geometry = GeometryBuilder(
+                sample, depth_tolerance=float(config.get("depth_tolerance", 0.05)),
+                depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
+            )
             start = time.time()
             with torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
                 z4d = model.backbone(latent.to(device=device, dtype=dtype))
@@ -118,7 +128,7 @@ def main() -> None:
                 else:
                     z4d.include_motion = False
             for source in range(sample.num_frames):
-                dynamic = cache.get(sample, source)
+                dynamic = cache.get(sample, source, coordinate_frame=coordinate_frame)
                 ids = sample.segmentation[source]
                 first_visible = np.full(ids.shape, sample.num_frames, dtype=np.int64)
                 for instance_id in np.unique(ids):
@@ -149,6 +159,20 @@ def main() -> None:
                         pred = prediction[local_index].reshape(3, -1)[:, ::stride]
                         late = late_appearing.reshape(-1)[::stride]
 
+                        if coordinate_frame == "source":
+                            pred_anchor = geometry.source_to_anchor(pred.T, source).T
+                            truth_anchor = geometry.source_to_anchor(truth.T, source).T
+                        else:
+                            pred_anchor, truth_anchor = pred, truth
+                        common_anchor_audit.add(pred_anchor, truth_anchor, valid)
+                        if np.any(valid):
+                            native_epe = np.linalg.norm(pred - truth, axis=0)
+                            anchor_epe = np.linalg.norm(pred_anchor - truth_anchor, axis=0)
+                            coordinate_invariance_max_abs_epe = max(
+                                coordinate_invariance_max_abs_epe,
+                                float(np.max(np.abs(native_epe[valid] - anchor_epe[valid]))),
+                            )
+
                         groups["arbitrary_all_st"].add(pred, truth, valid)
                         groups["arbitrary_all_st_visible"].add(pred, truth, valid & visible)
                         groups["arbitrary_all_st_occluded_valid"].add(pred, truth, valid & ~visible)
@@ -178,6 +202,23 @@ def main() -> None:
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
         "drop_hidden_layer": args.drop_hidden_layer,
         "motion_memory_mode": args.motion_memory_mode,
+        "coordinate_frame": coordinate_frame,
+        "metric_definition": "metric-space Euclidean EPE after checkpoint-specific denormalization",
+        "training_protocol": {
+            "seed": int(config["seed"]),
+            "steps": int(config["steps"]),
+            "max_clips": int(config["max_clips"]),
+            "pair_sampling": str(config.get("pair_sampling", "dense_balanced")),
+            "num_query_pairs": int(config["num_query_pairs"]),
+            "backbone_readout": str(config.get("backbone_readout", "wan_velocity")),
+            "wan_hidden_layers": list(config.get("wan_hidden_layers", [])),
+            "motion_slots": int(config.get("motion_slots", 0)),
+            "trainable_mode": str(config.get("trainable_mode", "full")),
+            "geometry_seed": int(config.get("geometry_seed", config["seed"])),
+            "decoder_seed": int(config.get("decoder_seed", config["seed"])),
+        },
+        "common_anchor_audit_arbitrary_all_st": common_anchor_audit.result(),
+        "coordinate_invariance_max_abs_epe": coordinate_invariance_max_abs_epe,
         "effective_layer_weights": getattr(model.backbone, "layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
         "z4d_motion_shape": z4d_motion_shape,
