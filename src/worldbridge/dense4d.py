@@ -462,7 +462,8 @@ class WanHiddenGeometryBackbone(nn.Module):
     def __init__(self, mapping: WanDiTMapping, hidden_layers: Sequence[int] = (5, 11, 17, 23, 29),
                  geometry_dim: int = 128, num_frames: int = 21, spatial_size: int = 16,
                  motion_slots: int = 16, num_heads: int = 8, use_clean_skip: bool = True,
-                 layer_gate_temperature: float = 1.0, layer_gate_top_k: int | None = None):
+                 layer_gate_temperature: float = 1.0, layer_gate_top_k: int | None = None,
+                 layer_gate_init_std: float = 0.0, layer_gate_seed: int = 0):
         super().__init__()
         self.mapping = mapping
         self.hidden_layers = tuple(int(index) for index in hidden_layers)
@@ -473,12 +474,15 @@ class WanHiddenGeometryBackbone(nn.Module):
         self.use_clean_skip = bool(use_clean_skip)
         self.layer_gate_temperature = float(layer_gate_temperature)
         self.layer_gate_top_k = len(self.hidden_layers) if layer_gate_top_k is None else int(layer_gate_top_k)
+        self.layer_gate_init_std = float(layer_gate_init_std)
         if self.geometry_dim % int(num_heads):
             raise ValueError("geometry_dim must be divisible by geometry attention heads")
         if self.layer_gate_temperature <= 0:
             raise ValueError("layer gate temperature must be positive")
         if not 1 <= self.layer_gate_top_k <= len(self.hidden_layers):
             raise ValueError("layer gate top-k must be within the selected hidden layers")
+        if self.layer_gate_init_std < 0:
+            raise ValueError("layer gate initialization std must be non-negative")
         hidden_dim = int(mapping.dit.config.num_attention_heads * mapping.dit.config.attention_head_dim)
         native_frames = WAN_LATENT_SHAPE[1] // int(mapping.dit.config.patch_size[0])
         self.native_frames = native_frames
@@ -486,7 +490,12 @@ class WanHiddenGeometryBackbone(nn.Module):
             nn.Sequential(nn.LayerNorm(hidden_dim), nn.Linear(hidden_dim, self.geometry_dim))
             for _ in self.hidden_layers
         ])
-        self.layer_logits = nn.Parameter(torch.zeros(len(self.hidden_layers)))
+        initial_layer_logits = torch.zeros(len(self.hidden_layers))
+        if self.layer_gate_init_std:
+            generator = torch.Generator(device="cpu")
+            generator.manual_seed(int(layer_gate_seed))
+            initial_layer_logits.normal_(std=self.layer_gate_init_std, generator=generator)
+        self.layer_logits = nn.Parameter(initial_layer_logits)
         self.clean_projection = nn.Conv3d(WAN_LATENT_SHAPE[0], self.geometry_dim, 1) \
             if self.use_clean_skip else None
         self.temporal_logits = nn.Parameter(_temporal_interpolation_logits(self.num_frames, native_frames))

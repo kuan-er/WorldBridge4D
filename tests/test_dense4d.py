@@ -279,6 +279,19 @@ def test_structured_layer_gates_support_entropy_and_straight_through_topk():
     torch.testing.assert_close(hard.sum(), torch.tensor(1.0))
 
 
+def test_layer_gate_initialization_is_seeded_and_nonuniform():
+    first = WanHiddenGeometryBackbone(
+        TinyHiddenMapping(), hidden_layers=(0, 1, 2), geometry_dim=32,
+        motion_slots=4, num_heads=4, layer_gate_init_std=0.01, layer_gate_seed=7,
+    )
+    second = WanHiddenGeometryBackbone(
+        TinyHiddenMapping(), hidden_layers=(0, 1, 2), geometry_dim=32,
+        motion_slots=4, num_heads=4, layer_gate_init_std=0.01, layer_gate_seed=7,
+    )
+    torch.testing.assert_close(first.layer_logits, second.layer_logits)
+    assert not torch.equal(first.layer_logits, torch.zeros_like(first.layer_logits))
+
+
 def test_geometry_adapter_mode_freezes_wan_but_trains_structured_adapter_and_decoder():
     mapping = TinyHiddenMapping()
     backbone = WanHiddenGeometryBackbone(
