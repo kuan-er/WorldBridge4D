@@ -261,6 +261,24 @@ def test_structured_hidden_readout_bypasses_final_head_and_keeps_st_query_contra
     assert not mapping.final_output_called
 
 
+def test_structured_layer_gates_support_entropy_and_straight_through_topk():
+    mapping = TinyHiddenMapping()
+    backbone = WanHiddenGeometryBackbone(
+        mapping, hidden_layers=(0, 1, 2), geometry_dim=32, motion_slots=4, num_heads=4,
+        layer_gate_temperature=0.7, layer_gate_top_k=2,
+    )
+    backbone.layer_logits.data.copy_(torch.tensor([0.1, 0.8, -0.2]))
+    soft = backbone.soft_layer_weights()
+    torch.testing.assert_close(soft.sum(), torch.tensor(1.0))
+    entropy = backbone.layer_gate_entropy()
+    entropy.backward()
+    assert backbone.layer_logits.grad is not None
+    backbone.eval()
+    hard = backbone.layer_weights()
+    assert int((hard > 0).sum()) == 2
+    torch.testing.assert_close(hard.sum(), torch.tensor(1.0))
+
+
 def test_geometry_adapter_mode_freezes_wan_but_trains_structured_adapter_and_decoder():
     mapping = TinyHiddenMapping()
     backbone = WanHiddenGeometryBackbone(

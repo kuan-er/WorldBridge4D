@@ -251,6 +251,8 @@ def main() -> None:
     ) if fixed is not None else (None, None)
     optimizer.zero_grad(set_to_none=True)
     losses: list[float] = []
+    total_losses: list[float] = []
+    gate_entropies: list[float] = []
     epe_values: list[float] = []
     backbone_gradient = False
     wan_gradient = False
@@ -298,10 +300,13 @@ def main() -> None:
 
         with torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
             prediction, z4d, _ = model(clean, source_tensor, target_tensor)
-            loss = masked_pair_smooth_l1(
+            geometry_loss = masked_pair_smooth_l1(
                 prediction.float(), target_xyz.float(), valid_tensor,
                 beta=float(config.get("smooth_l1_beta", 0.05)),
             )
+            entropy_fn = getattr(model.backbone, "layer_gate_entropy", None)
+            gate_entropy = entropy_fn() if entropy_fn is not None else geometry_loss.new_zeros(())
+            loss = geometry_loss + float(config.get("layer_gate_entropy_weight", 0.0)) * gate_entropy
         (loss / accumulation).backward()
         if step == 0:
             backbone_gradient = any(parameter.grad is not None and torch.isfinite(parameter.grad).all()
@@ -333,8 +338,12 @@ def main() -> None:
             )
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
 
-        raw_loss = float(loss.detach())
+        raw_loss = float(geometry_loss.detach())
+        total_loss = float(loss.detach())
+        gate_entropy_value = float(gate_entropy.detach())
         losses.append(raw_loss)
+        total_losses.append(total_loss)
+        gate_entropies.append(gate_entropy_value)
         prediction_metric = (
             prediction.detach().float().cpu().numpy() * stats.scale[None, None, :, None, None]
             + stats.mean[None, None, :, None, None]
@@ -345,7 +354,8 @@ def main() -> None:
         mean_epe = float(epe[valid].mean())
         epe_values.append(mean_epe)
         print(json.dumps({
-            "step": step + 1, "loss": raw_loss, "train_epe": mean_epe,
+            "step": step + 1, "loss": raw_loss, "total_loss": total_loss,
+            "layer_gate_entropy": gate_entropy_value, "train_epe": mean_epe,
             "pairs": np.stack((source_rows[0], target_rows[0]), axis=-1).tolist(),
             "z4d_shape": list(z4d.shape),
         }), flush=True)
@@ -353,6 +363,8 @@ def main() -> None:
         if wandb_run is not None and (step == 0 or (step + 1) % wandb_log_every == 0):
             wandb_run.log({
                 "train/loss": raw_loss,
+                "train/total_loss": total_loss,
+                "train/layer_gate_entropy": gate_entropy_value,
                 "train/epe_m": mean_epe,
                 "train/clips_seen": (global_step + 1) * batch_size,
                 "train/passes": (global_step + 1) * batch_size / len(samples),
@@ -401,6 +413,9 @@ def main() -> None:
         "trainable_parameters": optimizer_trainable_count(groups),
         "initial_train_loss": losses[0], "final_train_loss": losses[-1],
         "train_loss_ratio": losses[-1] / losses[0],
+        "initial_total_loss": total_losses[0], "final_total_loss": total_losses[-1],
+        "initial_layer_gate_entropy": gate_entropies[0], "final_layer_gate_entropy": gate_entropies[-1],
+        "final_layer_weights": getattr(model.backbone, "soft_layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
         "initial_train_epe": epe_values[0], "final_train_epe": epe_values[-1],
         "initial_evaluation": initial_eval, "final_evaluation": final_eval,
         "evaluation_loss_ratio": final_eval["normalized_smooth_l1"] / initial_eval["normalized_smooth_l1"],
@@ -422,6 +437,8 @@ def main() -> None:
         }
         final_scalars.update({
             "final/train_loss": losses[-1],
+            "final/total_loss": total_losses[-1],
+            "final/layer_gate_entropy": gate_entropies[-1],
             "final/train_epe_m": epe_values[-1],
             "final/elapsed_seconds": result["elapsed_seconds"],
             "final/peak_cuda_memory_gib": result["peak_cuda_memory_gib"],

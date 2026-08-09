@@ -90,6 +90,8 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
                 motion_slots=int(config.get("motion_slots", 16)),
                 num_heads=int(config.get("geometry_num_heads", 8)),
                 use_clean_skip=bool(config.get("geometry_clean_skip", True)),
+                layer_gate_temperature=float(config.get("layer_gate_temperature", 1.0)),
+                layer_gate_top_k=config.get("layer_gate_top_k"),
             )
     elif readout == "clean_latent":
         backbone = CleanLatentBackbone()

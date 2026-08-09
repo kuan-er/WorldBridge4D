@@ -461,7 +461,8 @@ class WanHiddenGeometryBackbone(nn.Module):
 
     def __init__(self, mapping: WanDiTMapping, hidden_layers: Sequence[int] = (5, 11, 17, 23, 29),
                  geometry_dim: int = 128, num_frames: int = 21, spatial_size: int = 16,
-                 motion_slots: int = 16, num_heads: int = 8, use_clean_skip: bool = True):
+                 motion_slots: int = 16, num_heads: int = 8, use_clean_skip: bool = True,
+                 layer_gate_temperature: float = 1.0, layer_gate_top_k: int | None = None):
         super().__init__()
         self.mapping = mapping
         self.hidden_layers = tuple(int(index) for index in hidden_layers)
@@ -470,8 +471,14 @@ class WanHiddenGeometryBackbone(nn.Module):
         self.spatial_size = int(spatial_size)
         self.motion_slots = int(motion_slots)
         self.use_clean_skip = bool(use_clean_skip)
+        self.layer_gate_temperature = float(layer_gate_temperature)
+        self.layer_gate_top_k = len(self.hidden_layers) if layer_gate_top_k is None else int(layer_gate_top_k)
         if self.geometry_dim % int(num_heads):
             raise ValueError("geometry_dim must be divisible by geometry attention heads")
+        if self.layer_gate_temperature <= 0:
+            raise ValueError("layer gate temperature must be positive")
+        if not 1 <= self.layer_gate_top_k <= len(self.hidden_layers):
+            raise ValueError("layer gate top-k must be within the selected hidden layers")
         hidden_dim = int(mapping.dit.config.num_attention_heads * mapping.dit.config.attention_head_dim)
         native_frames = WAN_LATENT_SHAPE[1] // int(mapping.dit.config.patch_size[0])
         self.native_frames = native_frames
@@ -519,6 +526,27 @@ class WanHiddenGeometryBackbone(nn.Module):
             self.mapping.dit.scale_shift_table,
         ]
 
+    def soft_layer_weights(self) -> torch.Tensor:
+        """Differentiable dense gates used for entropy regularization and selection."""
+        return (self.layer_logits.float() / self.layer_gate_temperature).softmax(dim=0)
+
+    def layer_weights(self) -> torch.Tensor:
+        """Return dense softmax or straight-through top-k fusion gates."""
+        soft = self.soft_layer_weights()
+        if self.layer_gate_top_k == len(self.hidden_layers):
+            return soft
+        indices = soft.topk(self.layer_gate_top_k).indices
+        mask = torch.zeros_like(soft).scatter_(0, indices, 1.0)
+        hard = soft * mask
+        hard = hard / hard.sum().clamp_min(1e-12)
+        if self.training:
+            return hard.detach() - soft.detach() + soft
+        return hard
+
+    def layer_gate_entropy(self) -> torch.Tensor:
+        weights = self.soft_layer_weights()
+        return -(weights * weights.clamp_min(1e-12).log()).sum()
+
     def forward(self, clean_video_latent: torch.Tensor) -> StructuredZ4D:
         flow_time = torch.zeros(clean_video_latent.shape[0], device=clean_video_latent.device,
                                 dtype=clean_video_latent.dtype)
@@ -530,7 +558,7 @@ class WanHiddenGeometryBackbone(nn.Module):
         projected = torch.stack([
             projection(hidden) for projection, hidden in zip(self.layer_projections, hidden_layers)
         ], dim=0)
-        weights = self.layer_logits.softmax(dim=0).reshape(-1, 1, 1, 1)
+        weights = self.layer_weights().to(dtype=projected.dtype).reshape(-1, 1, 1, 1)
         fused = (projected * weights).sum(dim=0)
         batch = fused.shape[0]
         native_time, native_height, native_width = grid_shape

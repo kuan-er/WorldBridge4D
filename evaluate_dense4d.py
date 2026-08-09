@@ -52,6 +52,8 @@ def main() -> None:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--pixel-stride", type=int, default=1,
                         help="evaluate every Nth pixel; use 16 for the prior H001 metric protocol")
+    parser.add_argument("--drop-hidden-layer", type=int,
+                        help="zero-shot structured-readout diagnostic: suppress one fused Wan block")
     args = parser.parse_args()
     if args.pixel_stride < 1:
         raise ValueError("--pixel-stride must be >= 1")
@@ -63,6 +65,12 @@ def main() -> None:
     model.load_state_dict(checkpoint["model"], strict=True)
     del checkpoint
     model.eval()
+    if args.drop_hidden_layer is not None:
+        hidden_layers = tuple(getattr(model.backbone, "hidden_layers", ()))
+        if args.drop_hidden_layer not in hidden_layers:
+            raise ValueError(f"cannot drop block {args.drop_hidden_layer}; checkpoint layers are {hidden_layers}")
+        with torch.no_grad():
+            model.backbone.layer_logits[hidden_layers.index(args.drop_hidden_layer)] = -100.0
     dtype = precision_dtype(config["precision"])
 
     dataset = MOViFDataset(
@@ -146,6 +154,8 @@ def main() -> None:
     result = {
         "split": args.split, "clips": len(samples), "pixel_stride": int(args.pixel_stride),
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
+        "drop_hidden_layer": args.drop_hidden_layer,
+        "effective_layer_weights": getattr(model.backbone, "layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
         "z4d_motion_shape": z4d_motion_shape,
         "decoder_query_shape": [
