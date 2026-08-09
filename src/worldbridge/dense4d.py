@@ -290,7 +290,8 @@ class DenseQueryDecoder(nn.Module):
                  output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False,
                  fullres_coordinates: bool = False, query_grid_size: int | None = None,
                  structured_motion_slots: int = 0, structured_local_queries: bool = False,
-                 structured_pair_motion_queries: bool = False):
+                 structured_pair_motion_queries: bool = False,
+                 structured_pair_motion_zero_init: bool = False):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
@@ -307,6 +308,7 @@ class DenseQueryDecoder(nn.Module):
         self.structured_motion_slots = int(structured_motion_slots)
         self.structured_local_queries = bool(structured_local_queries)
         self.structured_pair_motion_queries = bool(structured_pair_motion_queries)
+        self.structured_pair_motion_zero_init = bool(structured_pair_motion_zero_init)
         if self.structured_motion_slots < 0:
             raise ValueError("structured motion slot count cannot be negative")
         if self.structured_pair_motion_queries and self.structured_motion_slots == 0:
@@ -334,6 +336,9 @@ class DenseQueryDecoder(nn.Module):
             nn.LayerNorm(3 * channels), nn.Linear(3 * channels, query_dim),
             nn.SiLU(), nn.Linear(query_dim, query_dim),
         ) if self.structured_pair_motion_queries else None
+        if self.motion_pair_projection is not None and self.structured_pair_motion_zero_init:
+            nn.init.zeros_(self.motion_pair_projection[-1].weight)
+            nn.init.zeros_(self.motion_pair_projection[-1].bias)
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         source = torch.as_tensor(source, dtype=torch.long, device=self.source_embedding.weight.device)

@@ -278,6 +278,11 @@ def test_pair_conditioned_motion_query_preserves_shared_initialization_and_gradi
     conditioned = DenseQueryDecoder(**kwargs, structured_pair_motion_queries=True)
     torch.testing.assert_close(baseline.source_embedding.weight, conditioned.source_embedding.weight)
     torch.testing.assert_close(baseline.upsampler.xyz.weight, conditioned.upsampler.xyz.weight)
+    torch.manual_seed(17)
+    zero_init = DenseQueryDecoder(**kwargs, structured_pair_motion_queries=True,
+                                  structured_pair_motion_zero_init=True)
+    assert zero_init.motion_pair_projection[-1].weight.abs().sum() == 0
+    assert zero_init.motion_pair_projection[-1].bias.abs().sum() == 0
 
     z4d = StructuredZ4D(
         torch.randn(1, 32, 21, 16, 16),
