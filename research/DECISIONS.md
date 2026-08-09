@@ -1,3 +1,4 @@
+
 # Research Decisions
 
 ## 2026-08-09 — H006 motion slots are useful but nearly collapsed
