@@ -47,6 +47,8 @@ def main() -> None:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--max-clips", type=int, default=2)
+    parser.add_argument("--dataset-offset", type=int, default=0,
+                        help="start index within the requested split")
     parser.add_argument("--split", default="validation", choices=("train", "validation"))
     parser.add_argument("--pair-chunk", type=int, default=8)
     parser.add_argument("--device", default="cuda")
@@ -57,6 +59,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.pixel_stride < 1:
         raise ValueError("--pixel-stride must be >= 1")
+    if args.dataset_offset < 0:
+        raise ValueError("--dataset-offset must be non-negative")
+    if args.max_clips < 1:
+        raise ValueError("--max-clips must be positive")
     device = torch.device(args.device)
     checkpoint = torch.load(args.checkpoint, map_location="cpu", mmap=True, weights_only=True)
     config = checkpoint["config"]
@@ -75,9 +81,12 @@ def main() -> None:
 
     dataset = MOViFDataset(
         config["data_root"], split=args.split, clip_length=int(config["clip_length"]),
-        clip_start=int(config.get("clip_start", 0)), max_examples=args.max_clips, seed=int(config["seed"]),
+        clip_start=int(config.get("clip_start", 0)),
+        max_examples=args.dataset_offset + args.max_clips, seed=int(config["seed"]),
     )
-    samples = [dataset[index] for index in range(len(dataset))]
+    samples = [dataset[index] for index in range(
+        args.dataset_offset, args.dataset_offset + args.max_clips
+    )]
     latents = encode_clean_video_latents(samples, config["wan_root"], device)
     groups = defaultdict(Accumulator)
     gap_groups = defaultdict(Accumulator)
@@ -152,7 +161,9 @@ def main() -> None:
                             )
 
     result = {
-        "split": args.split, "clips": len(samples), "pixel_stride": int(args.pixel_stride),
+        "split": args.split, "clips": len(samples), "dataset_offset": args.dataset_offset,
+        "dataset_indices": [args.dataset_offset, args.dataset_offset + len(samples) - 1],
+        "pixel_stride": int(args.pixel_stride),
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
         "drop_hidden_layer": args.drop_hidden_layer,
         "effective_layer_weights": getattr(model.backbone, "layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
