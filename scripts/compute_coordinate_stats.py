@@ -28,10 +28,15 @@ def chunk_moments(job):
     count = 0
     for index in range(start, end):
         geometry = GeometryBuilder(dataset[index])
-        # Both arms use the same diagonal point population and differ only in
-        # the rigid coordinate basis.  The source arm is therefore P[t] in
-        # camera-t coordinates, not an extra source/target sampling change.
-        pointmap, valid = geometry.pointmaps(coordinate_frame=coordinate_frame)
+        if coordinate_frame == "anchor":
+            pointmap, valid = geometry.pointmaps(coordinate_frame="anchor")
+        else:
+            # One deterministic source per clip with all targets keeps the work
+            # and point count comparable to the historical diagonal statistic.
+            source = (int(index) + int(seed)) % int(clip_length)
+            pointmap, _, valid, _ = geometry.trajectory_block(
+                source, coordinate_frame="source"
+            )
         values = pointmap[valid].astype(np.float64, copy=False)
         count += len(values)
         total += values.sum(axis=0, dtype=np.float64)
@@ -81,7 +86,8 @@ def main():
             examples=len(dataset), point_count=count, workers=workers,
             clip_length=args.clip_length, clip_start=args.clip_start,
             coordinate_frame=args.coordinate_frame,
-            stats_source="diagonal_pointmaps_in_selected_coordinate_frame",
+            stats_source=("diagonal_pointmaps" if args.coordinate_frame == "anchor"
+                          else "one_uniform_source_per_clip_all_targets"),
         )
     temporary.replace(output)
     print({"output": str(output), "examples": len(dataset), "point_count": count,
