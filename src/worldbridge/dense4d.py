@@ -58,6 +58,7 @@ class StructuredZ4D:
 
     dense: torch.Tensor
     motion: torch.Tensor
+    include_motion: bool = True
 
     def validate(self) -> None:
         if self.dense.ndim != 5:
@@ -83,6 +84,8 @@ def flatten_structured_z4d(z4d: StructuredZ4D) -> tuple[torch.Tensor, torch.Tens
     z4d.validate()
     dense_memory, dense_coordinates = flatten_z4d(z4d.dense)
     batch, frames, slots, channels = z4d.motion.shape
+    if not z4d.include_motion or slots == 0:
+        return dense_memory, dense_coordinates
     motion_memory = z4d.motion.reshape(batch, frames * slots, channels)
     # Motion slots have no pixel location. Keeping them at the grid center
     # avoids assigning a false object position while retaining 2D-RoPE for the
@@ -302,8 +305,8 @@ class DenseQueryDecoder(nn.Module):
         ])
         self.structured_motion_slots = int(structured_motion_slots)
         self.structured_local_queries = bool(structured_local_queries)
-        if self.structured_local_queries and self.structured_motion_slots <= 0:
-            raise ValueError("structured local queries require at least one motion slot")
+        if self.structured_motion_slots < 0:
+            raise ValueError("structured motion slot count cannot be negative")
         self.source_local_projection = nn.Conv2d(channels, query_dim, 1) \
             if self.structured_local_queries else None
         query_grid_size = int(query_grid_size or latent_height)
@@ -502,14 +505,23 @@ class WanHiddenGeometryBackbone(nn.Module):
         self.dense_frame_embedding = nn.Parameter(torch.randn(self.num_frames, self.geometry_dim) / math.sqrt(self.geometry_dim))
         self.native_frame_embedding = nn.Parameter(torch.randn(native_frames, self.geometry_dim) / math.sqrt(self.geometry_dim))
         self.dense_refine = ResidualBlock3D(self.geometry_dim)
-        self.motion_slot_embedding = nn.Parameter(
-            torch.randn(self.motion_slots, self.geometry_dim) / math.sqrt(self.geometry_dim)
-        )
-        self.motion_frame_embedding = nn.Parameter(
-            torch.randn(self.num_frames, self.geometry_dim) / math.sqrt(self.geometry_dim)
-        )
-        self.motion_attention = nn.MultiheadAttention(self.geometry_dim, int(num_heads), batch_first=True)
-        self.motion_norm = nn.LayerNorm(self.geometry_dim)
+        if self.motion_slots < 0:
+            raise ValueError("motion_slots cannot be negative")
+        if self.motion_slots:
+            self.motion_slot_embedding = nn.Parameter(
+                torch.randn(self.motion_slots, self.geometry_dim) / math.sqrt(self.geometry_dim)
+            )
+            self.motion_frame_embedding = nn.Parameter(
+                torch.randn(self.num_frames, self.geometry_dim) / math.sqrt(self.geometry_dim)
+            )
+            self.motion_attention = nn.MultiheadAttention(self.geometry_dim, int(num_heads), batch_first=True)
+            self.motion_norm = nn.LayerNorm(self.geometry_dim)
+        else:
+            # A true dense-only control should not retain unused slot parameters.
+            self.register_parameter("motion_slot_embedding", None)
+            self.register_parameter("motion_frame_embedding", None)
+            self.motion_attention = None
+            self.motion_norm = None
 
         # These modules only define Wan's RF output parameterization and are
         # deliberately outside the H005 forward graph.
@@ -574,16 +586,19 @@ class WanHiddenGeometryBackbone(nn.Module):
 
         native_tokens = fused.reshape(batch, native_time, native_height, native_width, self.geometry_dim)
         native_tokens = native_tokens + self.native_frame_embedding[None, :, None, None, :]
-        motion_query = (
-            self.motion_frame_embedding[:, None, :] + self.motion_slot_embedding[None, :, :]
-        ).reshape(1, self.num_frames * self.motion_slots, self.geometry_dim).expand(batch, -1, -1)
-        motion, _ = self.motion_attention(
-            motion_query, native_tokens.reshape(batch, -1, self.geometry_dim),
-            native_tokens.reshape(batch, -1, self.geometry_dim), need_weights=False,
-        )
-        motion = self.motion_norm(motion + motion_query).reshape(
-            batch, self.num_frames, self.motion_slots, self.geometry_dim
-        )
+        if self.motion_slots:
+            motion_query = (
+                self.motion_frame_embedding[:, None, :] + self.motion_slot_embedding[None, :, :]
+            ).reshape(1, self.num_frames * self.motion_slots, self.geometry_dim).expand(batch, -1, -1)
+            motion, _ = self.motion_attention(
+                motion_query, native_tokens.reshape(batch, -1, self.geometry_dim),
+                native_tokens.reshape(batch, -1, self.geometry_dim), need_weights=False,
+            )
+            motion = self.motion_norm(motion + motion_query).reshape(
+                batch, self.num_frames, self.motion_slots, self.geometry_dim
+            )
+        else:
+            motion = fused.new_empty(batch, self.num_frames, 0, self.geometry_dim)
 
         dense_native = fused.reshape(
             batch, native_time, native_height, native_width, self.geometry_dim

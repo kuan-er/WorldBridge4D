@@ -251,6 +251,11 @@ def test_structured_hidden_readout_bypasses_final_head_and_keeps_st_query_contra
     memory, coordinates = flatten_structured_z4d(z4d)
     assert memory.shape == (1, 21 * 16 * 16 + 21 * 4, 32)
     assert coordinates.shape == (memory.shape[1], 2)
+    dense_only_memory, dense_only_coordinates = flatten_structured_z4d(
+        StructuredZ4D(z4d.dense, z4d.motion, include_motion=False)
+    )
+    assert dense_only_memory.shape == (1, 21 * 16 * 16, 32)
+    assert dense_only_coordinates.shape == (dense_only_memory.shape[1], 2)
     assert prediction.shape == (1, 2, 3, 128, 128)
     loss = prediction.square().mean()
     loss.backward()
@@ -259,6 +264,33 @@ def test_structured_hidden_readout_bypasses_final_head_and_keeps_st_query_contra
     assert decoder.upsampler.xyz.weight.grad is not None
     assert mapping.dit.proj_out.weight.grad is None
     assert not mapping.final_output_called
+
+
+def test_dense_only_structured_control_keeps_local_query_without_slot_parameters():
+    mapping = TinyHiddenMapping()
+    backbone = WanHiddenGeometryBackbone(
+        mapping, hidden_layers=(0, 1), geometry_dim=32, num_frames=21,
+        spatial_size=16, motion_slots=0, num_heads=4,
+    )
+    decoder = DenseQueryDecoder(
+        latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(32, 16, 8, 4),
+        structured_motion_slots=0, structured_local_queries=True,
+    )
+    model = DenseQueryWanModel(backbone, decoder)
+    prediction, z4d, _ = model(
+        torch.randn(1, *WAN_LATENT_SHAPE), torch.tensor([[0, 20]]), torch.tensor([[20, 0]])
+    )
+    assert z4d.motion.shape == (1, 21, 0, 32)
+    assert backbone.motion_attention is None
+    assert backbone.motion_slot_embedding is None
+    memory, coordinates = flatten_structured_z4d(z4d)
+    assert memory.shape == (1, 21 * 16 * 16, 32)
+    assert coordinates.shape == (memory.shape[1], 2)
+    assert prediction.shape == (1, 2, 3, 128, 128)
+    prediction.square().mean().backward()
+    assert backbone.temporal_logits.grad is not None
+    assert decoder.source_local_projection.weight.grad is not None
 
 
 def test_structured_layer_gates_support_entropy_and_straight_through_topk():

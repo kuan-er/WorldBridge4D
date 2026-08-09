@@ -56,6 +56,10 @@ def main() -> None:
                         help="evaluate every Nth pixel; use 16 for the prior H001 metric protocol")
     parser.add_argument("--drop-hidden-layer", type=int,
                         help="zero-shot structured-readout diagnostic: suppress one fused Wan block")
+    parser.add_argument(
+        "--motion-memory-mode", default="learned", choices=("learned", "zero", "drop"),
+        help="zero-shot structured-slot diagnostic; zero preserves token count, drop removes slot tokens",
+    )
     args = parser.parse_args()
     if args.pixel_stride < 1:
         raise ValueError("--pixel-stride must be >= 1")
@@ -106,6 +110,13 @@ def main() -> None:
             forward_seconds.append(time.time() - start)
             z4d_shape = list(z4d.shape)
             z4d_motion_shape = list(z4d.motion.shape) if hasattr(z4d, "motion") else None
+            if args.motion_memory_mode != "learned":
+                if not hasattr(z4d, "motion"):
+                    raise ValueError("motion-memory diagnostics require a structured Z4D checkpoint")
+                if args.motion_memory_mode == "zero":
+                    z4d.motion = torch.zeros_like(z4d.motion)
+                else:
+                    z4d.include_motion = False
             for source in range(sample.num_frames):
                 dynamic = cache.get(sample, source)
                 ids = sample.segmentation[source]
@@ -166,6 +177,7 @@ def main() -> None:
         "pixel_stride": int(args.pixel_stride),
         "checkpoint": str(pathlib.Path(args.checkpoint).resolve()),
         "drop_hidden_layer": args.drop_hidden_layer,
+        "motion_memory_mode": args.motion_memory_mode,
         "effective_layer_weights": getattr(model.backbone, "layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
         "z4d_motion_shape": z4d_motion_shape,
