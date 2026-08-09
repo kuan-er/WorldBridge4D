@@ -106,6 +106,76 @@
         "WANDB_MODE": "disabled",
         "CUDA_LAUNCH_BLOCKING": "1"
       }
+    },
+    {
+      "name": "H005 hidden readout unit tests (CPU)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "/opt/conda/bin/python",
+      "module": "pytest",
+      "args": [
+        "-q",
+        "tests/test_dense4d.py",
+        "-k",
+        "wan_hidden_extraction or structured_hidden_readout or layer_gate or geometry_adapter_mode"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "WANDB_MODE": "disabled",
+        "CUDA_VISIBLE_DEVICES": "",
+        "CUDA_LAUNCH_BLOCKING": "1"
+      }
+    },
+    {
+      "name": "H005 hidden readout real one-step (GPU 6)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "/opt/conda/bin/python",
+      "program": "${workspaceFolder}/train_dense4d.py",
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/dense4d_hidden_structured_smoke.yaml",
+        "--output-dir",
+        "/tmp/worldbridge_h005_debug/hidden_structured_smoke",
+        "--device",
+        "cuda"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "6",
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "WANDB_MODE": "disabled",
+        "CUDA_LAUNCH_BLOCKING": "1"
+      }
+    },
+    {
+      "name": "H005 hidden readout full gradient smoke (GPU 6)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "/opt/conda/bin/python",
+      "program": "${workspaceFolder}/train_dense4d.py",
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/dense4d_hidden_structured_full_gradient_smoke.yaml",
+        "--output-dir",
+        "/tmp/worldbridge_h005_debug/hidden_structured_full_gradient",
+        "--device",
+        "cuda"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "6",
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "WANDB_MODE": "disabled",
+        "CUDA_LAUNCH_BLOCKING": "1"
+      }
     }
   ]
 }
