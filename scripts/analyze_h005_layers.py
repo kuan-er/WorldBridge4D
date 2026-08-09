@@ -320,6 +320,10 @@ def main():
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--probe-train-clips", type=int, default=8)
     parser.add_argument("--probe-validation-clips", type=int, default=4)
+    parser.add_argument(
+        "--dataset-offset", type=int, default=0,
+        help="start index in the train split; use a disjoint offset for layer selection",
+    )
     parser.add_argument("--layers", default="all")
     parser.add_argument("--pca-layers", default="5,11,17,23,29")
     parser.add_argument("--ridge-alpha", type=float, default=10.0)
@@ -338,11 +342,14 @@ def main():
     mean = np.asarray(checkpoint["coordinate_mean"], np.float32)
     scale = np.asarray(checkpoint["coordinate_scale"], np.float32)
     total_clips = args.probe_train_clips + args.probe_validation_clips
+    if args.dataset_offset < 0:
+        raise ValueError("dataset offset must be non-negative")
     dataset = MOViFDataset(
         args.data_root, split="train", clip_length=int(config["clip_length"]),
-        clip_start=int(config.get("clip_start", 0)), max_examples=total_clips, seed=args.seed,
+        clip_start=int(config.get("clip_start", 0)),
+        max_examples=args.dataset_offset + total_clips, seed=args.seed,
     )
-    samples = [dataset[index] for index in range(total_clips)]
+    samples = [dataset[args.dataset_offset + index] for index in range(total_clips)]
     device = torch.device(args.device)
     latents = encode_clean_video_latents(samples, config["wan_root"], device)
     model = build_real_model(config, device)
@@ -372,7 +379,9 @@ def main():
     validation_samples = samples[args.probe_train_clips:]
     validation_features = features[args.probe_train_clips:]
     correspondence = correspondence_diagnostics(validation_samples, validation_features, grid_shape, device)
-    cka = linear_cka_matrix(validation_features[0].astype(np.float32))
+    cka = np.mean([
+        linear_cka_matrix(value.astype(np.float32)) for value in validation_features
+    ], axis=0)
     probe_scores = [row["validation_pointmap_epe"] for row in probes]
     correspondence_scores = [row["all_epe_px"] for row in correspondence]
     selected = mrmr_layers(
@@ -399,8 +408,12 @@ def main():
         "data_split": "train",
         "probe_train_clips": args.probe_train_clips,
         "probe_validation_clips": args.probe_validation_clips,
-        "probe_train_indices": [0, args.probe_train_clips - 1],
-        "probe_validation_indices": [args.probe_train_clips, total_clips - 1],
+        "dataset_offset": args.dataset_offset,
+        "probe_train_indices": [args.dataset_offset, args.dataset_offset + args.probe_train_clips - 1],
+        "probe_validation_indices": [
+            args.dataset_offset + args.probe_train_clips,
+            args.dataset_offset + total_clips - 1,
+        ],
         "layers": layers,
         "grid_shape": list(grid_shape),
         "native_physical_frames": native_frame_indices(int(config["clip_length"]), grid_shape[0]).tolist(),
