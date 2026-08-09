@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from worldbridge.data import MOViFDataset
 from worldbridge.dense4d_data import CoordinateStats, DynamicPointmapCache
 from worldbridge.dense4d_runtime import build_real_model, encode_clean_video_latents, precision_dtype
+from worldbridge.geometry import GeometryBuilder
 
 
 class Accumulator:
@@ -97,6 +98,8 @@ def main() -> None:
     latents = encode_clean_video_latents(samples, config["wan_root"], device)
     groups = defaultdict(Accumulator)
     gap_groups = defaultdict(Accumulator)
+    common_anchor_audit = Accumulator()
+    coordinate_invariance_max_abs_epe = 0.0
     cache = DynamicPointmapCache(
         max_entries=2, depth_tolerance=float(config.get("depth_tolerance", 0.05)),
         depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
@@ -107,6 +110,10 @@ def main() -> None:
 
     with torch.inference_mode():
         for sample, latent in zip(samples, latents):
+            geometry = GeometryBuilder(
+                sample, depth_tolerance=float(config.get("depth_tolerance", 0.05)),
+                depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
+            )
             start = time.time()
             with torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
                 z4d = model.backbone(latent.to(device=device, dtype=dtype))
@@ -152,6 +159,20 @@ def main() -> None:
                         pred = prediction[local_index].reshape(3, -1)[:, ::stride]
                         late = late_appearing.reshape(-1)[::stride]
 
+                        if coordinate_frame == "source":
+                            pred_anchor = geometry.source_to_anchor(pred.T, source).T
+                            truth_anchor = geometry.source_to_anchor(truth.T, source).T
+                        else:
+                            pred_anchor, truth_anchor = pred, truth
+                        common_anchor_audit.add(pred_anchor, truth_anchor, valid)
+                        if np.any(valid):
+                            native_epe = np.linalg.norm(pred - truth, axis=0)
+                            anchor_epe = np.linalg.norm(pred_anchor - truth_anchor, axis=0)
+                            coordinate_invariance_max_abs_epe = max(
+                                coordinate_invariance_max_abs_epe,
+                                float(np.max(np.abs(native_epe[valid] - anchor_epe[valid]))),
+                            )
+
                         groups["arbitrary_all_st"].add(pred, truth, valid)
                         groups["arbitrary_all_st_visible"].add(pred, truth, valid & visible)
                         groups["arbitrary_all_st_occluded_valid"].add(pred, truth, valid & ~visible)
@@ -182,6 +203,9 @@ def main() -> None:
         "drop_hidden_layer": args.drop_hidden_layer,
         "motion_memory_mode": args.motion_memory_mode,
         "coordinate_frame": coordinate_frame,
+        "metric_definition": "metric-space Euclidean EPE after checkpoint-specific denormalization",
+        "common_anchor_audit_arbitrary_all_st": common_anchor_audit.result(),
+        "coordinate_invariance_max_abs_epe": coordinate_invariance_max_abs_epe,
         "effective_layer_weights": getattr(model.backbone, "layer_weights", lambda: torch.empty(0))().detach().cpu().tolist(),
         "clean_latent_shape": list(latents[0].shape), "z4d_shape": z4d_shape,
         "z4d_motion_shape": z4d_motion_shape,
