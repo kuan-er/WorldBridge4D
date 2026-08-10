@@ -28,8 +28,8 @@ num_cross_attn_layers: 5
 num_heads: 8
 upsample_channels: [512, 256, 128, 64]
 
-# Replaced by the measured largest safe batch after the H017 capacity screen.
-batch_size: 1
+# Capacity curve predicts 77.86 GiB at batch 24 from measured batches 4..20.
+batch_size: 24
 steps: 30000
 matched_epoch_sampling: true
 learning_rate: 0.0003
@@ -57,5 +57,5 @@ tracking:
   project: worldbridge4d
   entity: zhaigong2023-sjtu-hpc-center
   group: h017-decoder-capacity-30k
-  tags: [h017, decoder-20m, all5737, source-all-targets, full-dit, steps30000, seed2029]
+  tags: [h017, decoder-20m, batch24, all5737, source-all-targets, full-dit, steps30000, seed2029]
   log_every: 20
