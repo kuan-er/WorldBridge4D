@@ -409,4 +409,21 @@ next_step: Keep the H005 triad with eight learned motion slots. Future slot work
   should preserve late-appearing behavior and test source-valid/appearance-aware
   gating or slot-specific residuals on a fresh development split; do not select
   on final validation.
+h013_default_policy_change:
+  status: implemented_not_quality_validated
+  task: T-20260810022349-e4aabd
+  cleanup_task: T-20260810025024-fcdbbe
+  defaults:
+    coordinate_frame: source
+    pair_sampling: source_all_targets
+    num_query_pairs: 21
+    trainable_mode: full
+  shipped_dense4d_configs:
+    - configs/dense4d_smoke.yaml
+    - configs/dense4d_tiny_overfit.yaml
+    - configs/dense4d_arbitrary_overfit.yaml
+    - configs/dense4d_train.yaml
+  decision: Apply to canonical profiles only. Historical experiment YAMLs are
+    recoverable from Git. Run fresh full-DiT quality validation before treating
+    the new route as scientifically superior.
 updated_at: 2026-08-10T02:43:49.467Z

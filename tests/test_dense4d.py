@@ -11,7 +11,9 @@ from worldbridge.dense4d import (
     StructuredZ4D, WanHiddenGeometryBackbone, flatten_structured_z4d, flatten_z4d,
     masked_pair_smooth_l1, unflatten_z4d, verify_flow_velocity_algebra,
 )
-from worldbridge.dense4d_data import CoordinateStats, dense_pair_targets, sample_dense_pairs
+from worldbridge.dense4d_data import (
+    CoordinateStats, dense_pair_targets, sample_dense_pairs, sample_source_all_targets_pairs,
+)
 from worldbridge.geometry import GeometryBuilder
 from worldbridge.pointmap import build_dynamic_pointmap
 from worldbridge.wan import WAN_LATENT_SHAPE, WanDiTMapping, rgb_to_wan_input
@@ -421,6 +423,13 @@ def test_pair_sampler_balances_diagonal_directions_and_gaps():
     gap = np.abs(target - source)
     assert np.any((gap > 0) & (gap <= 5)) and np.any(gap >= 10)
     assert np.any(source > 0)
+
+
+def test_source_all_targets_sampler_uses_one_source_and_every_target():
+    source, target = sample_source_all_targets_pairs(21, 21, np.random.default_rng(2026))
+    assert source.shape == target.shape == (21,)
+    assert np.all(source == source[0])
+    np.testing.assert_array_equal(target, np.arange(21))
 
 
 def test_dense_pair_targets_are_source_grid_maps_and_normalized():

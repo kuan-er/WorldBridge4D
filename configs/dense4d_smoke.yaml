@@ -7,7 +7,16 @@ clip_length: 21
 clip_start: 0
 image_size: 128
 max_clips: 1
-num_query_pairs: 4
+num_query_pairs: 21
+pair_sampling: source_all_targets
+backbone_readout: wan_hidden_structured
+wan_hidden_layers: [13, 14, 15]
+geometry_dim: 128
+geometry_spatial_size: 16
+geometry_num_heads: 8
+geometry_clean_skip: true
+motion_slots: 8
+structured_local_queries: true
 query_dim: 256
 embedding_dim: 128
 num_cross_attn_layers: 2
@@ -22,6 +31,6 @@ precision: bf16
 gradient_checkpointing: true
 gradient_accumulation: 1
 gradient_clip: 1.0
-trainable_mode: decoder_only
+trainable_mode: full
 seed: 2026
 save_checkpoint: false
