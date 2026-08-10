@@ -367,7 +367,20 @@ class DenseQueryDecoder(nn.Module):
         if source.shape != (batch, pairs) or (source < 0).any() or (source >= frames).any():
             raise ValueError("structured source indices do not match dense Z4D")
         by_time = z4d.dense.permute(0, 2, 1, 3, 4)
-        local = by_time[torch.arange(batch, device=z4d.dense.device)[:, None], source]
+        batch_indices = torch.arange(batch, device=z4d.dense.device)
+        same_source_per_clip = bool(torch.all(source == source[:, :1]))
+        if same_source_per_clip:
+            # Canonical source-all-target supervision repeats one source for all
+            # K targets. Project its local plane once, then let autograd sum the
+            # gradients through the expanded pair view instead of recomputing
+            # the identical 1x1 convolution K times.
+            local = by_time[batch_indices, source[:, 0]]
+            local = self.source_local_projection(local)
+            if local.shape[-2:] != self.query_grid_shape:
+                local = F.interpolate(local, size=self.query_grid_shape, mode="bilinear", align_corners=False)
+            local = local.flatten(2).transpose(1, 2)[:, None]
+            return local.expand(-1, pairs, -1, -1)
+        local = by_time[batch_indices[:, None], source]
         local = self.source_local_projection(local.reshape(batch * pairs, channels, height, width))
         if local.shape[-2:] != self.query_grid_shape:
             local = F.interpolate(local, size=self.query_grid_shape, mode="bilinear", align_corners=False)

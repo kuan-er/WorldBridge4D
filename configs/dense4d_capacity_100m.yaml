@@ -56,3 +56,4 @@ smooth_l1_beta: 0.05
 geometry_cache_entries: 672
 save_checkpoint: true
 keep_checkpoint: true
+checkpoint_every_steps: 256

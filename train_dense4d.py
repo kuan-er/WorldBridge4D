@@ -25,8 +25,8 @@ from worldbridge.dense4d_data import (
     sample_dense_pairs, sample_h001_balanced_pairs, sample_source_all_targets_pairs,
 )
 from worldbridge.dense4d_runtime import (
-    build_real_model, encode_clean_video_latents, optimizer_trainable_count,
-    apply_linear_warmup, parameter_groups, precision_dtype, save_checkpoint,
+    build_real_model, capture_rng_state, encode_clean_video_latents, optimizer_trainable_count,
+    apply_linear_warmup, parameter_groups, precision_dtype, restore_rng_state, save_checkpoint,
 )
 
 
@@ -187,7 +187,9 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--resume", help="load model weights from a prior compatible checkpoint")
+    parser.add_argument("--resume", help="resume from an exact Dense4D training checkpoint")
+    parser.add_argument("--resume-weights-only", action="store_true",
+                        help="initialize from model weights without optimizer/RNG resume state")
     args = parser.parse_args()
     config = yaml.safe_load(pathlib.Path(args.config).read_text())
     missing = sorted(REQUIRED_CONFIG - set(config))
@@ -210,11 +212,24 @@ def main() -> None:
     torch.cuda.reset_peak_memory_stats(device)
     dtype = precision_dtype(config["precision"])
     resume_step_offset = 0
+    resume_optimizer_updates = 0
+    resume_payload = None
     if args.resume:
         resume_payload = torch.load(args.resume, map_location="cpu", mmap=True, weights_only=True)
         resume_extra = resume_payload.get("extra", {})
         resume_step_offset = int(resume_extra.get("total_steps", resume_extra.get("steps", 0)))
-    rng = np.random.default_rng(seed + resume_step_offset)
+        if not args.resume_weights_only and (
+            "optimizer" not in resume_payload or "training_state" not in resume_payload
+        ):
+            raise RuntimeError(
+                "exact resume requires optimizer and training_state; use --resume-weights-only "
+                "for a legacy model-only checkpoint"
+            )
+        if not args.resume_weights_only:
+            resume_optimizer_updates = int(resume_payload["training_state"]["optimizer_updates"])
+            if int(resume_payload["training_state"]["global_step"]) != resume_step_offset:
+                raise RuntimeError("checkpoint extra/training_state global_step mismatch")
+    rng = np.random.default_rng(seed)
     output_dir = pathlib.Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     wandb_run = init_wandb(config)
@@ -231,14 +246,22 @@ def main() -> None:
     model = build_real_model(config, device)
     if args.resume:
         model.load_state_dict(resume_payload["model"], strict=True)
-        del resume_payload
-        print(f"RESUME_CHECKPOINT_LOADED: {args.resume} (global_step={resume_step_offset})", flush=True)
     groups = parameter_groups(model, config)
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 0.0)))
+    if args.resume and not args.resume_weights_only:
+        optimizer.load_state_dict(resume_payload["optimizer"])
+    if args.resume and not args.resume_weights_only:
+        restore_rng_state(resume_payload["training_state"]["rng_state"], rng)
+        print(f"RESUME_CHECKPOINT_LOADED: {args.resume} (global_step={resume_step_offset})", flush=True)
+    elif args.resume:
+        resume_step_offset = 0
+        print(f"RESUME_WEIGHTS_ONLY_LOADED: {args.resume} (starting global_step=0)", flush=True)
+    del resume_payload
     cache = DynamicPointmapCache(
         max_entries=int(config.get("geometry_cache_entries", 32)),
         depth_tolerance=float(config.get("depth_tolerance", 0.05)),
         depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
+        compute_visibility=False,
     )
 
     evaluation_source, evaluation_target = pair_suite(config)
@@ -254,9 +277,22 @@ def main() -> None:
         }, step=resume_step_offset)
 
     steps = int(config["steps"])
+    if steps < 1:
+        raise ValueError("config steps must be positive")
+    if resume_step_offset >= steps:
+        raise ValueError(
+            f"checkpoint global_step={resume_step_offset} already reaches config steps={steps}; "
+            "increase config steps or start a new run"
+        )
+    steps_to_run = steps - resume_step_offset
+    checkpoint_every = int(config.get("checkpoint_every_steps", 0))
+    if checkpoint_every < 0:
+        raise ValueError("checkpoint_every_steps must be non-negative")
     batch_size = int(config["batch_size"])
     num_pairs = int(config["num_query_pairs"])
     accumulation = int(config["gradient_accumulation"])
+    if accumulation < 1:
+        raise ValueError("gradient_accumulation must be positive")
     fixed = config.get("fixed_pairs")
     fixed_source, fixed_target = parse_fixed_pairs(
         fixed, int(config["clip_length"]), num_pairs
@@ -274,9 +310,10 @@ def main() -> None:
     start_time = time.time()
     model.train()
 
-    for step in range(steps):
+    optimizer_updates = resume_optimizer_updates
+    for step in range(steps_to_run):
         global_step = resume_step_offset + step
-        warmup_factor = apply_linear_warmup(optimizer, global_step + 1, warmup_steps)
+        warmup_factor = apply_linear_warmup(optimizer, optimizer_updates + 1, warmup_steps)
         if bool(config.get("matched_epoch_sampling", False)):
             # One deterministic pass is exactly len(samples) optimizer updates;
             # this makes steps=N*epochs comparable to the prior Kubric runs.
@@ -350,12 +387,14 @@ def main() -> None:
                 raise RuntimeError("XYZ loss did not reach the geometry adapter")
             if not decoder_gradient:
                 raise RuntimeError("XYZ loss did not reach decoder parameters")
-        if (step + 1) % accumulation == 0 or step + 1 == steps:
+        did_optimizer_step = (step + 1) % accumulation == 0 or step + 1 == steps_to_run
+        if did_optimizer_step:
             torch.nn.utils.clip_grad_norm_(
                 [parameter for group in groups for parameter in group["params"]],
                 float(config.get("gradient_clip", 1.0)),
             )
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
+            optimizer_updates += 1
 
         raw_loss = float(geometry_loss.detach())
         total_loss = float(loss.detach())
@@ -373,14 +412,14 @@ def main() -> None:
         mean_epe = float(epe[valid].mean())
         epe_values.append(mean_epe)
         print(json.dumps({
-            "step": step + 1, "loss": raw_loss, "total_loss": total_loss,
+            "step": global_step + 1, "loss": raw_loss, "total_loss": total_loss,
             "warmup_factor": warmup_factor,
             "layer_gate_entropy": gate_entropy_value, "train_epe": mean_epe,
             "pairs": np.stack((source_rows[0], target_rows[0]), axis=-1).tolist(),
             "z4d_shape": list(z4d.shape),
         }), flush=True)
         wandb_log_every = int(config.get("tracking", {}).get("log_every", 10))
-        if wandb_run is not None and (step == 0 or (step + 1) % wandb_log_every == 0):
+        if wandb_run is not None and (step == 0 or (global_step + 1) % wandb_log_every == 0):
             wandb_run.log({
                 "train/loss": raw_loss,
                 "train/total_loss": total_loss,
@@ -395,8 +434,22 @@ def main() -> None:
                 )),
                 "system/peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
             }, step=global_step + 1)
+        if (did_optimizer_step and checkpoint_every and global_step + 1 < steps
+                and (global_step + 1) % checkpoint_every == 0):
+            periodic_path = save_checkpoint(
+                output_dir / "checkpoint.pt", model, config, stats.mean, stats.scale,
+                extra={"steps": steps, "total_steps": global_step + 1, "seed": seed,
+                       "checkpoint_kind": "periodic", "initial_eval": initial_eval},
+                optimizer=optimizer,
+                training_state={
+                    "global_step": global_step + 1,
+                    "optimizer_updates": optimizer_updates,
+                    "rng_state": capture_rng_state(rng),
+                },
+            )
+            print(f"CHECKPOINT_PERIODIC: {periodic_path} (global_step={global_step + 1})", flush=True)
 
-    total_steps = resume_step_offset + steps
+    total_steps = steps
     final_eval = grouped_eval(
         model, clean_latents[0], samples[0], evaluation_source, evaluation_target,
         stats, cache, device, dtype, coordinate_frame,
@@ -407,7 +460,14 @@ def main() -> None:
         checkpoint = save_checkpoint(
             output_dir / "checkpoint.pt", model, config, stats.mean, stats.scale,
             extra={"steps": steps, "total_steps": total_steps, "seed": seed,
-                   "initial_eval": initial_eval, "final_eval": final_eval},
+                   "initial_eval": initial_eval, "final_eval": final_eval,
+                   "checkpoint_kind": "final"},
+            optimizer=optimizer,
+            training_state={
+                "global_step": total_steps,
+                "optimizer_updates": optimizer_updates,
+                "rng_state": capture_rng_state(rng),
+            },
         )
         print(f"CHECKPOINT_CREATED: {checkpoint}", flush=True)
         loaded = torch.load(checkpoint, map_location="cpu", mmap=True, weights_only=True)
@@ -419,6 +479,9 @@ def main() -> None:
         )
         checkpoint_load_ok = (
             loaded["extra"]["steps"] == steps
+            and loaded["extra"]["total_steps"] == total_steps
+            and "optimizer" in loaded
+            and "training_state" in loaded
             and "decoder.source_embedding.weight" in loaded["model"]
             and backbone_payload_ok
         )
@@ -428,8 +491,9 @@ def main() -> None:
             checkpoint = None
 
     result = {
-        "seed": seed, "steps": steps, "total_steps": total_steps,
-        "warmup_steps": warmup_steps,
+        "seed": seed, "steps": steps, "run_steps": steps_to_run, "total_steps": total_steps,
+        "optimizer_updates": optimizer_updates, "warmup_steps": warmup_steps,
+        "checkpoint_every_steps": checkpoint_every,
         "initial_global_step": resume_step_offset, "clips": len(samples), "batch_size": batch_size,
         "num_query_pairs": num_pairs, "trainable_mode": config.get("trainable_mode", "full"),
         "trainable_parameters": optimizer_trainable_count(groups),
