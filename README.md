@@ -33,7 +33,7 @@ RGB [B,21,3,128,128]
 
 ## 从零运行
 
-依赖建议见 `requirements.txt`。所有研究运行应由 PRL Task 启动；下面的 `<TASK>` 是 `prl task start` 返回的 Task ID。数据审计命令本身不会写数据目录：
+环境安装与 CUDA/PyTorch 选择见 `docs/ENVIRONMENT.md`。`requirements.txt` 覆盖运行、训练、W&B、分析、数据协议校验和测试的直接 Python 依赖，`constraints-known-good-cu126.txt` 记录当前已验证环境。安装后先运行 `PYTHONPATH=src python scripts/check_environment.py --require-cuda`。所有研究运行应由 PRL Task 启动；下面的 `<TASK>` 是 `prl task start` 返回的 Task ID。数据审计命令本身不会写数据目录：
 
 ```bash
 prl context
@@ -85,7 +85,7 @@ cp docs/tracking-env.example .env
 set -a; source .env; set +a
 ```
 
-W&B API key 推荐使用 `wandb login` 写入机器本地凭据，或只在 shell 环境中设置 `WANDB_API_KEY`。`.env` 已被 Git 忽略；仓库只提交不含密钥的 `docs/tracking-env.example`。PRL 会为 W&B 注入 run ID、group 和 tags。当前训练脚本尚未调用 `wandb.init()`，因此若要上传训练曲线，还需要显式接入 W&B SDK。
+W&B API key 推荐使用 `wandb login` 写入机器本地凭据，或只在 shell 环境中设置 `WANDB_API_KEY`。`.env` 已被 Git 忽略；仓库只提交不含密钥的 `docs/tracking-env.example`。PRL 会为 W&B 注入 run ID、group 和 tags；训练脚本已调用 `wandb.init()`，并在每个 payload 中记录显式 `global_step`。
 
 ## 其他服务器上的 Pi / PRL
 
