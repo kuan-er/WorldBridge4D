@@ -22,7 +22,7 @@ from worldbridge.data import MOViFDataset
 from worldbridge.dense4d import masked_pair_smooth_l1
 from worldbridge.dense4d_data import (
     CoordinateStats, DynamicPointmapCache, dense_pair_targets, parse_fixed_pairs,
-    sample_dense_pairs, sample_h001_balanced_pairs,
+    sample_dense_pairs, sample_h001_balanced_pairs, sample_source_all_targets_pairs,
 )
 from worldbridge.dense4d_runtime import (
     build_real_model, encode_clean_video_latents, optimizer_trainable_count,
@@ -291,6 +291,10 @@ def main() -> None:
                 sampler = str(config.get("pair_sampling", "dense_balanced"))
                 if sampler == "h001_balanced":
                     source, target = sample_h001_balanced_pairs(
+                        int(config["clip_length"]), num_pairs, rng
+                    )
+                elif sampler == "source_all_targets":
+                    source, target = sample_source_all_targets_pairs(
                         int(config["clip_length"]), num_pairs, rng
                     )
                 elif sampler == "dense_balanced":

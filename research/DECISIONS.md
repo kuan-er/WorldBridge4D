@@ -1,6 +1,12 @@
 
 # Research Decisions
 
+## 2026-08-10 — Canonical defaults use all-target supervision and full DiT fine-tuning
+
+- Change the canonical dense4d profiles (`dense4d_smoke`, `dense4d_tiny_overfit`, `dense4d_arbitrary_overfit`, and `dense4d_train`) to source-frame coordinates, `source_all_targets` sampling, and `trainable_mode: full`.
+- `source_all_targets` samples one source frame per update and emits all 21 `(source,target)` pairs for that source. This is distinct from H007's matched nine-pair sampler and is intended to train complete source-conditioned trajectories.
+- Historical H007 matched checkpoints and Git history remain available for reproducibility, but experiment-only YAMLs are removed from the shipped `configs/` directory. Their results must not be compared as if they used this new default protocol. Quality claims for the new default require a fresh training/evaluation run.
+
 ## 2026-08-09 — H007 source-frame coordinates improve ordinary geometry but regress late appearance
 
 - The matched H007 aggregation `R-20260809154101-5ff9a4` passed the protocol/population checks over 147 validation clips, all 441 legal pairs per clip, `pixel_stride=16`, and identical masks/executable for anchor and source coordinates. The common-anchor rigid audit was `6.26e-6 m` maximum absolute EPE difference.

@@ -73,9 +73,9 @@ prl run launch --task <TASK> --events <WORKTREE>/.pi-research/events.yaml -- \
   python scripts/evaluate.py --checkpoint artifacts/full_baseline/checkpoint.pt --split validation
 ```
 
-H004 的入口为 `scripts/dense4d_wan_audit.py`、`scripts/dense4d_decoder_smoke.py`、`train_dense4d.py` 和 `evaluate_dense4d.py`；配置顺序为 `configs/dense4d_smoke.yaml` → `dense4d_tiny_overfit.yaml` → `dense4d_arbitrary_overfit.yaml` → bounded `dense4d_train.yaml`。这些 dense4d 默认 profile 使用 source-frame 坐标；历史 anchor 实验必须显式设置 `coordinate_frame: anchor`。原 Compact/Full 路线仍使用上一段命令。坐标统计量必须由 `scripts/compute_coordinate_stats.py` 从 train split 生成，例如：`python scripts/compute_coordinate_stats.py --data-root /dataset/MOVi-F --output /tmp/worldbridge_dense4d/coordinate_stats_train_source.npz --coordinate-frame source`；Wan empty-UMT5 condition 由 `scripts/create_wan_empty_text_condition.py` 生成在仓库外。
+H004/H005 的入口为 `scripts/dense4d_wan_audit.py`、`scripts/dense4d_decoder_smoke.py`、`train_dense4d.py` 和 `evaluate_dense4d.py`；配置顺序为 `configs/dense4d_smoke.yaml` → `dense4d_tiny_overfit.yaml` → `dense4d_arbitrary_overfit.yaml` → bounded `dense4d_train.yaml`。当前 canonical dense4d profiles 统一使用 source-frame 坐标、H005 triad hidden readout `[13,14,15]`、8 个 motion slots、每步一个 source 的全部 21 个 target 监督，以及 `trainable_mode: full` 的 DiT 微调。坐标统计量必须由 `scripts/compute_coordinate_stats.py` 从 train split 生成，例如：`python scripts/compute_coordinate_stats.py --data-root /dataset/MOVi-F --output /tmp/worldbridge_dense4d/coordinate_stats_train_source.npz --coordinate-frame source`；Wan empty-UMT5 condition 由 `scripts/create_wan_empty_text_condition.py` 生成在仓库外。
 
-当前 H004 source-centric 主方案保留两个 profile：`configs/dense4d_source_centric_B0.yaml` 是无 whitening 的 canonical baseline，`configs/dense4d_source_centric_D1.yaml` 是推荐默认（B0 + 固定 Wan velocity per-channel whitening）。默认 manifest 为 `configs/dense4d_source_centric_default.yaml`，其 `default_config` 指向 D1；E3/E5/E6 和 E3E6/E3E6W 仅用于独立消融或组合研究。
+原 Compact/Full geometry-autoencoder 路线仍保留为独立基线，使用上一段命令。历史 H004 source-centric velocity-readout、H005/H007 matched、layer-selection 和 motion-slot ablation 配置不再作为默认运行入口。
 
 本项目没有自有 MLflow server，因此 `.pi-research/config.yaml` 中 MLflow 保持关闭，W&B tracking 保持开启。迁移到其他机器时，复制模板并在本地填写非敏感配置：
 

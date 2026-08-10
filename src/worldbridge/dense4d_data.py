@@ -139,6 +139,18 @@ def sample_dense_pairs(num_frames: int, num_pairs: int, rng: np.random.Generator
     return np.asarray(source, np.int64)[order], np.asarray(target, np.int64)[order]
 
 
+def sample_source_all_targets_pairs(num_frames: int, num_pairs: int,
+                                     rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+    """Sample one source frame and supervise every target in the clip."""
+    num_frames, num_pairs = int(num_frames), int(num_pairs)
+    if num_frames < 1 or num_pairs != num_frames:
+        raise ValueError("source_all_targets requires num_query_pairs == clip_length")
+    source_frame = int(rng.integers(num_frames))
+    source = np.full(num_frames, source_frame, dtype=np.int64)
+    target = np.arange(num_frames, dtype=np.int64)
+    return source, target
+
+
 def sample_h001_balanced_pairs(num_frames: int, num_pairs: int,
                                rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
     """Match H001's three training families: reconstruction, s=0, arbitrary."""
