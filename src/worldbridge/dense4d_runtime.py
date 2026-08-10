@@ -249,6 +249,10 @@ def save_checkpoint(path: str | Path, model: DenseQueryWanModel, config: dict[st
     if training_state is not None:
         payload["training_state"] = training_state
     temporary = path.with_suffix(path.suffix + ".tmp")
-    torch.save(payload, temporary)
-    temporary.replace(path)
+    try:
+        torch.save(payload, temporary)
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
     return path

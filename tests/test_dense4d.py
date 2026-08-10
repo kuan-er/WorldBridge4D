@@ -3,6 +3,7 @@ import copy
 import random
 
 import numpy as np
+import pytest
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -543,6 +544,21 @@ def test_checkpoint_restores_optimizer_and_all_rng_streams(tmp_path):
         torch.testing.assert_close(value, expected[name], rtol=0, atol=0)
     assert payload["format"] == 2
     assert payload["training_state"]["global_step"] == 2
+
+
+def test_checkpoint_failure_keeps_prior_file_and_removes_temporary(tmp_path, monkeypatch):
+    path = tmp_path / "checkpoint.pt"
+    path.write_bytes(b"prior-checkpoint")
+
+    def failed_save(_payload, temporary):
+        temporary.write_bytes(b"partial-checkpoint")
+        raise OSError("synthetic disk failure")
+
+    monkeypatch.setattr(torch, "save", failed_save)
+    with pytest.raises(OSError, match="synthetic disk failure"):
+        save_checkpoint(path, nn.Linear(1, 1), {}, np.zeros(3), np.ones(3))
+    assert path.read_bytes() == b"prior-checkpoint"
+    assert not path.with_suffix(".pt.tmp").exists()
 
 
 def test_pair_sampler_balances_diagonal_directions_and_gaps():
