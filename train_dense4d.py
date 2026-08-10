@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 import pathlib
@@ -103,6 +105,19 @@ def load_or_create_samples(dataset: MOViFDataset, config: dict[str, Any]) -> lis
     return samples
 
 
+@contextmanager
+def exclusive_cache_lock(path: pathlib.Path):
+    """Serialize creation of a cache shared by concurrent single-GPU runs."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    with lock_path.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def load_or_create_clean_latents(samples: list[Any], config: dict[str, Any], device: torch.device) -> list[torch.Tensor]:
     cache_name = config.get("clean_latent_cache")
     if not cache_name:
@@ -113,7 +128,8 @@ def load_or_create_clean_latents(samples: list[Any], config: dict[str, Any], dev
         "wan_root": str(pathlib.Path(config["wan_root"]).resolve()),
         "dtype": "float32",
     }
-    if path.exists():
+
+    def load_cache() -> list[torch.Tensor]:
         payload = torch.load(path, map_location="cpu", mmap=True, weights_only=True)
         if payload.get("metadata") != metadata:
             raise RuntimeError(f"clean latent cache metadata mismatch: {path}; remove it to rebuild")
@@ -122,14 +138,21 @@ def load_or_create_clean_latents(samples: list[Any], config: dict[str, Any], dev
             raise RuntimeError(f"clean latent cache shape mismatch: {tuple(latents.shape)}")
         print(f"CLEAN_LATENT_CACHE_HIT: {path} ({len(samples)} clips)", flush=True)
         return [latents[index:index + 1] for index in range(len(samples))]
-    encoded = encode_clean_video_latents(samples, config["wan_root"], device)
-    stacked = torch.cat(encoded, dim=0).contiguous().float().cpu()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    torch.save({"metadata": metadata, "latents": stacked}, temporary)
-    temporary.replace(path)
-    print(f"CLEAN_LATENT_CACHE_CREATED: {path} ({len(samples)} clips)", flush=True)
-    return [stacked[index:index + 1] for index in range(len(samples))]
+
+    if path.exists():
+        return load_cache()
+    with exclusive_cache_lock(path):
+        # Another GPU may have completed the shared cache while this process
+        # was blocked on the lock.
+        if path.exists():
+            return load_cache()
+        encoded = encode_clean_video_latents(samples, config["wan_root"], device)
+        stacked = torch.cat(encoded, dim=0).contiguous().float().cpu()
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        torch.save({"metadata": metadata, "latents": stacked}, temporary)
+        temporary.replace(path)
+        print(f"CLEAN_LATENT_CACHE_CREATED: {path} ({len(samples)} clips)", flush=True)
+        return [stacked[index:index + 1] for index in range(len(samples))]
 
 
 def pair_suite(config: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
