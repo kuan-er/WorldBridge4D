@@ -24,9 +24,15 @@ printf '[handoff] %s initial high-memory PIDs on 2,4,6: %s\n' "$(date --iso-8601
 # Build indexes and train-only coordinate statistics immediately on CPU while
 # the owner's 30k runs still hold the cards. This never touches CUDA.
 if [[ ! -f "$CACHE_ROOT/manifest.json" ]]; then
-  echo "[handoff] preparing immutable PointOdyssey index/stat cache: $CACHE_ROOT"
+  # Never start a second producer on the same immutable output.
+  if pgrep -f '[p]reprocess_pointodyssey.py' >/dev/null 2>&1; then
+    echo "[handoff] another PointOdyssey producer is active; waiting for its manifest"
+    while [[ ! -f "$CACHE_ROOT/manifest.json" ]]; do sleep 60; done
+  else
+    echo "[handoff] preparing immutable PointOdyssey index/stat cache: $CACHE_ROOT"
   python "$ROOT/scripts/preprocess_pointodyssey.py" --data-root /dataset/PointOdyssey \
     --output-root "$CACHE_ROOT" --skip-latents --skip-source-hash
+  fi
 fi
 
 pid_present() {
