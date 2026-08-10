@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -36,8 +37,14 @@ class PointOdysseyDataset:
     """
     def __init__(self, cache_root: str | Path, split: str = "train") -> None:
         self.root = Path(cache_root)
-        self.rows = [json.loads(x) for x in (self.root / "splits" / f"{split}.jsonl").read_text().splitlines() if x]
-        self._anno: dict[str, dict[str, np.ndarray]] = {}
+        index = self.root / "splits" / f"{split}.jsonl"
+        if not index.exists():
+            raise FileNotFoundError(f"PointOdyssey cache index is missing: {index}")
+        self.rows = [json.loads(x) for x in index.read_text().splitlines() if x]
+        # An annotation can be hundreds of MB.  Keep a small per-consumer LRU;
+        # the DDP geometry workers each create their own dataset instance.
+        self._anno: OrderedDict[str, dict[str, np.ndarray]] = OrderedDict()
+        self._max_scene_cache = 2
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -49,7 +56,13 @@ class PointOdysseyDataset:
         scene = row["source_scene"]
         if scene not in self._anno:
             with np.load(Path(scene) / "anno.npz") as z:
-                self._anno[scene] = {k: z[k] for k in ("trajs_2d", "trajs_3d", "valids", "visibs", "intrinsics", "extrinsics")}
+                value = {k: z[k] for k in ("trajs_2d", "trajs_3d", "valids", "visibs", "intrinsics", "extrinsics")}
+            self._anno[scene] = value
+            self._anno.move_to_end(scene)
+            while len(self._anno) > self._max_scene_cache:
+                self._anno.popitem(last=False)
+        else:
+            self._anno.move_to_end(scene)
         return self._anno[scene]
 
     def rgb(self, index: int) -> np.ndarray:
@@ -100,14 +113,19 @@ class PointOdysseyDataset:
         # Force the diagonal to the canonical source-depth backprojection. This
         # makes the interchange identity exact while preserving occluded-valid
         # off-diagonal tracks from PointOdyssey.
-        _, _, depth, depth_valid = self.camera(index)
+        # Preserve the diagonal identity using one source depth/K load.  Do
+        # not call camera() inside the pixel loop: that would decode all 21
+        # depth images once per sparse track.
+        scene = Path(row["source_scene"])
+        depth, depth_valid = _depth(scene / "depths" / f"depth_{f:05d}.png")
+        K = a["intrinsics"][f].astype(np.float64).copy()
+        S = np.array([[W / CROP_SIZE, 0, -CROP_X * W / CROP_SIZE], [0, W / CROP_SIZE, 0], [0, 0, 1]], np.float64)
+        K = S @ K
         ys, xs = np.where(out_valid[source])
         for y, x in zip(ys, xs):
-            d = depth[source, y, x]
-            if not depth_valid[source, y, x]:
+            d = depth[y, x]
+            if not depth_valid[y, x] or not np.isfinite(d):
                 out_valid[source, y, x] = False; out_vis[source, y, x] = False; continue
-            K = self.camera(index)[0][source]
-            xyz[source, :, y, x] = ((np.array([x, y, 1.0]) - np.array([K[0, 2], K[1, 2], 0])) * 0.0)  # overwritten below
             xyz[source, 0, y, x] = (x - K[0, 2]) * d / K[0, 0]
             xyz[source, 1, y, x] = -(y - K[1, 2]) * d / K[1, 1]
             xyz[source, 2, y, x] = -d

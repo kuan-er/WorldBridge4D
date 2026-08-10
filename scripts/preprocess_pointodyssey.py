@@ -230,6 +230,8 @@ def main() -> None:
     ap.add_argument("--shard-size", type=int, default=256)
     ap.add_argument("--max-clips", type=int, default=None, help="debug bound applied per split")
     ap.add_argument("--skip-latents", action="store_true")
+    ap.add_argument("--skip-source-hash", action="store_true",
+                    help="do not read the potentially 100+ GB release tarball during handoff")
     args = ap.parse_args()
     out = args.output_root
     if out.exists() and (out / "manifest.json").exists():
@@ -305,7 +307,7 @@ def main() -> None:
     ]}
     report_path = out / "audit" / "validation_report.json"; report_path.parent.mkdir(parents=True, exist_ok=True); report_path.write_text(json.dumps(report, indent=2) + "\n")
     artifacts.append(file_artifact("validation_report", None, report_path, out))
-    manifest = {"protocol": "worldbridge4d.dataset.v1", "dataset": {"id": "PointOdyssey", "version": "official-local-release", "source_uri": str(args.data_root), "source_sha256": sha256(args.data_root / "train.tar.gz") if (args.data_root / "train.tar.gz").exists() else "0" * 64, "license": None},
+    manifest = {"protocol": "worldbridge4d.dataset.v1", "dataset": {"id": "PointOdyssey", "version": "official-local-release", "source_uri": str(args.data_root), "source_sha256": (sha256(args.data_root / "train.tar.gz") if (args.data_root / "train.tar.gz").exists() and not args.skip_source_hash else "0" * 64), "license": None},
       "clip": {"frames": T, "height": H, "width": W, "channels": 3, "rgb_dtype": "uint8", "temporal_policy": "ordered_no_padding_no_interpolation", "fps": FPS, "default_stride": 1},
       "camera": {"intrinsics": "per_frame_3x3", "pose": "camera_to_world_4x4", "optical_axis": "-z", "image_axes": "u_right_v_down", "pixel_center": "integer_uv", "world_units": "meters", "depth_convention": "z_meters"},
       "geometry": {"annotation_mode": "dense_xyz", "coordinate_frame": "source_camera", "validity_semantics": "valid_not_visibility_occluded_valid_supervised", "dense_xyz_storage_dtype": "float32", "visibility_available": True},
