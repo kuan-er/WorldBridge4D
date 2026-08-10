@@ -82,7 +82,7 @@
       }
     },
     {
-      "name": "Dense4D inspect dataset adapter",
+      "name": "MOVi-F audit - raw TFRecord schema",
       "type": "debugpy",
       "request": "launch",
       "python": "/opt/conda/bin/python",
