@@ -1,4 +1,3 @@
-
 # Research Decisions
 
 ## 2026-08-10 — Canonical defaults use all-target supervision and full DiT fine-tuning
