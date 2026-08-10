@@ -84,7 +84,8 @@ class PointOdysseyDataset:
         vis = a["visibs"][start:start + T].astype(bool)
         pu = (uv[:, 0] - CROP_X + 0.5) * W / CROP_SIZE - 0.5
         pv = (uv[:, 1] - CROP_Y + 0.5) * H / CROP_SIZE - 0.5
-        iu, iv = np.rint(pu).astype(np.int64), np.rint(pv).astype(np.int64)
+        iu = np.where(np.isfinite(pu), np.rint(pu), -1).astype(np.int64)
+        iv = np.where(np.isfinite(pv), np.rint(pv), -1).astype(np.int64)
         good = valid[source] & np.isfinite(uv).all(1) & np.isfinite(world).all((0, 2))
         good &= (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H)
         xyz = np.zeros((T, 3, H, W), np.float32); out_valid = np.zeros((T, H, W), bool); out_vis = np.zeros_like(out_valid)
@@ -100,14 +101,13 @@ class PointOdysseyDataset:
         # Force the diagonal to the canonical source-depth backprojection. This
         # makes the interchange identity exact while preserving occluded-valid
         # off-diagonal tracks from PointOdyssey.
-        _, _, depth, depth_valid = self.camera(index)
+        K_all, _, depth, depth_valid = self.camera(index)
+        K = K_all[source]
         ys, xs = np.where(out_valid[source])
         for y, x in zip(ys, xs):
             d = depth[source, y, x]
             if not depth_valid[source, y, x]:
                 out_valid[source, y, x] = False; out_vis[source, y, x] = False; continue
-            K = self.camera(index)[0][source]
-            xyz[source, :, y, x] = ((np.array([x, y, 1.0]) - np.array([K[0, 2], K[1, 2], 0])) * 0.0)  # overwritten below
             xyz[source, 0, y, x] = (x - K[0, 2]) * d / K[0, 0]
             xyz[source, 1, y, x] = -(y - K[1, 2]) * d / K[1, 1]
             xyz[source, 2, y, x] = -d
@@ -116,9 +116,10 @@ class PointOdysseyDataset:
     def clean_latent(self, index: int) -> np.ndarray:
         """Load the tensor-only latent shard in the manifest's clip order."""
         from safetensors import safe_open
+        latent_index = int(self.rows[index].get("latent_index", index))
         for p in sorted((self.root / "latents" / "wan2.1_1.3b_fp32").glob("*.safetensors")):
             first, last = [int(x) for x in p.stem.split("-")[1:]]
-            if first <= index <= last:
+            if first <= latent_index <= last:
                 with safe_open(str(p), framework="np") as f:
-                    return f.get_tensor("latent")[index - first]
-        raise IndexError(f"no latent shard for index {index}")
+                    return f.get_tensor("latent")[latent_index - first]
+        raise IndexError(f"no latent shard for global index {latent_index}")

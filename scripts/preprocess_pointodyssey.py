@@ -56,9 +56,26 @@ def scenes(raw_root: Path, split: str) -> list[Path]:
     for p in sorted((raw_root / split).iterdir(), key=lambda x: x.name):
         if not p.is_dir():
             continue
-        required = [p / "anno.npz", p / "rgbs", p / "depths", p / "masks"]
-        if all(x.exists() for x in required):
-            result.append(p)
+        required = [p / "anno.npz", p / "info.npz", p / "rgbs", p / "depths", p / "masks"]
+        if not all(x.exists() for x in required):
+            continue
+        with np.load(p / "info.npz") as info:
+            shape = tuple(int(x) for x in np.asarray(info["trajs_3d"]).reshape(-1))
+        # Some official train scenes contain a scalar placeholder instead of
+        # 3D trajectories. Protocol v1 requires rejection, never invented XYZ.
+        if len(shape) != 3 or shape[-1] != 3:
+            continue
+        result.append(p)
+    return result
+
+
+def rejected_scenes(raw_root: Path, split: str) -> list[dict[str, Any]]:
+    accepted = {p.name for p in scenes(raw_root, split)}
+    result = []
+    for p in sorted((raw_root / split).iterdir(), key=lambda x: x.name):
+        if p.is_dir() and (p / "rgbs").is_dir() and p.name not in accepted:
+            result.append({"split": split, "parent_id": p.name, "clips": frame_count(p) // T,
+                           "reason": "missing_or_invalid_dense_3d_trajectories"})
     return result
 
 
@@ -125,7 +142,8 @@ def source_geometry(anno: dict[str, np.ndarray], source_frame: int, start: int) 
     # Center crop then exact 540 -> 128 spatial transform, integer pixel centers.
     pu = (uv[:, 0] - CROP_X + 0.5) * W / CROP_SIZE - 0.5
     pv = (uv[:, 1] - CROP_Y + 0.5) * H / CROP_SIZE - 0.5
-    iu, iv = np.rint(pu).astype(np.int64), np.rint(pv).astype(np.int64)
+    iu = np.where(np.isfinite(pu), np.rint(pu), -1).astype(np.int64)
+    iv = np.where(np.isfinite(pv), np.rint(pv), -1).astype(np.int64)
     inside = finite & (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H) & valid[source_frame]
     xyz = np.zeros((T, 3, H, W), dtype=np.float32)
     ok = np.zeros((T, H, W), dtype=bool)
@@ -160,7 +178,8 @@ def source_geometry_fast(anno: dict[str, np.ndarray], source_frame: int, start: 
     finite = np.isfinite(uv).all(1) & np.isfinite(world).all(2).all(0)
     pu = (uv[:, 0] - CROP_X + 0.5) * W / CROP_SIZE - 0.5
     pv = (uv[:, 1] - CROP_Y + 0.5) * H / CROP_SIZE - 0.5
-    iu, iv = np.rint(pu).astype(np.int64), np.rint(pv).astype(np.int64)
+    iu = np.where(np.isfinite(pu), np.rint(pu), -1).astype(np.int64)
+    iv = np.where(np.isfinite(pv), np.rint(pv), -1).astype(np.int64)
     inside = finite & (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H) & valid[source_frame]
     chosen: dict[tuple[int, int], int] = {}
     for p in np.flatnonzero(inside):
@@ -195,28 +214,77 @@ def file_artifact(kind: str, split: str | None, path: Path, root: Path, **extra:
             "bytes": path.stat().st_size, "sha256": sha256(path), **extra}
 
 
-def build_latents(rows: list[dict[str, Any]], out: Path, checkpoint: Path, device: str, shard_size: int) -> list[dict[str, Any]]:
+def _scene_rgb_clips(scene: Path, starts: list[int]) -> dict[int, np.ndarray]:
+    """Decode each source video once instead of reopening 21 JPEGs per clip."""
+    result: dict[int, np.ndarray] = {}
+    mp4 = scene.parent / f"{scene.name}.mp4"
+    if mp4.exists():
+        import imageio_ffmpeg
+        import subprocess
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        proc = subprocess.Popen([ffmpeg, "-loglevel", "error", "-i", str(mp4), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE)
+        frame_bytes = RAW_W * RAW_H * 3
+        wanted = set(starts)
+        frame = 0
+        try:
+            while True:
+                raw = proc.stdout.read(frame_bytes)
+                if len(raw) != frame_bytes:
+                    break
+                start = (frame // T) * T
+                if start in wanted:
+                    im = Image.frombytes("RGB", (RAW_W, RAW_H), raw)
+                    j = frame - start
+                    result.setdefault(start, np.empty((T, H, W, 3), np.uint8))[j] = np.asarray(im.crop((CROP_X, CROP_Y, CROP_X + CROP_SIZE, CROP_SIZE)).resize((W, H), Image.Resampling.BILINEAR), np.uint8)
+                frame += 1
+        finally:
+            proc.stdout.close(); proc.wait()
+        if len(result) == len(wanted):
+            return result
+    # Fallback for a partial release: still preserve exact uint8 hot RGB.
+    for start in starts:
+        result[start] = np.stack([resize_rgb(scene / "rgbs" / f"rgb_{start+j:05d}.jpg") for j in range(T)])
+    return result
+
+
+def build_latents(rows: list[dict[str, Any]], out: Path, checkpoint: Path, device: str, shard_size: int, batch_size: int) -> list[dict[str, Any]]:
     import torch
     from safetensors.torch import save_file
     from worldbridge.wan import WanVAEEncoder
     enc = WanVAEEncoder(checkpoint, device=torch.device(device), dtype=torch.float32)
-    artifacts = []
-    for base in range(0, len(rows), shard_size):
-        batch = []
-        for row in rows[base:base + shard_size]:
-            scene = Path(row["source_scene"]); start = int(row["start"])
-            frames = [resize_rgb(scene / "rgbs" / f"rgb_{start+j:05d}.jpg") for j in range(T)]
-            batch.append(np.stack(frames))
-        x = torch.from_numpy(np.stack(batch)).permute(0, 1, 4, 2, 3).contiguous().to(enc.device)
-        with torch.inference_mode():
-            z = enc(x).float().cpu()
-        if tuple(z.shape[1:]) != (16, 6, 16, 16):
-            raise RuntimeError(f"unexpected latent shape {tuple(z.shape)}")
-        path = out / "latents" / "wan2.1_1.3b_fp32" / f"shard-{base:06d}-{base+len(batch)-1:06d}.safetensors"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        save_file({"latent": z.contiguous()}, str(path))
-        artifacts.append(file_artifact("wan_latent_shard", None, path, out, first_clip_index=base, clip_count=len(batch)))
-        print(f"latents {base + len(batch)}/{len(rows)}", flush=True)
+    artifacts: list[dict[str, Any]] = []
+    by_scene: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_scene.setdefault(row["source_scene"], []).append(row)
+    pending: list[torch.Tensor] = []
+    pending_base: int | None = None
+    next_index = 0
+
+    def flush() -> None:
+        nonlocal pending, pending_base
+        if not pending:
+            return
+        z = torch.cat(pending).contiguous()
+        base = int(pending_base)
+        path = out / "latents" / "wan2.1_1.3b_fp32" / f"shard-{base:06d}-{base+len(z)-1:06d}.safetensors"
+        path.parent.mkdir(parents=True, exist_ok=True); save_file({"latent": z}, str(path))
+        artifacts.append(file_artifact("wan_latent_shard", None, path, out, first_clip_index=base, clip_count=len(z)))
+        pending = []; pending_base = None
+
+    for scene_name, scene_rows in by_scene.items():
+        clips = _scene_rgb_clips(Path(scene_name), [int(r["start"]) for r in scene_rows])
+        for mini in range(0, len(scene_rows), batch_size):
+            mini_rows = scene_rows[mini:mini + batch_size]
+            x = torch.from_numpy(np.stack([clips[int(r["start"])] for r in mini_rows])).permute(0, 1, 4, 2, 3).contiguous().to(enc.device)
+            with torch.inference_mode(): z = enc(x).float().cpu()
+            if tuple(z.shape[1:]) != (16, 6, 16, 16): raise RuntimeError(f"unexpected latent shape {tuple(z.shape)}")
+            for one in z.split(1):
+                if pending_base is None: pending_base = next_index
+                pending.append(one)
+                next_index += 1
+                if len(pending) >= shard_size: flush()
+        print(f"latents {next_index}/{len(rows)}", flush=True)
+    flush()
     return artifacts
 
 
@@ -228,8 +296,10 @@ def main() -> None:
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--seed", type=int, default=2029)
     ap.add_argument("--shard-size", type=int, default=256)
+    ap.add_argument("--vae-batch-size", type=int, default=8)
     ap.add_argument("--max-clips", type=int, default=None, help="debug bound applied per split")
     ap.add_argument("--skip-latents", action="store_true")
+    ap.add_argument("--skip-source-hash", action="store_true", help="debug only; leaves the source checksum gate failed")
     args = ap.parse_args()
     out = args.output_root
     if out.exists() and (out / "manifest.json").exists():
@@ -237,9 +307,15 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     all_rows: dict[str, list[dict[str, Any]]] = {}
     artifacts: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    global_offset = 0
     for split, name in (("train", "train"), ("val", "validation"), ("test", "test")):
         rows = make_index(args.data_root, split, args.max_clips)
-        # Reindex globally only after concatenation; each split JSONL keeps local index
+        for local, row in enumerate(rows):
+            row["index"] = local
+            row["latent_index"] = global_offset + local
+        global_offset += len(rows)
+        rejected.extend(rejected_scenes(args.data_root, split))
         all_rows[name] = rows
         path = out / "splits" / f"{name}.jsonl"
         write_jsonl(path, rows)
@@ -268,7 +344,8 @@ def main() -> None:
                 uv = t2[f]
                 pu = (uv[:, 0] - CROP_X + 0.5) * W / CROP_SIZE - 0.5
                 pv = (uv[:, 1] - CROP_Y + 0.5) * H / CROP_SIZE - 0.5
-                iu, iv = np.rint(pu).astype(np.int64), np.rint(pv).astype(np.int64)
+                iu = np.where(np.isfinite(pu), np.rint(pu), -1).astype(np.int64)
+                iv = np.where(np.isfinite(pv), np.rint(pv), -1).astype(np.int64)
                 good = valid[f] & np.isfinite(uv).all(1) & np.isfinite(t3[f]).all(1)
                 good &= (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H)
                 ids = np.flatnonzero(good)
@@ -292,12 +369,14 @@ def main() -> None:
             raise FileNotFoundError(f"WAN VAE checkpoint is required by protocol: {args.wan_checkpoint}")
         # Encode in one deterministic global order, split-local indices remain stable.
         ordered = all_rows["train"] + all_rows["validation"] + all_rows["test"]
-        latent_artifacts = build_latents(ordered, out, args.wan_checkpoint, args.device, args.shard_size)
+        latent_artifacts = build_latents(ordered, out, args.wan_checkpoint, args.device, args.shard_size, args.vae_batch_size)
         artifacts.extend(latent_artifacts)
     # A complete per-clip consumer can use source_all_targets without copying the
     # enormous dense tensor.  Geometry is generated deterministically from source
     # scene annotations; no hidden resize or temporal operation occurs here.
-    report = {"protocol": "worldbridge4d.dataset.v1", "status": "not_validated", "gates": {}, "notes": [
+    report = {"protocol": "worldbridge4d.dataset.v1", "status": "not_validated", "gates": {},
+        "accepted_clips": {k: len(v) for k, v in all_rows.items()},
+        "rejected_scenes": rejected, "rejected_clip_count": int(sum(x["clips"] for x in rejected)), "notes": [
         "PointOdyssey is adapted as dense_xyz from identity-preserving sparse tracks.",
         "valid is valids, never visibs; visibs is retained only for evaluation.",
         "The current producer writes source references and computes geometry on demand; no FP16 dense tier is claimed.",
@@ -305,7 +384,9 @@ def main() -> None:
     ]}
     report_path = out / "audit" / "validation_report.json"; report_path.parent.mkdir(parents=True, exist_ok=True); report_path.write_text(json.dumps(report, indent=2) + "\n")
     artifacts.append(file_artifact("validation_report", None, report_path, out))
-    manifest = {"protocol": "worldbridge4d.dataset.v1", "dataset": {"id": "PointOdyssey", "version": "official-local-release", "source_uri": str(args.data_root), "source_sha256": sha256(args.data_root / "train.tar.gz") if (args.data_root / "train.tar.gz").exists() else "0" * 64, "license": None},
+    source_archive = args.data_root / "train.tar.gz"
+    source_hash = "0" * 64 if args.skip_source_hash else (sha256(source_archive) if source_archive.exists() else "0" * 64)
+    manifest = {"protocol": "worldbridge4d.dataset.v1", "dataset": {"id": "PointOdyssey", "version": "official-local-release", "source_uri": str(args.data_root), "source_sha256": source_hash, "license": None},
       "clip": {"frames": T, "height": H, "width": W, "channels": 3, "rgb_dtype": "uint8", "temporal_policy": "ordered_no_padding_no_interpolation", "fps": FPS, "default_stride": 1},
       "camera": {"intrinsics": "per_frame_3x3", "pose": "camera_to_world_4x4", "optical_axis": "-z", "image_axes": "u_right_v_down", "pixel_center": "integer_uv", "world_units": "meters", "depth_convention": "z_meters"},
       "geometry": {"annotation_mode": "dense_xyz", "coordinate_frame": "source_camera", "validity_semantics": "valid_not_visibility_occluded_valid_supervised", "dense_xyz_storage_dtype": "float32", "visibility_available": True},
