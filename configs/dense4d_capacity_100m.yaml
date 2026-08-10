@@ -1,0 +1,55 @@
+# H013 capacity screen: approximately 100M non-Wan geometry/readout parameters.
+#
+# The 100M estimate is approximately:
+#   geometry adapter (geometry_dim=512): 17.6M
+#   dense decoder (query_dim=1024, 5 cross-attention blocks): 79.8M
+#   total: approximately 97.4M, excluding Wan parameters.
+#
+# This is a controlled capacity screen, not a quality-selected checkpoint.
+# For the first capacity isolation run, set trainable_mode to geometry_adapter
+# to freeze Wan; the canonical H013 route uses full DiT fine-tuning as below.
+data_root: /dataset/MOVi-F
+wan_root: /dataset/Wan2.1-T2V-1.3B
+empty_text_condition: /tmp/worldbridge_dense4d/wan_empty_condition.pt
+coordinate_stats: /tmp/worldbridge_dense4d/coordinate_stats_train_source.npz
+coordinate_frame: source
+clip_length: 21
+clip_start: 0
+image_size: 128
+max_clips: 32
+num_query_pairs: 21
+pair_sampling: source_all_targets
+evaluation_pairs: [[0, 0], [7, 7], [20, 20], [0, 1], [0, 20], [7, 14], [20, 0], [14, 7], [20, 19], [3, 18]]
+
+backbone_readout: wan_hidden_structured
+wan_hidden_layers: [13, 14, 15]
+geometry_dim: 512
+geometry_spatial_size: 16
+geometry_num_heads: 8
+geometry_clean_skip: true
+motion_slots: 8
+structured_local_queries: true
+
+query_dim: 1024
+embedding_dim: 512
+num_cross_attn_layers: 5
+num_heads: 8
+upsample_channels: [1024, 512, 256, 128]
+
+batch_size: 1
+steps: 1536
+learning_rate: 0.0003
+backbone_learning_rate: 0.000005
+weight_decay: 0.0001
+precision: bf16
+gradient_checkpointing: true
+gradient_accumulation: 1
+gradient_clip: 1.0
+trainable_mode: full
+seed: 2026
+geometry_seed: 2026
+decoder_seed: 424242
+smooth_l1_beta: 0.05
+geometry_cache_entries: 8
+save_checkpoint: true
+keep_checkpoint: true
