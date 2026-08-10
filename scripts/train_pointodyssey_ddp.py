@@ -183,6 +183,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--output-dir", required=True)
+    ap.add_argument("--batch-size-per-gpu", type=int)
+    ap.add_argument("--steps", type=int)
+    ap.add_argument("--disable-wandb", action="store_true")
+    ap.add_argument("--no-checkpoint", action="store_true")
     args = ap.parse_args()
     config = yaml.safe_load(Path(args.config).read_text())
     rank, world, local = rank_info()
@@ -203,9 +207,11 @@ def main() -> None:
     groups = parameter_groups(model, config)
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 1e-4)))
     dtype = precision_dtype(config.get("precision", "bf16"))
-    run = init_wandb(config, rank)
-    batch = int(config.get("batch_size_per_gpu", config.get("batch_size", 1)))
-    steps = int(config.get("steps", 30000))
+    batch = int(args.batch_size_per_gpu or config.get("batch_size_per_gpu", config.get("batch_size", 1)))
+    steps = int(args.steps or config.get("steps", 30000))
+    config["batch_size_per_gpu"] = batch
+    config["steps"] = steps
+    run = None if args.disable_wandb else init_wandb(config, rank)
     prefetch = GeometryPrefetcher(dataset, mean, scale,
                                   int(config.get("geometry_prefetch_workers", 8)),
                                   int(config.get("geometry_prefetch_depth", 2)))
@@ -244,21 +250,23 @@ def main() -> None:
                        "timing/elapsed_seconds": time.perf_counter() - started}
             print(json.dumps(payload), flush=True)
             if run is not None: run.log(payload, step=step + 1)
-        if rank == 0 and checkpoint_every and (step + 1) % checkpoint_every == 0:
+        if rank == 0 and not args.no_checkpoint and checkpoint_every and (step + 1) % checkpoint_every == 0:
             save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
                             extra={"steps": steps, "total_steps": step + 1, "dataset": "PointOdyssey"},
                             optimizer=optimizer, training_state={"global_step": step + 1, "optimizer_updates": step + 1})
     prefetch.close(); dist.barrier()
     if rank == 0:
-        save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
-                        extra={"steps": steps, "total_steps": steps, "dataset": "PointOdyssey"},
-                        optimizer=optimizer, training_state={"global_step": steps, "optimizer_updates": steps})
+        if not args.no_checkpoint:
+            save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
+                            extra={"steps": steps, "total_steps": steps, "dataset": "PointOdyssey"},
+                            optimizer=optimizer, training_state={"global_step": steps, "optimizer_updates": steps})
         result = {"dataset": "PointOdyssey", "world_size": world, "steps": steps,
                   "batch_size_per_gpu": batch, "global_batch_size": batch * world,
                   "clips": len(dataset), "first_loss": first_loss, "final_loss": last_loss,
                   "elapsed_seconds": time.perf_counter() - started,
                   "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,
-                  "checkpoint": str(out / "checkpoint.pt"), "wandb_url": run.url if run else None}
+                  "checkpoint": str(out / "checkpoint.pt") if not args.no_checkpoint else None,
+                  "wandb_url": run.url if run else None}
         (out / "train_metrics.json").write_text(json.dumps(result, indent=2))
         if run is not None:
             run.summary.update(result); run.finish()

@@ -64,5 +64,4 @@ if [[ -z "${WANDB_API_KEY:-}" ]] && [[ ! -f "$HOME/.netrc" ]]; then
 fi
 echo "[handoff] GPUs 2,4,6 free at $(date --iso-8601=seconds); launching 3-process DDP now"
 exec env CUDA_VISIBLE_DEVICES=2,4,6 PYTHONPATH="$PYTHONPATH" \
-  torchrun --standalone --nproc_per_node=3 --master_port="${POINTODYSSEY_MASTER_PORT:-29673}" \
-  "$ROOT/scripts/train_pointodyssey_ddp.py" --config "$CONFIG" --output-dir "$OUTPUT"
+  "$ROOT/scripts/run_pointodyssey_ddp_capacity_then_train.sh"
