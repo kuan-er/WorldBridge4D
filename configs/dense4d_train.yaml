@@ -37,5 +37,9 @@ trainable_mode: full
 seed: 2028
 smooth_l1_beta: 0.05
 geometry_cache_entries: 32
+geometry_prefetch: true
+geometry_prefetch_workers: 8
+geometry_prefetch_depth: 2
+diagnostic_every_steps: 20
 save_checkpoint: true
 keep_checkpoint: true

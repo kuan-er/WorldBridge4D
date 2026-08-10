@@ -47,6 +47,10 @@ geometry_seed: 2026
 decoder_seed: 424242
 smooth_l1_beta: 0.05
 geometry_cache_entries: 1024
+geometry_prefetch: true
+geometry_prefetch_workers: 8
+geometry_prefetch_depth: 2
+diagnostic_every_steps: 20
 sample_cache: /tmp/worldbridge_dense4d_matched/cache/movif_train_clip21_start0_samples.pkl
 clean_latent_cache: /data/WorldBridge4D-persistent/h017_decoder_capacity/cache/movif_train_clip21_start0_seed2029_clean_latents.pt
 save_checkpoint: true

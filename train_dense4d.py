@@ -26,6 +26,9 @@ from worldbridge.dense4d_data import (
     CoordinateStats, DynamicPointmapCache, dense_pair_targets, parse_fixed_pairs,
     sample_dense_pairs, sample_h001_balanced_pairs, sample_source_all_targets_pairs,
 )
+from worldbridge.dense4d_prefetch import (
+    SourceCentricPrefetcher, make_seeded_source_all_targets_plan,
+)
 from worldbridge.dense4d_runtime import (
     build_real_model, capture_rng_state, encode_clean_video_latents, optimizer_trainable_count,
     apply_linear_warmup, parameter_groups, precision_dtype, restore_rng_state, save_checkpoint,
@@ -311,10 +314,12 @@ def main() -> None:
     )
     print(json.dumps({"event": "initial_evaluation", **initial_eval}), flush=True)
     if wandb_run is not None:
-        wandb_run.log({
+        initial_scalars = {
             f"initial_eval/{key}": value for key, value in initial_eval.items()
             if isinstance(value, (int, float)) and value is not None
-        }, step=resume_step_offset)
+        }
+        initial_scalars["global_step"] = resume_step_offset
+        wandb_run.log(initial_scalars, step=resume_step_offset)
 
     steps = int(config["steps"])
     if steps < 1:
@@ -338,6 +343,49 @@ def main() -> None:
         fixed, int(config["clip_length"]), num_pairs
     ) if fixed is not None else (None, None)
     warmup_steps = int(config.get("warmup_steps", 0))
+    sampler_name = str(config.get("pair_sampling", "dense_balanced"))
+    prefetch_enabled = (
+        bool(config.get("geometry_prefetch", True))
+        and fixed_source is None
+        and sampler_name == "source_all_targets"
+    )
+    prefetch_workers = int(config.get("geometry_prefetch_workers", 8))
+    prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
+    diagnostic_every = int(config.get("diagnostic_every_steps", 20))
+    if diagnostic_every < 1:
+        raise ValueError("diagnostic_every_steps must be positive")
+    prefetcher = None
+    if prefetch_enabled:
+        prefetcher = SourceCentricPrefetcher(
+            samples, stats,
+            workers=prefetch_workers,
+            queue_depth=prefetch_depth,
+            depth_tolerance=float(config.get("depth_tolerance", 0.05)),
+            depth_relative_tolerance=float(config.get("depth_relative_tolerance", 0.01)),
+            coordinate_frame=coordinate_frame,
+            compute_visibility=False,
+            include_metric=False,
+        )
+
+        def make_prefetch_plan(global_step: int):
+            return make_seeded_source_all_targets_plan(
+                len(samples), batch_size, int(config["clip_length"]), global_step, seed,
+                matched_epoch_sampling=bool(config.get("matched_epoch_sampling", False)),
+                fixed_clip_order=bool(config.get("fixed_clip_order", False)),
+            )
+
+        for queued_step in range(
+            resume_step_offset, min(resume_step_offset + prefetch_depth, steps)
+        ):
+            prefetcher.submit(make_prefetch_plan(queued_step))
+        print(json.dumps({
+            "event": "geometry_prefetch_enabled",
+            "workers": prefetch_workers,
+            "queue_depth": prefetch_depth,
+            "compute_visibility": False,
+            "include_metric": False,
+            "diagnostic_every_steps": diagnostic_every,
+        }), flush=True)
     optimizer.zero_grad(set_to_none=True)
     losses: list[float] = []
     total_losses: list[float] = []
@@ -354,45 +402,69 @@ def main() -> None:
     for step in range(steps_to_run):
         global_step = resume_step_offset + step
         warmup_factor = apply_linear_warmup(optimizer, optimizer_updates + 1, warmup_steps)
-        if bool(config.get("matched_epoch_sampling", False)):
-            # One deterministic pass is exactly len(samples) optimizer updates;
-            # this makes steps=N*epochs comparable to the prior Kubric runs.
-            start = (global_step * batch_size) % len(samples)
-            sample_indices = (start + np.arange(batch_size, dtype=np.int64)) % len(samples)
-        elif bool(config.get("fixed_clip_order", False)):
-            sample_indices = np.arange(batch_size, dtype=np.int64) % len(samples)
+        geometry_wait_seconds = 0.0
+        geometry_seconds_sum = 0.0
+        geometry_seconds_max = 0.0
+        if prefetcher is not None:
+            geometry_batch, geometry_wait_seconds = prefetcher.next()
+            if geometry_batch.plan.step != global_step:
+                raise RuntimeError(
+                    f"prefetched geometry step {geometry_batch.plan.step} != training step {global_step}"
+                )
+            replacement_step = global_step + prefetch_depth
+            if replacement_step < steps:
+                prefetcher.submit(make_prefetch_plan(replacement_step))
+            sample_indices = geometry_batch.plan.sample_indices
+            source_rows = geometry_batch.plan.source
+            target_rows = geometry_batch.plan.target
+            transferred = geometry_batch.to_device(device)
+            source_tensor = transferred["source"]
+            target_tensor = transferred["target"]
+            target_xyz = transferred["target_xyz"]
+            valid_tensor = transferred["valid"]
+            geometry_seconds_sum = geometry_batch.geometry_seconds_sum
+            geometry_seconds_max = geometry_batch.geometry_seconds_max
         else:
-            sample_indices = rng.integers(len(samples), size=batch_size)
-        source_rows, target_rows, target_rows_xyz, valid_rows = [], [], [], []
-        metric_rows = []
-        for sample_index in sample_indices:
-            if fixed_source is None:
-                sampler = str(config.get("pair_sampling", "dense_balanced"))
-                if sampler == "h001_balanced":
-                    source, target = sample_h001_balanced_pairs(
-                        int(config["clip_length"]), num_pairs, rng
-                    )
-                elif sampler == "source_all_targets":
-                    source, target = sample_source_all_targets_pairs(
-                        int(config["clip_length"]), num_pairs, rng
-                    )
-                elif sampler == "dense_balanced":
-                    source, target = sample_dense_pairs(int(config["clip_length"]), num_pairs, rng)
-                else:
-                    raise ValueError(f"unknown pair_sampling={sampler!r}")
+            if bool(config.get("matched_epoch_sampling", False)):
+                # One deterministic pass is exactly len(samples) optimizer updates.
+                start = (global_step * batch_size) % len(samples)
+                sample_indices = (start + np.arange(batch_size, dtype=np.int64)) % len(samples)
+            elif bool(config.get("fixed_clip_order", False)):
+                sample_indices = np.arange(batch_size, dtype=np.int64) % len(samples)
             else:
-                source, target = fixed_source.copy(), fixed_target.copy()
-            normalized, metric, _, valid = dense_pair_targets(
-                samples[int(sample_index)], source, target, stats, cache,
-                coordinate_frame=coordinate_frame,
-            )
-            source_rows.append(source); target_rows.append(target)
-            target_rows_xyz.append(normalized); metric_rows.append(metric); valid_rows.append(valid)
-        clean = torch.cat([clean_latents[int(index)] for index in sample_indices]).to(device=device, dtype=dtype)
-        source_tensor = torch.from_numpy(np.stack(source_rows)).to(device)
-        target_tensor = torch.from_numpy(np.stack(target_rows)).to(device)
-        target_xyz = torch.from_numpy(np.stack(target_rows_xyz)).to(device)
-        valid_tensor = torch.from_numpy(np.stack(valid_rows)).to(device)
+                sample_indices = rng.integers(len(samples), size=batch_size)
+            source_rows, target_rows, target_rows_xyz, valid_rows = [], [], [], []
+            geometry_start = time.perf_counter()
+            for sample_index in sample_indices:
+                if fixed_source is None:
+                    if sampler_name == "h001_balanced":
+                        source, target = sample_h001_balanced_pairs(
+                            int(config["clip_length"]), num_pairs, rng
+                        )
+                    elif sampler_name == "source_all_targets":
+                        source, target = sample_source_all_targets_pairs(
+                            int(config["clip_length"]), num_pairs, rng
+                        )
+                    elif sampler_name == "dense_balanced":
+                        source, target = sample_dense_pairs(int(config["clip_length"]), num_pairs, rng)
+                    else:
+                        raise ValueError(f"unknown pair_sampling={sampler_name!r}")
+                else:
+                    source, target = fixed_source.copy(), fixed_target.copy()
+                normalized, _, _, valid = dense_pair_targets(
+                    samples[int(sample_index)], source, target, stats, cache,
+                    coordinate_frame=coordinate_frame,
+                )
+                source_rows.append(source); target_rows.append(target)
+                target_rows_xyz.append(normalized); valid_rows.append(valid)
+            geometry_wait_seconds = time.perf_counter() - geometry_start
+            source_tensor = torch.from_numpy(np.stack(source_rows)).to(device)
+            target_tensor = torch.from_numpy(np.stack(target_rows)).to(device)
+            target_xyz = torch.from_numpy(np.stack(target_rows_xyz)).to(device)
+            valid_tensor = torch.from_numpy(np.stack(valid_rows)).to(device)
+        clean = torch.cat([clean_latents[int(index)] for index in sample_indices]).to(
+            device=device, dtype=dtype, non_blocking=True
+        )
 
         with torch.autocast(device_type="cuda", dtype=dtype, enabled=dtype == torch.bfloat16):
             prediction, z4d, _ = model(clean, source_tensor, target_tensor)
@@ -442,38 +514,56 @@ def main() -> None:
         losses.append(raw_loss)
         total_losses.append(total_loss)
         gate_entropies.append(gate_entropy_value)
-        prediction_metric = (
-            prediction.detach().float().cpu().numpy() * stats.scale[None, None, :, None, None]
-            + stats.mean[None, None, :, None, None]
+        should_diagnose = (
+            step == 0 or global_step + 1 == steps
+            or (global_step + 1) % diagnostic_every == 0
         )
-        metric = np.stack(metric_rows)
-        valid = np.stack(valid_rows)
-        epe = np.linalg.norm(prediction_metric - metric, axis=2)
-        mean_epe = float(epe[valid].mean())
-        epe_values.append(mean_epe)
-        print(json.dumps({
-            "step": global_step + 1, "loss": raw_loss, "total_loss": total_loss,
-            "warmup_factor": warmup_factor,
-            "layer_gate_entropy": gate_entropy_value, "train_epe": mean_epe,
-            "pairs": np.stack((source_rows[0], target_rows[0]), axis=-1).tolist(),
-            "z4d_shape": list(z4d.shape),
-        }), flush=True)
-        wandb_log_every = int(config.get("tracking", {}).get("log_every", 10))
-        if wandb_run is not None and (step == 0 or (global_step + 1) % wandb_log_every == 0):
-            wandb_run.log({
-                "train/loss": raw_loss,
-                "train/total_loss": total_loss,
-                "train/warmup_factor": warmup_factor,
-                "train/layer_gate_entropy": gate_entropy_value,
-                "train/epe_m": mean_epe,
-                "train/clips_seen": (global_step + 1) * batch_size,
-                "train/passes": (global_step + 1) * batch_size / len(samples),
-                "train/backbone_lr": float(next(
-                    (group["lr"] for group in groups if group["name"] == "wan_backbone"),
-                    next(group["lr"] for group in groups if group["name"] in {"geometry_adapter", "dense_decoder"}),
-                )),
-                "system/peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
-            }, step=global_step + 1)
+        if should_diagnose:
+            # Keep the large prediction tensor on GPU and transfer only one
+            # scalar. The previous per-step NumPy path copied up to 264 MiB for
+            # batch 64 and serialized GPU execution behind CPU diagnostics.
+            metric_error = prediction.detach().float()
+            metric_error.sub_(target_xyz)
+            metric_error.mul_(torch.as_tensor(
+                stats.scale, device=device, dtype=torch.float32,
+            ).reshape(1, 1, 3, 1, 1))
+            point_epe = torch.linalg.vector_norm(metric_error, dim=2)
+            mean_epe = float(point_epe[valid_tensor].mean())
+            epe_values.append(mean_epe)
+            diagnostic_payload = {
+                "step": global_step + 1, "loss": raw_loss, "total_loss": total_loss,
+                "warmup_factor": warmup_factor,
+                "layer_gate_entropy": gate_entropy_value, "train_epe": mean_epe,
+                "geometry_wait_seconds": geometry_wait_seconds,
+                "geometry_seconds_sum": geometry_seconds_sum,
+                "geometry_seconds_max": geometry_seconds_max,
+                "pairs": np.stack((source_rows[0], target_rows[0]), axis=-1).tolist(),
+                "z4d_shape": list(z4d.shape),
+            }
+            print(json.dumps(diagnostic_payload), flush=True)
+            if wandb_run is not None:
+                # ``global_step`` must be present because train/* metrics use it
+                # as their explicit W&B step metric. Passing only log(step=...)
+                # leaves the custom axis at zero and collapses the chart.
+                wandb_run.log({
+                    "global_step": global_step + 1,
+                    "train/loss": raw_loss,
+                    "train/total_loss": total_loss,
+                    "train/warmup_factor": warmup_factor,
+                    "train/layer_gate_entropy": gate_entropy_value,
+                    "train/epe_m": mean_epe,
+                    "train/clips_seen": (global_step + 1) * batch_size,
+                    "train/passes": (global_step + 1) * batch_size / len(samples),
+                    "train/backbone_lr": float(next(
+                        (group["lr"] for group in groups if group["name"] == "wan_backbone"),
+                        next(group["lr"] for group in groups if group["name"] in {"geometry_adapter", "dense_decoder"}),
+                    )),
+                    "timing/geometry_wait_seconds": geometry_wait_seconds,
+                    "timing/geometry_seconds_sum": geometry_seconds_sum,
+                    "timing/geometry_seconds_max": geometry_seconds_max,
+                    "system/peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / (1024 ** 3),
+                }, step=global_step + 1)
+            del metric_error, point_epe
         if (did_optimizer_step and checkpoint_every and global_step + 1 < steps
                 and (global_step + 1) % checkpoint_every == 0):
             periodic_path = save_checkpoint(
@@ -489,6 +579,8 @@ def main() -> None:
             )
             print(f"CHECKPOINT_PERIODIC: {periodic_path} (global_step={global_step + 1})", flush=True)
 
+    if prefetcher is not None:
+        prefetcher.close()
     total_steps = steps
     checkpoint = None
     checkpoint_load_ok = False
@@ -538,6 +630,10 @@ def main() -> None:
         "seed": seed, "steps": steps, "run_steps": steps_to_run, "total_steps": total_steps,
         "optimizer_updates": optimizer_updates, "warmup_steps": warmup_steps,
         "checkpoint_every_steps": checkpoint_every,
+        "geometry_prefetch": prefetch_enabled,
+        "geometry_prefetch_workers": prefetch_workers if prefetch_enabled else 0,
+        "geometry_prefetch_depth": prefetch_depth if prefetch_enabled else 0,
+        "diagnostic_every_steps": diagnostic_every,
         "initial_global_step": resume_step_offset, "clips": len(samples), "batch_size": batch_size,
         "num_query_pairs": num_pairs, "trainable_mode": config.get("trainable_mode", "full"),
         "trainable_parameters": optimizer_trainable_count(groups),
@@ -566,6 +662,7 @@ def main() -> None:
             if isinstance(value, (int, float)) and value is not None
         }
         final_scalars.update({
+            "global_step": total_steps,
             "final/train_loss": losses[-1],
             "final/total_loss": total_losses[-1],
             "final/layer_gate_entropy": gate_entropies[-1],
