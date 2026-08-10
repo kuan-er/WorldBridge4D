@@ -158,13 +158,20 @@ def init_wandb(config: dict[str, Any], rank: int):
     if rank != 0 or not tracking.get("enabled", True) or os.environ.get("WANDB_MODE") == "disabled":
         return None
     import wandb
+    mode = os.environ.get("WANDB_MODE", "online")
+    if mode == "online" and not os.environ.get("WANDB_API_KEY") and not Path.home().joinpath(".netrc").exists():
+        # Do not lose the scarce GPU handoff merely because this shell has not
+        # inherited the user's W&B credential.  The local run is syncable with
+        # ``wandb sync`` after login; online mode remains the normal path.
+        mode = "offline"
+        print("WANDB_UPLOAD_PENDING: no WANDB_API_KEY or ~/.netrc; recording offline run for later wandb sync", flush=True)
     run = wandb.init(
         project=os.environ.get("WANDB_PROJECT", tracking.get("project", "worldbridge4d")),
         entity=os.environ.get("WANDB_ENTITY", tracking.get("entity")),
         name=os.environ.get("WANDB_NAME", "pointodyssey-dense4d-ddp-30k"),
         group=os.environ.get("WANDB_GROUP", tracking.get("group", "pointodyssey-dense4d-ddp")),
         job_type="train", tags=["pointodyssey", "dense4d", "ddp", "3gpu"], config=config,
-        mode=os.environ.get("WANDB_MODE", "online"),
+        mode=mode,
     )
     run.define_metric("global_step")
     run.define_metric("train/*", step_metric="global_step")

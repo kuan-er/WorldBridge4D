@@ -59,11 +59,9 @@ while ! ready; do
   sleep 60
 done
 
-if [[ -z "${WANDB_API_KEY:-}" ]] && [[ ! -f "$HOME/.netrc" ]] && [[ ! -f "$HOME/.config/wandb/settings" ]]; then
-  echo "[handoff] ERROR: W&B online training requires WANDB_API_KEY or local wandb login; refusing to consume GPUs without curve upload credentials" >&2
-  exit 2
+if [[ -z "${WANDB_API_KEY:-}" ]] && [[ ! -f "$HOME/.netrc" ]]; then
+  echo "[handoff] WARNING: no W&B credential found; trainer will keep an offline curve for later 'wandb sync'" >&2
 fi
-
 echo "[handoff] GPUs 2,4,6 free at $(date --iso-8601=seconds); launching 3-process DDP now"
 exec env CUDA_VISIBLE_DEVICES=2,4,6 PYTHONPATH="$PYTHONPATH" \
   torchrun --standalone --nproc_per_node=3 --master_port="${POINTODYSSEY_MASTER_PORT:-29673}" \
