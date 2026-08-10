@@ -1,4 +1,4 @@
-current_task: T-20260809155405-23ec1d
+current_task: T-20260809154719-80cdb7
 active_hypotheses:
   - H009
   - H008
@@ -410,4 +410,4 @@ next_step: Keep the H005 triad with eight learned motion slots. Future slot work
   should preserve late-appearing behavior and test source-valid/appearance-aware
   gating or slot-specific residuals on a fresh development split; do not select
   on final validation.
-updated_at: 2026-08-09T16:48:39.687Z
+updated_at: 2026-08-09T18:52:54.695Z
