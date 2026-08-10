@@ -1,0 +1,20 @@
+# Direct-package versions from the validated A800/A100 training environment.
+# Install the CUDA 12.6 PyTorch wheel first as documented in docs/ENVIRONMENT.md,
+# then use: python -m pip install -r requirements.txt -c constraints-known-good-cu126.txt
+numpy==1.26.4
+PyYAML==6.0.1
+torch==2.10.0
+tensorflow-cpu==2.15.1
+diffusers==0.36.0
+safetensors==0.7.0
+transformers==4.41.2
+accelerate==1.12.0
+sentencepiece==0.2.2
+ftfy==6.3.1
+wandb==0.24.0
+matplotlib==3.10.8
+scikit-learn==1.7.2
+nvidia-ml-py==12.575.51
+jsonschema==4.19.2
+packaging==23.1
+pytest==9.1.1
