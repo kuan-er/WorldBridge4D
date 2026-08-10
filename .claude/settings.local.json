@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//etc/**)",
+      "Bash(ip route *)",
+      "Bash(env)",
+      "Bash(curl -s --max-time 5 http://localhost:7890)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(netstat -tlnp)",
+      "Bash(curl -s --max-time 10 -x http://localhost:7890 https://api.deepseek.com/anthropic/v1/messages -X POST -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s --max-time 10 -x http://localhost:7890 https://api.anthropic.com/v1/messages -X POST -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s --max-time 10 -x http://localhost:7890 https://www.google.com -o /dev/null -w \"HTTP_CODE: %{http_code}\\\\n\")",
+      "Bash(ip link *)"
+    ]
+  }
+}
