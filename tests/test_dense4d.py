@@ -20,6 +20,9 @@ from worldbridge.dense4d_data import (
 )
 from worldbridge.geometry import GeometryBuilder
 from worldbridge.pointmap import build_dynamic_pointmap
+from worldbridge.dense4d_prefetch import (
+    SourceCentricPrefetcher, make_seeded_source_all_targets_plan,
+)
 from worldbridge.wan import WAN_LATENT_SHAPE, WanDiTMapping, rgb_to_wan_input
 from worldbridge.dense4d_runtime import (
     apply_linear_warmup, capture_rng_state, restore_rng_state, save_checkpoint,
@@ -136,6 +139,35 @@ def test_xyz_only_pointmap_path_skips_visibility(monkeypatch):
     assert visible is None
     np.testing.assert_allclose(normalized, metric)
     assert valid.shape == (3, 2, 2)
+
+
+def test_seeded_source_plan_and_xyz_only_prefetch_are_deterministic():
+    first = make_seeded_source_all_targets_plan(
+        num_samples=2, batch_size=2, num_frames=3, global_step=4, seed=2029,
+        matched_epoch_sampling=True,
+    )
+    second = make_seeded_source_all_targets_plan(
+        num_samples=2, batch_size=2, num_frames=3, global_step=4, seed=2029,
+        matched_epoch_sampling=True,
+    )
+    np.testing.assert_array_equal(first.sample_indices, second.sample_indices)
+    np.testing.assert_array_equal(first.source, second.source)
+    np.testing.assert_array_equal(first.target, np.tile(np.arange(3), (2, 1)))
+    assert np.all(first.source == first.source[:, :1])
+
+    samples = [synthetic_sample(False), synthetic_sample(True)]
+    stats = CoordinateStats(np.zeros(3), np.ones(3))
+    with SourceCentricPrefetcher(
+        samples, stats, workers=2, queue_depth=2, coordinate_frame="source",
+        compute_visibility=False, include_metric=False,
+    ) as prefetcher:
+        prefetcher.submit(first)
+        batch, wait_seconds = prefetcher.next()
+    assert wait_seconds >= 0
+    assert batch.metric_xyz is None and batch.visible is None and batch.visible_cpu is None
+    assert batch.normalized_xyz.shape == (2, 3, 3, 2, 2)
+    assert batch.valid.shape == (2, 3, 2, 2)
+    np.testing.assert_array_equal(batch.plan.source, first.source)
 
 
 def test_wan_input_layout_and_native_clean_latent_contract():

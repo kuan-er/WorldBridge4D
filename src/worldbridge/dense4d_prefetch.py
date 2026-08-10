@@ -27,30 +27,32 @@ class SourceCentricPlan:
 
 @dataclass
 class SourceCentricBatch:
-    """One bounded batch; NumPy arrays remain available for exact diagnostics."""
+    """One bounded batch with pinned tensors for asynchronous device transfer."""
 
     plan: SourceCentricPlan
     normalized_xyz: np.ndarray  # [B,T,3,H,W]
-    metric_xyz: np.ndarray  # [B,T,3,H,W]
-    visible: np.ndarray  # [B,T,H,W], M
+    metric_xyz: np.ndarray | None  # optional [B,T,3,H,W] diagnostics
+    visible: np.ndarray | None  # optional [B,T,H,W], M
     valid: np.ndarray  # [B,T,H,W], A
     normalized_xyz_cpu: torch.Tensor
     source_cpu: torch.Tensor
     target_cpu: torch.Tensor
-    visible_cpu: torch.Tensor
+    visible_cpu: torch.Tensor | None
     valid_cpu: torch.Tensor
     geometry_seconds_sum: float
     geometry_seconds_max: float
 
     def to_device(self, device: torch.device | str) -> dict[str, torch.Tensor]:
         device = torch.device(device)
-        return {
+        result = {
             "source": self.source_cpu.to(device=device, non_blocking=True),
             "target": self.target_cpu.to(device=device, non_blocking=True),
             "target_xyz": self.normalized_xyz_cpu.to(device=device, non_blocking=True),
-            "visible": self.visible_cpu.to(device=device, non_blocking=True),
             "valid": self.valid_cpu.to(device=device, non_blocking=True),
         }
+        if self.visible_cpu is not None:
+            result["visible"] = self.visible_cpu.to(device=device, non_blocking=True)
+        return result
 
 
 def make_source_centric_plan(num_samples: int, batch_size: int, num_frames: int,
@@ -76,6 +78,35 @@ def make_source_centric_plan(num_samples: int, batch_size: int, num_frames: int,
     return SourceCentricPlan(global_step, sample_indices.copy(), source, target)
 
 
+def make_seeded_source_all_targets_plan(
+    num_samples: int, batch_size: int, num_frames: int, global_step: int, seed: int, *,
+    matched_epoch_sampling: bool = False, fixed_clip_order: bool = False,
+) -> SourceCentricPlan:
+    """Build a random-source plan determined only by seed and global step.
+
+    Sampling plans can therefore be prepared ahead of GPU execution without
+    advancing checkpointed RNG streams or changing exact-resume behavior.
+    """
+    num_samples, batch_size, num_frames, global_step, seed = map(
+        int, (num_samples, batch_size, num_frames, global_step, seed)
+    )
+    if num_samples < 1 or batch_size < 1 or num_frames < 1 or global_step < 0:
+        raise ValueError("num_samples, batch_size, num_frames must be positive and global_step non-negative")
+    rng = np.random.default_rng(np.random.SeedSequence([seed, global_step]))
+    if matched_epoch_sampling:
+        start = (global_step * batch_size) % num_samples
+        sample_indices = (start + np.arange(batch_size, dtype=np.int64)) % num_samples
+    elif fixed_clip_order:
+        sample_indices = np.arange(batch_size, dtype=np.int64) % num_samples
+    else:
+        sample_indices = rng.integers(num_samples, size=batch_size, dtype=np.int64)
+    source_values = rng.integers(num_frames, size=batch_size, dtype=np.int64)
+    source = np.broadcast_to(source_values[:, None], (batch_size, num_frames)).copy()
+    target = np.broadcast_to(np.arange(num_frames, dtype=np.int64)[None, :],
+                             (batch_size, num_frames)).copy()
+    return SourceCentricPlan(global_step, sample_indices, source, target)
+
+
 def _pin(array: np.ndarray) -> torch.Tensor:
     tensor = torch.from_numpy(np.ascontiguousarray(array))
     # pin_memory is a CUDA-only optimization; keeping the CPU fallback makes
@@ -87,11 +118,14 @@ class _WorkerGeometry:
     """Thread-local geometry cache; no DynamicPointmapCache is shared."""
 
     def __init__(self, stats: CoordinateStats, depth_tolerance: float,
-                 depth_relative_tolerance: float, coordinate_frame: str = "anchor"):
+                 depth_relative_tolerance: float, coordinate_frame: str = "anchor",
+                 compute_visibility: bool = True, include_metric: bool = True):
         self.stats = stats
         self.depth_tolerance = float(depth_tolerance)
         self.depth_relative_tolerance = float(depth_relative_tolerance)
         self.coordinate_frame = str(coordinate_frame).lower()
+        self.compute_visibility = bool(compute_visibility)
+        self.include_metric = bool(include_metric)
         if self.coordinate_frame not in {"anchor", "source"}:
             raise ValueError(f"coordinate_frame must be 'anchor' or 'source', got {coordinate_frame!r}")
         self.local = threading.local()
@@ -104,32 +138,44 @@ class _WorkerGeometry:
                 max_entries=1,
                 depth_tolerance=self.depth_tolerance,
                 depth_relative_tolerance=self.depth_relative_tolerance,
+                compute_visibility=self.compute_visibility,
             )
             self.local.cache = cache
         return cache
 
     def __call__(self, sample: MOViSample, source: np.ndarray,
-                 target: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+                 target: np.ndarray) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, np.ndarray, float]:
         start = time.perf_counter()
         normalized, metric, visible, valid = dense_pair_targets(
             sample, source, target, self.stats, self.cache(),
             coordinate_frame=self.coordinate_frame,
         )
-        return normalized, metric, visible, valid, time.perf_counter() - start
+        return normalized, metric if self.include_metric else None, visible, valid, time.perf_counter() - start
 
 
-def _make_batch(plan: SourceCentricPlan, results: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]]) -> SourceCentricBatch:
+def _make_batch(
+    plan: SourceCentricPlan,
+    results: Sequence[tuple[np.ndarray, np.ndarray | None, np.ndarray | None, np.ndarray, float]],
+) -> SourceCentricBatch:
     normalized = np.stack([result[0] for result in results], axis=0).astype(np.float32, copy=False)
-    metric = np.stack([result[1] for result in results], axis=0).astype(np.float32, copy=False)
-    visible = np.stack([result[2] for result in results], axis=0).astype(bool, copy=False)
+    metric = None if not results or results[0][1] is None else np.stack(
+        [result[1] for result in results], axis=0
+    ).astype(np.float32, copy=False)
+    visible = None if not results or results[0][2] is None else np.stack(
+        [result[2] for result in results], axis=0
+    ).astype(bool, copy=False)
     valid = np.stack([result[3] for result in results], axis=0).astype(bool, copy=False)
     geometry_times = [float(result[4]) for result in results]
     expected = (len(plan.sample_indices), len(plan.target[0]))
     if normalized.ndim != 5 or normalized.shape[:2] != expected or normalized.shape[2] != 3:
         raise ValueError(f"source-centric XYZ shape must be [B,T,3,H,W], got {normalized.shape}")
-    if visible.ndim != 4 or visible.shape[:2] != expected:
+    if metric is not None and metric.shape != normalized.shape:
+        raise ValueError(f"metric XYZ shape {metric.shape} != normalized XYZ shape {normalized.shape}")
+    if visible is not None and (visible.ndim != 4 or visible.shape[:2] != expected):
         raise ValueError(f"source-centric visible shape must be [B,T,H,W], got {visible.shape}")
-    if valid.shape != visible.shape:
+    if valid.ndim != 4 or valid.shape[:2] != expected:
+        raise ValueError(f"source-centric valid shape must be [B,T,H,W], got {valid.shape}")
+    if visible is not None and valid.shape != visible.shape:
         raise ValueError(f"source-centric valid shape {valid.shape} != visible {visible.shape}")
     return SourceCentricBatch(
         plan=plan,
@@ -140,7 +186,7 @@ def _make_batch(plan: SourceCentricPlan, results: Sequence[tuple[np.ndarray, np.
         normalized_xyz_cpu=_pin(normalized),
         source_cpu=_pin(plan.source.astype(np.int64, copy=False)),
         target_cpu=_pin(plan.target.astype(np.int64, copy=False)),
-        visible_cpu=_pin(visible),
+        visible_cpu=_pin(visible) if visible is not None else None,
         valid_cpu=_pin(valid),
         geometry_seconds_sum=float(sum(geometry_times)),
         geometry_seconds_max=float(max(geometry_times, default=0.0)),
@@ -163,24 +209,30 @@ def build_source_centric_batch(samples: Sequence[MOViSample], stats: CoordinateS
 
 
 class SourceCentricPrefetcher:
-    """Eight-thread CPU geometry producer with a bounded queue of depth two."""
+    """Parallel CPU geometry producer with a bounded look-ahead queue."""
 
     def __init__(self, samples: Sequence[MOViSample], stats: CoordinateStats, *,
                  workers: int = 8, queue_depth: int = 2,
                  depth_tolerance: float = 0.05,
                  depth_relative_tolerance: float = 0.01,
-                 coordinate_frame: str = "anchor"):
-        if int(workers) != 8:
-            raise ValueError("H004 source-centric protocol fixes workers=8")
-        if int(queue_depth) != 2:
-            raise ValueError("H004 source-centric protocol fixes queue_depth=2")
+                 coordinate_frame: str = "anchor",
+                 compute_visibility: bool = True,
+                 include_metric: bool = True):
+        workers, queue_depth = int(workers), int(queue_depth)
+        if workers < 1:
+            raise ValueError("geometry prefetch workers must be positive")
+        if queue_depth < 1:
+            raise ValueError("geometry prefetch queue depth must be positive")
         self.samples = samples
+        self.queue_depth = queue_depth
         self._worker_geometry = _WorkerGeometry(
             stats, depth_tolerance, depth_relative_tolerance,
             coordinate_frame=coordinate_frame,
+            compute_visibility=compute_visibility,
+            include_metric=include_metric,
         )
-        self._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="h004-geometry")
-        self._ready: queue.Queue[tuple[SourceCentricPlan, list[Future]]] = queue.Queue(maxsize=2)
+        self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dense4d-geometry")
+        self._ready: queue.Queue[tuple[SourceCentricPlan, list[Future]]] = queue.Queue(maxsize=queue_depth)
         self._closed = False
 
     def submit(self, plan: SourceCentricPlan) -> float:
