@@ -52,6 +52,7 @@ seed: 2026
 geometry_seed: 2026
 decoder_seed: 424242
 smooth_l1_beta: 0.05
-geometry_cache_entries: 8
+# Cache every (clip, source) map: 32 clips x 21 sources, about 3.1 GiB CPU RAM.
+geometry_cache_entries: 672
 save_checkpoint: true
 keep_checkpoint: true
