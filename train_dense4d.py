@@ -191,6 +191,8 @@ def main() -> None:
     parser.add_argument("--resume-weights-only", action="store_true",
                         help="initialize from model weights without optimizer/RNG resume state")
     args = parser.parse_args()
+    if args.resume_weights_only and not args.resume:
+        parser.error("--resume-weights-only requires --resume")
     config = yaml.safe_load(pathlib.Path(args.config).read_text())
     missing = sorted(REQUIRED_CONFIG - set(config))
     if missing:
@@ -229,6 +231,16 @@ def main() -> None:
             resume_optimizer_updates = int(resume_payload["training_state"]["optimizer_updates"])
             if int(resume_payload["training_state"]["global_step"]) != resume_step_offset:
                 raise RuntimeError("checkpoint extra/training_state global_step mismatch")
+            mutable_resume_keys = {
+                "steps", "checkpoint_every_steps", "save_checkpoint", "keep_checkpoint", "tracking",
+            }
+            checkpoint_config = resume_payload.get("config", {})
+            mismatched = sorted(
+                key for key in set(checkpoint_config) | set(config)
+                if key not in mutable_resume_keys and checkpoint_config.get(key) != config.get(key)
+            )
+            if mismatched:
+                raise RuntimeError(f"exact resume config mismatch for keys: {mismatched}")
     rng = np.random.default_rng(seed)
     output_dir = pathlib.Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -242,6 +254,11 @@ def main() -> None:
     )
     samples = load_or_create_samples(dataset, config)
     stats = CoordinateStats.from_npz(config["coordinate_stats"])
+    if args.resume and not args.resume_weights_only:
+        checkpoint_mean = np.asarray(resume_payload["coordinate_mean"], dtype=np.float32)
+        checkpoint_scale = np.asarray(resume_payload["coordinate_scale"], dtype=np.float32)
+        if not np.array_equal(checkpoint_mean, stats.mean) or not np.array_equal(checkpoint_scale, stats.scale):
+            raise RuntimeError("exact resume coordinate statistics differ from the checkpoint")
     clean_latents = load_or_create_clean_latents(samples, config, device)
     model = build_real_model(config, device)
     if args.resume:
