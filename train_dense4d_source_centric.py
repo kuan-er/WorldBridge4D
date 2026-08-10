@@ -34,6 +34,7 @@ from worldbridge.dense4d_prefetch import (
     weighted_masked_pair_smooth_l1,
 )
 from worldbridge.dense4d_runtime import (
+    apply_linear_warmup,
     build_real_model,
     encode_clean_video_latents,
     optimizer_trainable_count,
@@ -521,6 +522,7 @@ def main() -> None:
         # This function is called only by the main training thread.
         return _fixed_train_plan(config, len(samples), step)
 
+    warmup_steps = int(config.get("warmup_steps", 0))
     optimizer.zero_grad(set_to_none=True)
     with GPUUtilizationSampler() as gpu_sampler, SourceCentricPrefetcher(
         samples, stats, workers=8, queue_depth=2,
@@ -533,6 +535,7 @@ def main() -> None:
                 prefetcher.submit(plan_for(prefill_step))
         for step in range(int(config["steps"])):
             iteration_start = time.perf_counter()
+            warmup_factor = apply_linear_warmup(optimizer, step + 1, warmup_steps)
             gpu_sampler.reset()
             if args.mode == "async":
                 batch, prefetch_wait = prefetcher.next()
@@ -663,6 +666,7 @@ def main() -> None:
             train_epes.append(mean_epe)
             event = {
                 "step": step + 1, "global_step": step + 1, "loss": raw_loss,
+                "warmup_factor": warmup_factor,
                 "xyz_loss": xyz_loss_value,
                 "visibility_loss": visibility_loss_value,
                 "train_epe": mean_epe,
@@ -678,6 +682,7 @@ def main() -> None:
                 if wandb_run is not None:
                     wandb_run.log({
                         "global_step": step + 1,
+                        "train/warmup_factor": warmup_factor,
                         "train/loss": raw_loss, "train/xyz_loss": xyz_loss_value,
                         "train/visibility_loss": visibility_loss_value, "train/epe_m": mean_epe,
                         "train/passes": (step + 1) * int(config["batch_size"]) / len(samples),

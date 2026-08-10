@@ -26,7 +26,7 @@ from worldbridge.dense4d_data import (
 )
 from worldbridge.dense4d_runtime import (
     build_real_model, encode_clean_video_latents, optimizer_trainable_count,
-    parameter_groups, precision_dtype, save_checkpoint,
+    apply_linear_warmup, parameter_groups, precision_dtype, save_checkpoint,
 )
 
 
@@ -261,6 +261,7 @@ def main() -> None:
     fixed_source, fixed_target = parse_fixed_pairs(
         fixed, int(config["clip_length"]), num_pairs
     ) if fixed is not None else (None, None)
+    warmup_steps = int(config.get("warmup_steps", 0))
     optimizer.zero_grad(set_to_none=True)
     losses: list[float] = []
     total_losses: list[float] = []
@@ -275,6 +276,7 @@ def main() -> None:
 
     for step in range(steps):
         global_step = resume_step_offset + step
+        warmup_factor = apply_linear_warmup(optimizer, global_step + 1, warmup_steps)
         if bool(config.get("matched_epoch_sampling", False)):
             # One deterministic pass is exactly len(samples) optimizer updates;
             # this makes steps=N*epochs comparable to the prior Kubric runs.
@@ -372,6 +374,7 @@ def main() -> None:
         epe_values.append(mean_epe)
         print(json.dumps({
             "step": step + 1, "loss": raw_loss, "total_loss": total_loss,
+            "warmup_factor": warmup_factor,
             "layer_gate_entropy": gate_entropy_value, "train_epe": mean_epe,
             "pairs": np.stack((source_rows[0], target_rows[0]), axis=-1).tolist(),
             "z4d_shape": list(z4d.shape),
@@ -381,6 +384,7 @@ def main() -> None:
             wandb_run.log({
                 "train/loss": raw_loss,
                 "train/total_loss": total_loss,
+                "train/warmup_factor": warmup_factor,
                 "train/layer_gate_entropy": gate_entropy_value,
                 "train/epe_m": mean_epe,
                 "train/clips_seen": (global_step + 1) * batch_size,
@@ -425,6 +429,7 @@ def main() -> None:
 
     result = {
         "seed": seed, "steps": steps, "total_steps": total_steps,
+        "warmup_steps": warmup_steps,
         "initial_global_step": resume_step_offset, "clips": len(samples), "batch_size": batch_size,
         "num_query_pairs": num_pairs, "trainable_mode": config.get("trainable_mode", "full"),
         "trainable_parameters": optimizer_trainable_count(groups),

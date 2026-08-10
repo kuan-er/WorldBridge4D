@@ -39,7 +39,9 @@ upsample_channels: [1024, 512, 256, 128]
 batch_size: 1
 steps: 1536
 learning_rate: 0.0003
-backbone_learning_rate: 0.000005
+geometry_learning_rate: 0.0003
+backbone_learning_rate: 0.00005
+warmup_steps: 256
 weight_decay: 0.0001
 precision: bf16
 gradient_checkpointing: true

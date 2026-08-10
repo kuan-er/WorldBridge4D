@@ -25,6 +25,27 @@ def precision_dtype(name: str) -> torch.dtype:
     raise ValueError(f"unsupported precision={name!r}")
 
 
+def apply_linear_warmup(optimizer: torch.optim.Optimizer, update_number: int,
+                        warmup_steps: int) -> float:
+    """Scale every optimizer group linearly up to its configured base LR.
+
+    ``update_number`` is one-based: the first optimizer update uses
+    ``1 / warmup_steps`` of each group's base LR.  The base LR is stored on the
+    optimizer group so the Wan and decoder groups retain their independent
+    configured rates.
+    """
+    update_number, warmup_steps = int(update_number), int(warmup_steps)
+    if update_number < 1:
+        raise ValueError("update_number must be positive")
+    if warmup_steps < 0:
+        raise ValueError("warmup_steps must be non-negative")
+    factor = 1.0 if warmup_steps == 0 else min(1.0, update_number / warmup_steps)
+    for group in optimizer.param_groups:
+        base_lr = float(group.setdefault("_base_lr", group["lr"]))
+        group["lr"] = base_lr * factor
+    return factor
+
+
 def load_empty_condition(path: str | Path) -> torch.Tensor:
     path = Path(path)
     if not path.exists():

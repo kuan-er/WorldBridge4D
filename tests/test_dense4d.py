@@ -17,6 +17,22 @@ from worldbridge.dense4d_data import (
 from worldbridge.geometry import GeometryBuilder
 from worldbridge.pointmap import build_dynamic_pointmap
 from worldbridge.wan import WAN_LATENT_SHAPE, WanDiTMapping, rgb_to_wan_input
+from worldbridge.dense4d_runtime import apply_linear_warmup
+
+
+def test_linear_warmup_scales_independent_optimizer_groups():
+    first = nn.Parameter(torch.ones(()))
+    second = nn.Parameter(torch.ones(()))
+    optimizer = torch.optim.AdamW([
+        {"params": [first], "lr": 0.00005, "name": "wan_backbone"},
+        {"params": [second], "lr": 0.0003, "name": "dense_decoder"},
+    ])
+    assert apply_linear_warmup(optimizer, 1, 4) == 0.25
+    np.testing.assert_allclose([group["lr"] for group in optimizer.param_groups], [0.0000125, 0.000075])
+    assert apply_linear_warmup(optimizer, 4, 4) == 1.0
+    np.testing.assert_allclose([group["lr"] for group in optimizer.param_groups], [0.00005, 0.0003])
+    apply_linear_warmup(optimizer, 5, 4)
+    np.testing.assert_allclose([group["lr"] for group in optimizer.param_groups], [0.00005, 0.0003])
 
 
 def synthetic_sample(background=True):
