@@ -426,4 +426,4 @@ h013_default_policy_change:
   decision: Apply to canonical profiles only. Historical experiment YAMLs are
     recoverable from Git. Run fresh full-DiT quality validation before treating
     the new route as scientifically superior.
-updated_at: 2026-08-10T03:06:54.640Z
+updated_at: 2026-08-10T03:20:03.272Z
