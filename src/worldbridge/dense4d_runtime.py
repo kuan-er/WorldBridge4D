@@ -195,7 +195,9 @@ def capture_rng_state(numpy_generator: np.random.Generator | None = None,
     if numpy_generator is not None:
         state["numpy_generator"] = copy.deepcopy(numpy_generator.bit_generator.state)
     if include_cuda and torch.cuda.is_available():
-        state["torch_cuda"] = torch.cuda.get_rng_state_all()
+        # Dense4D is single-device; storing only the active device keeps exact
+        # resume portable across different CUDA_VISIBLE_DEVICES layouts.
+        state["torch_cuda"] = torch.cuda.get_rng_state()
     return state
 
 
@@ -222,11 +224,7 @@ def restore_rng_state(state: dict[str, Any], numpy_generator: np.random.Generato
     if cuda_state is not None:
         if not torch.cuda.is_available():
             raise RuntimeError("checkpoint contains CUDA RNG state but CUDA is unavailable")
-        if len(cuda_state) != torch.cuda.device_count():
-            raise RuntimeError(
-                f"checkpoint CUDA RNG device count {len(cuda_state)} != current {torch.cuda.device_count()}"
-            )
-        torch.cuda.set_rng_state_all(cuda_state)
+        torch.cuda.set_rng_state(torch.as_tensor(cuda_state, dtype=torch.uint8).cpu())
 
 
 def save_checkpoint(path: str | Path, model: DenseQueryWanModel, config: dict[str, Any],

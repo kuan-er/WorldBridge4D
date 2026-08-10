@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import copy
 import random
 
 import numpy as np
@@ -335,6 +336,7 @@ def test_structured_source_query_projects_repeated_source_once_per_clip():
         num_layers=1, num_heads=4, upsample_channels=(64, 32, 16, 8),
         structured_motion_slots=4, structured_local_queries=True,
     )
+    reference = copy.deepcopy(decoder)
     z4d = StructuredZ4D(
         torch.randn(2, 32, 21, 16, 16), torch.randn(2, 21, 4, 32),
     )
@@ -343,8 +345,8 @@ def test_structured_source_query_projects_repeated_source_once_per_clip():
     batch_indices = torch.arange(2)[:, None]
     old_input = by_time[batch_indices, source].reshape(2 * 3, 32, 16, 16)
     old_projected = F.conv2d(
-        old_input, decoder.source_local_projection.weight,
-        decoder.source_local_projection.bias,
+        old_input, reference.source_local_projection.weight,
+        reference.source_local_projection.bias,
     )
     expected = old_projected.flatten(2).transpose(1, 2).reshape(2, 3, 256, 64)
 
@@ -355,6 +357,18 @@ def test_structured_source_query_projects_repeated_source_once_per_clip():
     actual = decoder._structured_source_query(z4d, source, pairs=3)
     torch.testing.assert_close(actual, expected)
     assert projection_inputs == [(2, 32, 16, 16)]
+    actual.square().sum().backward()
+    expected.square().sum().backward()
+    torch.testing.assert_close(
+        decoder.source_local_projection.weight.grad,
+        reference.source_local_projection.weight.grad,
+        rtol=1e-4, atol=1e-4,
+    )
+    torch.testing.assert_close(
+        decoder.source_local_projection.bias.grad,
+        reference.source_local_projection.bias.grad,
+        rtol=1e-4, atol=1e-4,
+    )
 
     projection_inputs.clear()
     mixed_source = torch.tensor([[3, 4, 3], [7, 8, 9]])
