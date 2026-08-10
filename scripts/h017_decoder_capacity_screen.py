@@ -120,11 +120,17 @@ def main() -> None:
             stop_reason = "safe_memory_ceiling"
             break
         lower_output = completed.stdout.lower()
+        oom_markers = (
+            "out of memory",
+            "cublas_status_alloc_failed",
+            "cudnn_status_alloc_failed",
+            "cuda_error_out_of_memory",
+        )
         result = {
             "batch_size": batch_size,
             "status": "failed",
             "returncode": completed.returncode,
-            "oom": "out of memory" in lower_output,
+            "oom": any(marker in lower_output for marker in oom_markers),
             "log_tail": completed.stdout[-2000:],
         }
         results.append(result)
