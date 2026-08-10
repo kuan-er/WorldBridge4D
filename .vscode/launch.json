@@ -109,8 +109,8 @@
     {
       "id": "dense4dCheckpoint",
       "type": "promptString",
-      "description": "Checkpoint path, for example /tmp/worldbridge_debug/dense4d_tiny/checkpoint.pt",
-      "default": "/tmp/worldbridge_debug/dense4d_tiny/checkpoint.pt"
+      "description": "Checkpoint path, for example /tmp/worldbridge_debug/dense4d_train/checkpoint.pt",
+      "default": "/tmp/worldbridge_debug/dense4d_train/checkpoint.pt"
     }
   ]
 }
