@@ -86,7 +86,7 @@
       "type": "debugpy",
       "request": "launch",
       "python": "/opt/conda/bin/python",
-      "module": "scripts.inspect_dataset",
+      "program": "${workspaceFolder}/scripts/inspect_dataset.py",
       "args": [
         "--data-root",
         "/dataset/MOVi-F",
