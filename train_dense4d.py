@@ -467,18 +467,15 @@ def main() -> None:
             print(f"CHECKPOINT_PERIODIC: {periodic_path} (global_step={global_step + 1})", flush=True)
 
     total_steps = steps
-    final_eval = grouped_eval(
-        model, clean_latents[0], samples[0], evaluation_source, evaluation_target,
-        stats, cache, device, dtype, coordinate_frame,
-    )
     checkpoint = None
     checkpoint_load_ok = False
     if bool(config.get("save_checkpoint", True)):
+        # Persist the exact optimizer boundary before evaluation. A diagnostics
+        # failure must not discard a completed expensive training run.
         checkpoint = save_checkpoint(
             output_dir / "checkpoint.pt", model, config, stats.mean, stats.scale,
             extra={"steps": steps, "total_steps": total_steps, "seed": seed,
-                   "initial_eval": initial_eval, "final_eval": final_eval,
-                   "checkpoint_kind": "final"},
+                   "initial_eval": initial_eval, "checkpoint_kind": "trained_pre_evaluation"},
             optimizer=optimizer,
             training_state={
                 "global_step": total_steps,
@@ -486,7 +483,7 @@ def main() -> None:
                 "rng_state": capture_rng_state(rng),
             },
         )
-        print(f"CHECKPOINT_CREATED: {checkpoint}", flush=True)
+        print(f"TRAIN_STATE_SAVED: {checkpoint}", flush=True)
         loaded = torch.load(checkpoint, map_location="cpu", mmap=True, weights_only=True)
         readout = str(config.get("backbone_readout", "wan_velocity"))
         backbone_payload_ok = (
@@ -503,6 +500,13 @@ def main() -> None:
             and backbone_payload_ok
         )
         del loaded
+
+    final_eval = grouped_eval(
+        model, clean_latents[0], samples[0], evaluation_source, evaluation_target,
+        stats, cache, device, dtype, coordinate_frame,
+    )
+    if checkpoint is not None:
+        print(f"CHECKPOINT_CREATED: {checkpoint}", flush=True)
         if not bool(config.get("keep_checkpoint", True)):
             checkpoint.unlink()
             checkpoint = None
