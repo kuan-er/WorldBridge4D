@@ -193,13 +193,16 @@ class GeometryBuilder:
         out[ii] = same_instance & depth_ok
         return out
 
-    def trajectory(self, source: int, uv: np.ndarray, coordinate_frame: str = "anchor") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Compute X[source,target,p], M and V for integer pixels.
+    def trajectory(self, source: int, uv: np.ndarray, coordinate_frame: str = "anchor",
+                   compute_visibility: bool = True
+                   ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
+        """Compute X[source,target,p], optional M, and V for integer pixels.
 
-        The source-grid semantics and visibility masks are identical for both
+        The source-grid semantics and validity masks are identical for both
         coordinate conventions; only the XYZ basis changes.  ``source`` mode
         applies one fixed SE(3) transform (camera ``source``) to every target
-        point in the trajectory.
+        point in the trajectory. Training routes that supervise only XYZ may
+        disable the comparatively expensive target-camera visibility audit.
         """
         coordinate_frame = self._check_coordinate_frame(coordinate_frame)
         source = int(source)
@@ -223,15 +226,21 @@ class GeometryBuilder:
             if coordinate_frame == "anchor"
             else self.world_to_camera_frame(x_world, source)
         )
-        visible = np.stack([self._visible(x_world[:, t], t, instance) for t in range(T)], axis=1)
+        visible = (
+            np.stack([self._visible(x_world[:, t], t, instance) for t in range(T)], axis=1)
+            if compute_visibility else None
+        )
         return x_coordinates.astype(np.float32), visible, v_valid
 
     def trajectory_block(self, source: int, start: int = 0, end: int | None = None,
-                         coordinate_frame: str = "anchor") -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+                         coordinate_frame: str = "anchor", compute_visibility: bool = True
+                         ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, np.ndarray]:
         end = self.sample.height * self.sample.width if end is None else int(end)
         flat = np.arange(start, end, dtype=np.int64)
         uv = np.stack([flat % self.sample.width, flat // self.sample.width], axis=-1)
-        x, m, v = self.trajectory(source, uv, coordinate_frame=coordinate_frame)
+        x, m, v = self.trajectory(
+            source, uv, coordinate_frame=coordinate_frame, compute_visibility=compute_visibility,
+        )
         return x, m, v, uv
 
     def query(self, source: np.ndarray, uv: np.ndarray, coordinate_frame: str = "anchor") -> tuple[np.ndarray, np.ndarray, np.ndarray]:

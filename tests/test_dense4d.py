@@ -1,6 +1,9 @@
 from types import SimpleNamespace
+import copy
+import random
 
 import numpy as np
+import pytest
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -12,12 +15,15 @@ from worldbridge.dense4d import (
     masked_pair_smooth_l1, unflatten_z4d, verify_flow_velocity_algebra,
 )
 from worldbridge.dense4d_data import (
-    CoordinateStats, dense_pair_targets, sample_dense_pairs, sample_source_all_targets_pairs,
+    CoordinateStats, DynamicPointmapCache, dense_pair_targets, sample_dense_pairs,
+    sample_source_all_targets_pairs,
 )
 from worldbridge.geometry import GeometryBuilder
 from worldbridge.pointmap import build_dynamic_pointmap
 from worldbridge.wan import WAN_LATENT_SHAPE, WanDiTMapping, rgb_to_wan_input
-from worldbridge.dense4d_runtime import apply_linear_warmup
+from worldbridge.dense4d_runtime import (
+    apply_linear_warmup, capture_rng_state, restore_rng_state, save_checkpoint,
+)
 
 
 def test_linear_warmup_scales_independent_optimizer_groups():
@@ -111,6 +117,25 @@ def test_visibility_is_not_validity_and_loss_uses_validity():
     prediction = torch.zeros(1, 1, 3, 2, 2)
     target = torch.ones_like(prediction)
     assert masked_pair_smooth_l1(prediction, target, torch.from_numpy(dynamic.valid[2])[None, None]) > 0
+
+
+def test_xyz_only_pointmap_path_skips_visibility(monkeypatch):
+    sample = synthetic_sample(False)
+
+    def unexpected_visibility(*_args, **_kwargs):
+        raise AssertionError("XYZ-only target construction must not compute visibility")
+
+    monkeypatch.setattr(GeometryBuilder, "_visible", unexpected_visibility)
+    dynamic = build_dynamic_pointmap(sample, source=0, compute_visibility=False)
+    assert dynamic.visible is None
+    stats = CoordinateStats(np.zeros(3), np.ones(3))
+    cache = DynamicPointmapCache(max_entries=1, compute_visibility=False)
+    normalized, metric, visible, valid = dense_pair_targets(
+        sample, [0, 0, 0], [0, 1, 2], stats, cache,
+    )
+    assert visible is None
+    np.testing.assert_allclose(normalized, metric)
+    assert valid.shape == (3, 2, 2)
 
 
 def test_wan_input_layout_and_native_clean_latent_contract():
@@ -306,6 +331,53 @@ def test_structured_hidden_readout_bypasses_final_head_and_keeps_st_query_contra
     assert not mapping.final_output_called
 
 
+def test_structured_source_query_projects_repeated_source_once_per_clip():
+    decoder = DenseQueryDecoder(
+        latent_shape=(32, 21, 16, 16), query_dim=64, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(64, 32, 16, 8),
+        structured_motion_slots=4, structured_local_queries=True,
+    )
+    reference = copy.deepcopy(decoder)
+    z4d = StructuredZ4D(
+        torch.randn(2, 32, 21, 16, 16), torch.randn(2, 21, 4, 32),
+    )
+    source = torch.tensor([[3, 3, 3], [7, 7, 7]])
+    by_time = z4d.dense.permute(0, 2, 1, 3, 4)
+    batch_indices = torch.arange(2)[:, None]
+    old_input = by_time[batch_indices, source].reshape(2 * 3, 32, 16, 16)
+    old_projected = F.conv2d(
+        old_input, reference.source_local_projection.weight,
+        reference.source_local_projection.bias,
+    )
+    expected = old_projected.flatten(2).transpose(1, 2).reshape(2, 3, 256, 64)
+
+    projection_inputs = []
+    hook = decoder.source_local_projection.register_forward_pre_hook(
+        lambda _module, values: projection_inputs.append(tuple(values[0].shape))
+    )
+    actual = decoder._structured_source_query(z4d, source, pairs=3)
+    torch.testing.assert_close(actual, expected)
+    assert projection_inputs == [(2, 32, 16, 16)]
+    actual.square().sum().backward()
+    expected.square().sum().backward()
+    torch.testing.assert_close(
+        decoder.source_local_projection.weight.grad,
+        reference.source_local_projection.weight.grad,
+        rtol=1e-4, atol=1e-4,
+    )
+    torch.testing.assert_close(
+        decoder.source_local_projection.bias.grad,
+        reference.source_local_projection.bias.grad,
+        rtol=1e-4, atol=1e-4,
+    )
+
+    projection_inputs.clear()
+    mixed_source = torch.tensor([[3, 4, 3], [7, 8, 9]])
+    decoder._structured_source_query(z4d, mixed_source, pairs=3)
+    assert projection_inputs == [(6, 32, 16, 16)]
+    hook.remove()
+
+
 def test_pair_conditioned_motion_query_preserves_shared_initialization_and_gradients():
     kwargs = dict(
         latent_shape=(32, 21, 16, 16), query_dim=32, embedding_dim=16,
@@ -430,6 +502,63 @@ def test_checkpoint_save_load(tmp_path):
     clone.load_state_dict(torch.load(path, weights_only=True))
     for first, second in zip(model.parameters(), clone.parameters()):
         torch.testing.assert_close(first, second)
+
+
+def test_checkpoint_restores_optimizer_and_all_rng_streams(tmp_path):
+    def train_steps(model, optimizer, generator, count):
+        for _ in range(count):
+            feature = torch.randn(4, 3)
+            feature = feature + random.random() + float(np.random.random()) + float(generator.random())
+            loss = model(feature).square().mean()
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+
+    random.seed(41); np.random.seed(42); torch.manual_seed(43)
+    generator = np.random.default_rng(44)
+    model = nn.Linear(3, 2)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    train_steps(model, optimizer, generator, 2)
+    path = save_checkpoint(
+        tmp_path / "resume.pt", model, {}, np.zeros(3), np.ones(3),
+        optimizer=optimizer,
+        training_state={
+            "global_step": 2,
+            "optimizer_updates": 2,
+            "rng_state": capture_rng_state(generator, include_cuda=False),
+        },
+    )
+    train_steps(model, optimizer, generator, 2)
+    expected = {name: value.detach().clone() for name, value in model.state_dict().items()}
+
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    resumed = nn.Linear(3, 2)
+    resumed_optimizer = torch.optim.AdamW(resumed.parameters(), lr=1e-3)
+    resumed.load_state_dict(payload["model"])
+    resumed_optimizer.load_state_dict(payload["optimizer"])
+    resumed_generator = np.random.default_rng(999)
+    restore_rng_state(payload["training_state"]["rng_state"], resumed_generator)
+    train_steps(resumed, resumed_optimizer, resumed_generator, 2)
+
+    for name, value in resumed.state_dict().items():
+        torch.testing.assert_close(value, expected[name], rtol=0, atol=0)
+    assert payload["format"] == 2
+    assert payload["training_state"]["global_step"] == 2
+
+
+def test_checkpoint_failure_keeps_prior_file_and_removes_temporary(tmp_path, monkeypatch):
+    path = tmp_path / "checkpoint.pt"
+    path.write_bytes(b"prior-checkpoint")
+
+    def failed_save(_payload, temporary):
+        temporary.write_bytes(b"partial-checkpoint")
+        raise OSError("synthetic disk failure")
+
+    monkeypatch.setattr(torch, "save", failed_save)
+    with pytest.raises(OSError, match="synthetic disk failure"):
+        save_checkpoint(path, nn.Linear(1, 1), {}, np.zeros(3), np.ones(3))
+    assert path.read_bytes() == b"prior-checkpoint"
+    assert not path.with_suffix(".pt.tmp").exists()
 
 
 def test_pair_sampler_balances_diagonal_directions_and_gaps():

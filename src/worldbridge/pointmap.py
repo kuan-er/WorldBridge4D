@@ -20,7 +20,7 @@ from .geometry import GeometryBuilder
 @dataclass
 class DynamicPointmap:
     xyz: np.ndarray       # [T,H,W,3], source-grid anchored
-    visible: np.ndarray   # [T,H,W], M
+    visible: np.ndarray | None  # [T,H,W], M; omitted on XYZ-only training paths
     valid: np.ndarray      # [T,H,W], A
     source: int
     coordinate_frame: str = "anchor"
@@ -29,24 +29,29 @@ class DynamicPointmap:
 def build_dynamic_pointmap(sample: MOViSample, source: int, *,
                            depth_tolerance: float = 0.05,
                            depth_relative_tolerance: float = 0.01,
-                           coordinate_frame: str = "anchor") -> DynamicPointmap:
-    """Build one source-grid trajectory map in anchor or source coordinates."""
+                           coordinate_frame: str = "anchor",
+                           compute_visibility: bool = True) -> DynamicPointmap:
+    """Build one source-grid trajectory map with optional visibility masks."""
     source = int(source)
     if not 0 <= source < sample.num_frames:
         raise ValueError(f"source={source} outside [0,{sample.num_frames})")
     coordinate_frame = GeometryBuilder._check_coordinate_frame(coordinate_frame)
     geom = GeometryBuilder(sample, depth_tolerance, depth_relative_tolerance)
-    xyz, visible, valid, _ = geom.trajectory_block(source, coordinate_frame=coordinate_frame)
+    xyz, visible, valid, _ = geom.trajectory_block(
+        source, coordinate_frame=coordinate_frame, compute_visibility=compute_visibility,
+    )
     # GeometryBuilder returns [source_pixel,target_time,3]. Reorder only the
     # tensor axes; the HxW locations remain the source-frame pixel grid.
     xyz = xyz.reshape(sample.height, sample.width, sample.num_frames, 3).transpose(2, 0, 1, 3)
-    visible = visible.reshape(sample.height, sample.width, sample.num_frames).transpose(2, 0, 1)
+    if visible is not None:
+        visible = visible.reshape(sample.height, sample.width, sample.num_frames).transpose(2, 0, 1)
     valid = valid.reshape(sample.height, sample.width, sample.num_frames).transpose(2, 0, 1)
     # A=0 has no XYZ semantics. Zeroing only invalid values prevents accidental
     # NaNs entering the VAE, while M=0,A=1 remains untouched.
     xyz = np.where(valid[..., None], xyz, 0.0).astype(np.float32)
     return DynamicPointmap(
-        xyz=xyz, visible=visible.astype(bool), valid=valid.astype(bool), source=source,
+        xyz=xyz, visible=visible.astype(bool) if visible is not None else None,
+        valid=valid.astype(bool), source=source,
         coordinate_frame=coordinate_frame,
     )
 

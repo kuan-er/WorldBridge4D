@@ -414,6 +414,14 @@ h013_default_policy_change:
   status: implemented_not_quality_validated
   task: T-20260810022349-e4aabd
   cleanup_task: T-20260810025024-fcdbbe
+  hardening_task: T-20260810095826-d8c8fb
+  hardening:
+    exact_resume: model_optimizer_python_numpy_torch_rng
+    resume_steps_semantics: configured_target_total
+    capacity_checkpoint_every_steps: 256
+    repeated_source_projection: project_once_expand_targets
+    xyz_training_visibility: disabled
+    real_smoke_run: R-20260810103851-cc2f62
   defaults:
     coordinate_frame: source
     pair_sampling: source_all_targets

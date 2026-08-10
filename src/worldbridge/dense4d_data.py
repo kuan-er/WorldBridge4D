@@ -48,10 +48,11 @@ class DynamicPointmapCache:
     """Bounded CPU cache keyed by clip, source, and coordinate convention."""
 
     def __init__(self, max_entries: int = 32, depth_tolerance: float = 0.05,
-                 depth_relative_tolerance: float = 0.01):
+                 depth_relative_tolerance: float = 0.01, compute_visibility: bool = True):
         self.max_entries = int(max_entries)
         self.depth_tolerance = float(depth_tolerance)
         self.depth_relative_tolerance = float(depth_relative_tolerance)
+        self.compute_visibility = bool(compute_visibility)
         self._values: OrderedDict[tuple[str, int, int, str], DynamicPointmap] = OrderedDict()
 
     def get(self, sample: MOViSample, source: int, coordinate_frame: str = "anchor") -> DynamicPointmap:
@@ -65,6 +66,7 @@ class DynamicPointmapCache:
                 sample, int(source), depth_tolerance=self.depth_tolerance,
                 depth_relative_tolerance=self.depth_relative_tolerance,
                 coordinate_frame=coordinate_frame,
+                compute_visibility=self.compute_visibility,
             )
         self._values[key] = value
         while len(self._values) > self.max_entries:
@@ -75,8 +77,8 @@ class DynamicPointmapCache:
 def dense_pair_targets(sample: MOViSample, source: Sequence[int], target: Sequence[int],
                        stats: CoordinateStats, cache: DynamicPointmapCache | None = None,
                        coordinate_frame: str = "anchor"
-                       ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return normalized/metric XYZ, visibility M, and validity A for K maps."""
+                       ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray]:
+    """Return normalized/metric XYZ, optional visibility M, and validity A."""
     coordinate_frame = str(coordinate_frame).lower()
     if coordinate_frame not in {"anchor", "source"}:
         raise ValueError(f"coordinate_frame must be 'anchor' or 'source', got {coordinate_frame!r}")
@@ -88,16 +90,21 @@ def dense_pair_targets(sample: MOViSample, source: Sequence[int], target: Sequen
         raise ValueError("pair time index outside clip")
     cache = cache or DynamicPointmapCache(max_entries=max(len(np.unique(source)), 1))
     metric, visible, valid = [], [], []
+    visibility_available = cache.compute_visibility
     for s, t in zip(source, target):
         pointmap = cache.get(sample, int(s), coordinate_frame=coordinate_frame)
         metric.append(pointmap.xyz[int(t)].transpose(2, 0, 1))
-        visible.append(pointmap.visible[int(t)])
+        if visibility_available:
+            if pointmap.visible is None:
+                raise RuntimeError("visibility-enabled cache returned no visibility mask")
+            visible.append(pointmap.visible[int(t)])
         valid.append(pointmap.valid[int(t)])
     metric_xyz = np.stack(metric).astype(np.float32)
     # Coordinate axis is channel-first here.
     normalized = ((metric_xyz - stats.mean[None, :, None, None]) /
                   stats.scale[None, :, None, None]).astype(np.float32)
-    return normalized, metric_xyz, np.stack(visible).astype(bool), np.stack(valid).astype(bool)
+    visible_maps = np.stack(visible).astype(bool) if visibility_available else None
+    return normalized, metric_xyz, visible_maps, np.stack(valid).astype(bool)
 
 
 def _off_diagonal_pair(num_frames: int, category: int, rng: np.random.Generator) -> tuple[int, int]:
