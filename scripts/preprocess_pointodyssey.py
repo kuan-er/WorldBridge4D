@@ -66,10 +66,41 @@ def frame_count(scene: Path) -> int:
     return len([x for x in (scene / "rgbs").iterdir() if x.suffix.lower() in {".jpg", ".jpeg", ".png"}])
 
 
+def annotation_shape_error(scene: Path, frame_count_: int) -> str | None:
+    """Return a reproducible reason when a scene cannot provide dense tracks."""
+    required = ("trajs_2d", "trajs_3d", "valids", "visibs", "intrinsics", "extrinsics")
+    try:
+        with np.load(scene / "anno.npz") as z:
+            missing = [key for key in required if key not in z]
+            if missing:
+                return f"missing={missing}"
+            shapes = {key: z[key].shape for key in required}
+    except Exception as exc:
+        return f"load_error={type(exc).__name__}:{exc}"
+    t2, t3, valid, visib, intr, extr = (shapes[key] for key in required)
+    if len(t2) != 3 or t2[-1] != 2:
+        return f"trajs_2d_shape={t2}"
+    if len(t3) != 3 or t3[-1] != 3:
+        return f"trajs_3d_shape={t3}"
+    if len(valid) != 2 or len(visib) != 2:
+        return f"valids_visibs_shape={valid},{visib}"
+    if len(intr) != 3 or len(extr) != 3 or intr[-2:] != (3, 3) or extr[-2:] != (4, 4):
+        return f"camera_shapes={intr},{extr}"
+    if not (t2[0] >= frame_count_ and t3[0] >= frame_count_ and valid[0] >= frame_count_ and visib[0] >= frame_count_ and intr[0] >= frame_count_ and extr[0] >= frame_count_):
+        return f"frame_count={frame_count_},shapes={t2},{t3},{valid},{visib},{intr},{extr}"
+    if not (t2[1] == t3[1] == valid[1] == visib[1]):
+        return f"track_counts={t2[1]},{t3[1]},{valid[1]},{visib[1]}"
+    return None
+
+
 def make_index(raw_root: Path, split: str, max_clips: int | None = None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for scene in scenes(raw_root, split):
         n = frame_count(scene)
+        error = annotation_shape_error(scene, n)
+        if error is not None:
+            print(f"skip scene {scene}: malformed annotation ({error})", flush=True)
+            continue
         for start in range(0, n - T + 1, T):
             rows.append({
                 "index": len(rows),
@@ -265,13 +296,19 @@ def main() -> None:
             t3 = z["trajs_3d"].astype(np.float64)
             valid = z["valids"].astype(bool)
             E = z["extrinsics"].astype(np.float64)
+            if t2.ndim != 3 or t3.ndim != 3 or valid.ndim != 2:
+                print(f"skip stats scene {scene_name}: malformed loaded shapes {t2.shape},{t3.shape},{valid.shape}", flush=True)
+                continue
             used_frames = np.concatenate([np.arange(int(r["start"]), int(r["start"]) + T) for r in scene_rows])
             for f in np.unique(used_frames):
                 uv = t2[f]
+                finite_uv = np.isfinite(uv).all(1)
                 pu = (uv[:, 0] - CROP_X + 0.5) * W / CROP_SIZE - 0.5
                 pv = (uv[:, 1] - CROP_Y + 0.5) * H / CROP_SIZE - 0.5
-                iu, iv = np.rint(pu).astype(np.int64), np.rint(pv).astype(np.int64)
-                good = valid[f] & np.isfinite(uv).all(1) & np.isfinite(t3[f]).all(1)
+                iu = np.zeros(len(uv), dtype=np.int64); iv = np.zeros(len(uv), dtype=np.int64)
+                iu[finite_uv] = np.rint(pu[finite_uv]).astype(np.int64)
+                iv[finite_uv] = np.rint(pv[finite_uv]).astype(np.int64)
+                good = valid[f] & finite_uv & np.isfinite(t3[f]).all(1)
                 good &= (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H)
                 ids = np.flatnonzero(good)
                 if not len(ids):
