@@ -1,5 +1,6 @@
-current_task: T-20260810095432-c41d00
+current_task: T-20260810095826-d8c8fb
 active_hypotheses:
+  - H013
   - H014
   - H009
   - H004
@@ -427,4 +428,4 @@ h013_default_policy_change:
   decision: Apply to canonical profiles only. Historical experiment YAMLs are
     recoverable from Git. Run fresh full-DiT quality validation before treating
     the new route as scientifically superior.
-updated_at: 2026-08-10T09:54:32.545Z
+updated_at: 2026-08-10T09:58:26.638Z
