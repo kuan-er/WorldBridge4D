@@ -448,12 +448,17 @@ h020_pointodyssey_progressive:
   rejection_reason: capacity helper violated the fixed batch-one protocol by selecting batch eight
   corrected_tests: R-20260811060229-3fe845
   corrected_tests_passed: 41
-  status: blocked_missing_raw_release
-  corrected_gate: R-20260811060358-8a4d9f
-  corrected_gate_failure: raw scene annotations under /dataset/PointOdyssey are absent although latent shards exist
+  earlier_blocked_gate: R-20260811060358-8a4d9f
+  earlier_gate_failure: raw scene annotations under /dataset/PointOdyssey were absent in that environment
   fail_fast_validation_added: true
   rejected_ddp_run: R-20260811060831-674b14
   rejected_ddp_reason: structured hidden-state readout leaves parameters unused; DDP reduction check failed on second forward
   ddp_unused_parameter_fix: find_unused_parameters_true
-  status: corrected_ddp_fix_pending
-updated_at: 2026-08-11T06:10:16.864Z
+  partial_run: R-20260811062558-1ca703
+  partial_checkpoint_global_step: 64
+  overlapping_capacity_probe: R-20260811063827-811e1e
+  overlapping_probe_result: batch12 OOM at 75.22 GiB allocated; no quality result
+  launcher_lock_added: true
+  unexpected_stop_guard_added: true
+  status: resume_from_step64_pending
+updated_at: 2026-08-11T06:39:16.487Z
