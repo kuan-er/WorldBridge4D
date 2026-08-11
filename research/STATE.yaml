@@ -458,7 +458,11 @@ h020_pointodyssey_progressive:
   partial_checkpoint_global_step: 64
   overlapping_capacity_probe: R-20260811063827-811e1e
   overlapping_probe_result: batch12 OOM at 75.22 GiB allocated; no quality result
+  rejected_batch8_resume: R-20260811064034-c9416d
+  rejected_batch8_reason: changed registered batch after step64; terminated at step100
   launcher_lock_added: true
+  fixed_batch_override_rejected: true
+  exact_resume_batch_guard_added: true
   unexpected_stop_guard_added: true
   status: resume_from_step64_pending
-updated_at: 2026-08-11T06:39:16.487Z
+updated_at: 2026-08-11T06:42:16.808Z

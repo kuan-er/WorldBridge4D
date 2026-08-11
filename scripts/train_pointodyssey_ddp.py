@@ -246,8 +246,19 @@ def main() -> None:
     if resume_payload is not None:
         optimizer.load_state_dict(resume_payload["optimizer"])
     dtype = precision_dtype(config.get("precision", "bf16"))
-    batch = int(args.batch_size_per_gpu or config.get("batch_size_per_gpu", config.get("batch_size", 1)))
+    configured_batch = int(config.get("batch_size_per_gpu", config.get("batch_size", 1)))
+    if args.batch_size_per_gpu is not None and int(args.batch_size_per_gpu) != configured_batch:
+        raise ValueError(
+            f"H020 fixes batch_size_per_gpu={configured_batch}; refusing override {args.batch_size_per_gpu}"
+        )
+    batch = configured_batch
     steps = int(args.steps or config.get("steps", 30000))
+    if resume_payload is not None:
+        checkpoint_batch = int(resume_payload.get("config", {}).get("batch_size_per_gpu", batch))
+        if checkpoint_batch != batch:
+            raise ValueError(
+                f"exact resume batch mismatch: checkpoint={checkpoint_batch}, current={batch}"
+            )
     config["batch_size_per_gpu"] = batch
     config["steps"] = steps
     run = None if args.disable_wandb else init_wandb(config, rank)

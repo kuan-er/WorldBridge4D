@@ -39,26 +39,27 @@ card_free() {
   (( free >= 70000 && util <= 5 )) && owner_gone "$gpu"
 }
 
-# Start immediately with the proven-safe batch while raw NPZ geometry remains
-# the bottleneck. Override POINTODYSSEY_BATCH after a compact cache is ready.
-selected=""
-for batch in "${POINTODYSSEY_BATCH:-1}"; do
-  log="$OUTPUT/capacity/gpu4_batch${batch}.log"
-  echo "[capacity] GPU4 probing batch_size_per_gpu=$batch"
-  set +e
-  CUDA_VISIBLE_DEVICES=4 torchrun --standalone --nproc_per_node=1 --master_port="$((29740 + batch))" \
-    "$ROOT/scripts/train_pointodyssey_ddp.py" --config "$CONFIG" \
-    --output-dir "$OUTPUT/capacity/gpu4_batch${batch}" --batch-size-per-gpu "$batch" \
-    --steps 1 --disable-wandb --no-checkpoint 2>&1 | tee "$log"
-  rc=${PIPESTATUS[0]}
-  set -e
-  if (( rc == 0 )); then selected="$batch"; break; fi
-  if ! grep -Eiq 'out of memory|CUBLAS_STATUS_ALLOC_FAILED|CUDA error' "$log"; then
-    echo "[capacity] non-capacity failure; refusing to launch" >&2; exit "$rc"
-  fi
-  sleep 3
-done
-[[ -n "$selected" ]] || { echo "[capacity] no batch fits GPU4" >&2; exit 1; }
+# H020 registers one physical clip per rank. Read that immutable value from the
+# YAML and refuse environment/CLI capacity overrides in the formal launcher.
+selected="$(python - "$CONFIG" <<'PY'
+import sys, yaml
+with open(sys.argv[1]) as handle:
+    print(int(yaml.safe_load(handle)["batch_size_per_gpu"]))
+PY
+)"
+log="$OUTPUT/capacity/gpu4_batch${selected}.log"
+echo "[capacity] GPU4 probing fixed batch_size_per_gpu=$selected"
+set +e
+CUDA_VISIBLE_DEVICES=4 torchrun --standalone --nproc_per_node=1 --master_port="$((29740 + selected))" \
+  "$ROOT/scripts/train_pointodyssey_ddp.py" --config "$CONFIG" \
+  --output-dir "$OUTPUT/capacity/gpu4_batch${selected}" --batch-size-per-gpu "$selected" \
+  --steps 1 --disable-wandb --no-checkpoint 2>&1 | tee "$log"
+rc=${PIPESTATUS[0]}
+set -e
+if (( rc != 0 )); then
+  echo "[capacity] fixed protocol batch failed; refusing to alter the registered batch" >&2
+  exit "$rc"
+fi
 echo "[capacity] CAPACITY_BATCH_SELECTED=$selected"
 
 visible=(4)
