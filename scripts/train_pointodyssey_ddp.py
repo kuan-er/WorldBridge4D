@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import random
 import sys
+import threading
 import time
 from typing import Any
 
@@ -66,18 +67,24 @@ def plan(num_clips: int, global_step: int, batch: int, world: int, seed: int,
 
 
 def ensure_index_and_stats(config: dict[str, Any], rank: int) -> None:
-    """Require the CPU-produced immutable handoff rather than racing a build."""
+    """Require the immutable handoff and its raw scene dependencies up front."""
     root = Path(config["cache_root"])
     required = [root / "manifest.json", root / "splits" / "train.jsonl",
                 root / "stats" / "coordinate_stats_train_source.npz"]
-    if rank == 0:
-        missing = [str(p) for p in required if not p.exists()]
-        if missing:
-            raise FileNotFoundError("PointOdyssey handoff is incomplete; missing " + ", ".join(missing))
-    dist.barrier()
     missing = [str(p) for p in required if not p.exists()]
     if missing:
-        raise FileNotFoundError("PointOdyssey handoff disappeared: " + ", ".join(missing))
+        raise FileNotFoundError("PointOdyssey handoff is incomplete; missing " + ", ".join(missing))
+    rows = [json.loads(line) for line in (root / "splits" / "train.jsonl").read_text().splitlines() if line]
+    scenes = sorted({Path(row["source_scene"]) for row in rows})
+    missing_scenes = [str(scene) for scene in scenes if not (scene / "anno.npz").exists()]
+    if missing_scenes:
+        preview = ", ".join(missing_scenes[:3])
+        suffix = " ..." if len(missing_scenes) > 3 else ""
+        raise FileNotFoundError(
+            f"PointOdyssey raw scene annotations are unavailable ({len(missing_scenes)} scenes): "
+            f"{preview}{suffix}. Mount the release or rebuild a self-contained handoff."
+        )
+    dist.barrier()
 
 
 def ensure_latent_shard(dataset: PointOdysseyDataset, config: dict[str, Any],
@@ -149,13 +156,18 @@ class GeometryPrefetcher:
     def __init__(self, dataset: PointOdysseyDataset, mean: np.ndarray, scale: np.ndarray,
                  workers: int, depth: int):
         self.dataset, self.mean, self.scale = dataset, mean.astype(np.float32), scale.astype(np.float32)
+        self.local = threading.local()
         self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="pointodyssey-geometry")
         self.futures: dict[int, Any] = {}
         self.depth = int(depth)
 
     def submit(self, step: int, indices: np.ndarray, source: np.ndarray) -> None:
         def make(index: int, src: int):
-            xyz, valid = self.dataset.source_all_targets(int(index), int(src))
+            worker_dataset = getattr(self.local, "dataset", None)
+            if worker_dataset is None:
+                worker_dataset = PointOdysseyDataset(self.dataset.root, "train")
+                self.local.dataset = worker_dataset
+            xyz, valid = worker_dataset.source_all_targets(int(index), int(src))
             normalized = (xyz - self.mean[None, :, None, None]) / self.scale[None, :, None, None]
             return normalized.astype(np.float32), valid
         # Submit one future per clip; wrapping the whole batch in one future
