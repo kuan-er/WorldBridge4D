@@ -2,7 +2,7 @@
 data_root: /dataset/PointOdyssey
 cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1
 latent_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1/latents/train
-wan_root: /dataset/Wan2.1-T2V-1.3B
+wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
 empty_text_condition: /tmp/worldbridge_dense4d/wan_empty_condition.pt
 clip_length: 21
 image_size: 128
