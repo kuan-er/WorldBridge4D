@@ -31,9 +31,10 @@ card_free() {
   (( free >= 70000 && util <= 5 )) && owner_gone "$gpu"
 }
 
-# Use a real one-step sweep so the physical card is filled as requested.
+# Start immediately with the proven-safe batch while raw NPZ geometry remains
+# the bottleneck. Override POINTODYSSEY_BATCH after a compact cache is ready.
 selected=""
-for batch in 12 11 10 9 8 6 4 3 2 1; do
+for batch in "${POINTODYSSEY_BATCH:-1}"; do
   log="$OUTPUT/capacity/gpu4_batch${batch}.log"
   echo "[capacity] GPU4 probing batch_size_per_gpu=$batch"
   set +e
