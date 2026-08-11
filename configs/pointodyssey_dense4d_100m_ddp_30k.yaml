@@ -1,4 +1,5 @@
 # PointOdyssey H020: three physical GPUs (2,4,6), global 100k optimizer steps.
+# Historical filename retains "30k"; the resolved steps field is authoritative.
 data_root: /dataset/PointOdyssey
 cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1
 latent_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1/latents/train
@@ -46,5 +47,5 @@ tracking:
   enabled: true
   project: worldbridge4d
   entity: zhaigong2023-sjtu-hpc-center
-  group: pointodyssey-dense4d-ddp-30k
+  group: pointodyssey-dense4d-ddp-100k
   tags: [h020, pointodyssey, source-frame, dense4d, ddp, 3gpu]

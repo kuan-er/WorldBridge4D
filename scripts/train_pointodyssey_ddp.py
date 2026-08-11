@@ -42,7 +42,11 @@ def rank_info() -> tuple[int, int, int]:
     if world < 1 or world > 3:
         raise RuntimeError(f"PointOdyssey handoff supports 1..3 processes, got WORLD_SIZE={world}")
     torch.cuda.set_device(local)
-    dist.init_process_group("nccl", init_method="env://", timeout=__import__("datetime").timedelta(hours=24))
+    dist.init_process_group(
+        "nccl", init_method="env://",
+        timeout=__import__("datetime").timedelta(hours=24),
+        device_id=torch.device(f"cuda:{local}"),
+    )
     return rank, world, local
 
 
@@ -181,7 +185,7 @@ def init_wandb(config: dict[str, Any], rank: int):
     run = wandb.init(
         project=os.environ.get("WANDB_PROJECT", tracking.get("project", "worldbridge4d")),
         entity=os.environ.get("WANDB_ENTITY", tracking.get("entity")),
-        name=os.environ.get("WANDB_NAME", "pointodyssey-dense4d-ddp-30k"),
+        name=os.environ.get("WANDB_NAME", "pointodyssey-dense4d-ddp-100k"),
         group=os.environ.get("WANDB_GROUP", tracking.get("group", "pointodyssey-dense4d-ddp")),
         job_type="train", tags=["pointodyssey", "dense4d", "ddp", "3gpu"], config=config,
         mode=mode,
@@ -201,7 +205,7 @@ def main() -> None:
     ap.add_argument("--disable-wandb", action="store_true")
     ap.add_argument("--no-checkpoint", action="store_true")
     ap.add_argument("--resume", help="resume model/optimizer/global step, including across DDP world sizes")
-    ap.add_argument("--stop-file", help="world-size-one handoff request; checkpoint and exit after an update")
+    ap.add_argument("--stop-file", help="DDP membership handoff request; checkpoint and exit after an update")
     args = ap.parse_args()
     config = yaml.safe_load(Path(args.config).read_text())
     rank, world, local = rank_info()
@@ -238,6 +242,7 @@ def main() -> None:
     out = Path(args.output_dir); out.mkdir(parents=True, exist_ok=True) if rank == 0 else None
     checkpoint_every = int(config.get("checkpoint_every_steps", 5000))
     start_step = int(resume_payload["training_state"]["global_step"]) if resume_payload is not None else 0
+    clips_seen = int(resume_payload["training_state"].get("clips_seen", 0)) if resume_payload is not None else 0
     if start_step >= steps:
         raise ValueError(f"resume global_step={start_step} already reaches target steps={steps}")
     if rank == 0 and resume_payload is not None:
@@ -245,14 +250,17 @@ def main() -> None:
     del resume_payload
     stopped_for_scale = False
     completed_steps = start_step
+    prefetch_depth = max(1, int(config.get("geometry_prefetch_depth", 2)))
+    for queued_step in range(start_step, min(start_step + prefetch_depth, steps)):
+        qi, qs, _ = plan(len(dataset), queued_step, batch, world, seed)
+        prefetch.submit(queued_step, qi, qs)
     for step in range(start_step, steps):
         indices, source, target = plan(len(dataset), step, batch, world, seed)
-        prefetch.submit(step, indices, source)
-        # Maintain a bounded lookahead without changing the deterministic plan.
-        if step + 1 < steps:
-            ni, ns, _ = plan(len(dataset), step + 1, batch, world, seed)
-            prefetch.submit(step + 1, ni, ns)
         target_xyz_np, valid_np = prefetch.get(step)
+        replacement_step = step + prefetch_depth
+        if replacement_step < steps:
+            ri, rs, _ = plan(len(dataset), replacement_step, batch, world, seed)
+            prefetch.submit(replacement_step, ri, rs)
         source_t = torch.from_numpy(source).to(device, non_blocking=True)
         target_t = torch.from_numpy(target).to(device, non_blocking=True)
         target_xyz = torch.from_numpy(target_xyz_np).to(device, non_blocking=True)
@@ -267,12 +275,13 @@ def main() -> None:
         torch.nn.utils.clip_grad_norm_(model.parameters(), float(config.get("gradient_clip", 1.0)))
         optimizer.step(); optimizer.zero_grad(set_to_none=True)
         value = float(loss.detach()); first_loss = value if first_loss is None else first_loss; last_loss = value
-        if rank == 0 and (step == 0 or (step + 1) % int(config.get("diagnostic_every_steps", 20)) == 0 or step + 1 == steps):
+        clips_seen += batch * world
+        if rank == 0 and (step == start_step or (step + 1) % int(config.get("diagnostic_every_steps", 20)) == 0 or step + 1 == steps):
             with torch.no_grad():
                 epe = torch.linalg.vector_norm((prediction.float() - target_xyz) * torch.as_tensor(scale, device=device).view(1, 1, 3, 1, 1), dim=2)
                 epe = float(epe[valid].mean()) if bool(valid.any()) else float("nan")
             payload = {"global_step": step + 1, "train/loss": value, "train/epe_m": epe,
-                       "train/clips_seen": (step + 1) * batch * world,
+                       "train/clips_seen": clips_seen,
                        "system/peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,
                        "timing/elapsed_seconds": time.perf_counter() - started}
             print(json.dumps(payload), flush=True)
@@ -281,12 +290,20 @@ def main() -> None:
         if rank == 0 and not args.no_checkpoint and checkpoint_every and completed_steps % checkpoint_every == 0:
             save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
                             extra={"steps": steps, "total_steps": completed_steps, "dataset": "PointOdyssey"},
-                            optimizer=optimizer, training_state={"global_step": completed_steps, "optimizer_updates": completed_steps})
-        if args.stop_file and world == 1 and Path(args.stop_file).exists():
+                            optimizer=optimizer, training_state={"global_step": completed_steps,
+                                                                 "optimizer_updates": completed_steps,
+                                                                 "clips_seen": clips_seen})
+        stop_requested = torch.zeros((), dtype=torch.int32, device=device)
+        if rank == 0 and args.stop_file and Path(args.stop_file).exists():
+            stop_requested.fill_(1)
+        dist.broadcast(stop_requested, src=0)
+        if bool(stop_requested.item()):
             if rank == 0:
                 save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
                                 extra={"steps": steps, "total_steps": completed_steps, "dataset": "PointOdyssey", "scale_handoff": True},
-                                optimizer=optimizer, training_state={"global_step": completed_steps, "optimizer_updates": completed_steps})
+                                optimizer=optimizer, training_state={"global_step": completed_steps,
+                                                                     "optimizer_updates": completed_steps,
+                                                                     "clips_seen": clips_seen})
                 print(f"POINTODYSSEY_SCALE_CHECKPOINT: global_step={completed_steps}", flush=True)
             stopped_for_scale = True
             break
@@ -295,10 +312,13 @@ def main() -> None:
         if not args.no_checkpoint and not stopped_for_scale:
             save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
                             extra={"steps": steps, "total_steps": completed_steps, "dataset": "PointOdyssey"},
-                            optimizer=optimizer, training_state={"global_step": completed_steps, "optimizer_updates": completed_steps})
+                            optimizer=optimizer, training_state={"global_step": completed_steps,
+                                                                 "optimizer_updates": completed_steps,
+                                                                 "clips_seen": clips_seen})
         result = {"dataset": "PointOdyssey", "world_size": world, "target_steps": steps,
                   "completed_steps": completed_steps, "stopped_for_scale": stopped_for_scale,
                   "batch_size_per_gpu": batch, "global_batch_size": batch * world,
+                  "clips_seen": clips_seen,
                   "clips": len(dataset), "first_loss": first_loss, "final_loss": last_loss,
                   "elapsed_seconds": time.perf_counter() - started,
                   "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,

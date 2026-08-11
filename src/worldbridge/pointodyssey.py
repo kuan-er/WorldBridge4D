@@ -97,8 +97,12 @@ class PointOdysseyDataset:
         vis = a["visibs"][start:start + T].astype(bool)
         pu = (uv[:, 0] - CROP_X + 0.5) * W / CROP_SIZE - 0.5
         pv = (uv[:, 1] - CROP_Y + 0.5) * H / CROP_SIZE - 0.5
-        iu, iv = np.rint(pu).astype(np.int64), np.rint(pv).astype(np.int64)
-        good = valid[source] & np.isfinite(uv).all(1) & np.isfinite(world).all((0, 2))
+        finite_uv = np.isfinite(uv).all(1)
+        iu = np.full(len(uv), -1, dtype=np.int64)
+        iv = np.full(len(uv), -1, dtype=np.int64)
+        iu[finite_uv] = np.rint(pu[finite_uv]).astype(np.int64)
+        iv[finite_uv] = np.rint(pv[finite_uv]).astype(np.int64)
+        good = valid[source] & finite_uv & np.isfinite(world).all((0, 2))
         good &= (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H)
         xyz = np.zeros((T, 3, H, W), np.float32); out_valid = np.zeros((T, H, W), bool); out_vis = np.zeros_like(out_valid)
         best = np.full((H, W), np.inf)
