@@ -158,12 +158,15 @@ class GeometryPrefetcher:
             xyz, valid = self.dataset.source_all_targets(int(index), int(src))
             normalized = (xyz - self.mean[None, :, None, None]) / self.scale[None, :, None, None]
             return normalized.astype(np.float32), valid
-        self.futures[int(step)] = self.pool.submit(
-            lambda: ([make(int(i), int(s)) for i, s in zip(indices, source[:, 0])])
-        )
+        # Submit one future per clip; wrapping the whole batch in one future
+        # silently serialized all eight geometry workers for large batches.
+        self.futures[int(step)] = [
+            self.pool.submit(make, int(i), int(s))
+            for i, s in zip(indices, source[:, 0])
+        ]
 
     def get(self, step: int) -> tuple[np.ndarray, np.ndarray]:
-        values = self.futures.pop(int(step)).result()
+        values = [future.result() for future in self.futures.pop(int(step))]
         return np.stack([x[0] for x in values]), np.stack([x[1] for x in values])
 
     def close(self) -> None:

@@ -31,26 +31,32 @@ card_free() {
   (( free >= 70000 && util <= 5 )) && owner_gone "$gpu"
 }
 
-# Probe descending physical batches. Batch 8 used only 55.97 GiB, so screen
-# 12/11/10/9 before accepting it in order to honor the requested full-card run.
-selected=""
-for batch in 12 11 10 9 8 6 4 3 2 1; do
-  log="$OUTPUT/capacity/gpu4_batch${batch}.log"
-  echo "[capacity] GPU4 probing batch_size_per_gpu=$batch"
-  set +e
-  CUDA_VISIBLE_DEVICES=4 torchrun --standalone --nproc_per_node=1 --master_port="$((29740 + batch))" \
-    "$ROOT/scripts/train_pointodyssey_ddp.py" --config "$CONFIG" \
-    --output-dir "$OUTPUT/capacity/gpu4_batch${batch}" --batch-size-per-gpu "$batch" \
-    --steps 1 --disable-wandb --no-checkpoint 2>&1 | tee "$log"
-  rc=${PIPESTATUS[0]}
-  set -e
-  if (( rc == 0 )); then selected="$batch"; break; fi
-  if ! grep -Eiq 'out of memory|CUBLAS_STATUS_ALLOC_FAILED|CUDA error' "$log"; then
-    echo "[capacity] non-capacity failure; refusing to launch" >&2; exit "$rc"
-  fi
-  sleep 3
-done
-[[ -n "$selected" ]] || { echo "[capacity] no batch fit on GPU4" >&2; exit 1; }
+# The registered H020 protocol fixes the physical batch at the YAML value of
+# one. The real update below is a binding capacity gate, never a batch sweep.
+selected="$(python - "$CONFIG" <<'PY'
+import sys
+from pathlib import Path
+import yaml
+config = yaml.safe_load(Path(sys.argv[1]).read_text())
+batch = int(config["batch_size_per_gpu"])
+if batch != 1:
+    raise SystemExit(f"H020 requires batch_size_per_gpu=1, got {batch}")
+print(batch)
+PY
+)"
+log="$OUTPUT/capacity/gpu4_batch${selected}.log"
+echo "[capacity] GPU4 binding gate batch_size_per_gpu=$selected"
+set +e
+CUDA_VISIBLE_DEVICES=4 torchrun --standalone --nproc_per_node=1 --master_port="$((29740 + selected))" \
+  "$ROOT/scripts/train_pointodyssey_ddp.py" --config "$CONFIG" \
+  --output-dir "$OUTPUT/capacity/gpu4_batch${selected}" --batch-size-per-gpu "$selected" \
+  --steps 1 --disable-wandb --no-checkpoint 2>&1 | tee "$log"
+rc=${PIPESTATUS[0]}
+set -e
+if (( rc != 0 )); then
+  echo "[capacity] binding batch-one gate failed; refusing to alter the protocol" >&2
+  exit "$rc"
+fi
 echo "[capacity] CAPACITY_BATCH_SELECTED=$selected"
 
 visible=(4)
