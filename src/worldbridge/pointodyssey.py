@@ -108,7 +108,10 @@ class PointOdysseyDataset:
         iv = np.full(len(uv), -1, dtype=np.int64)
         iu[finite_uv] = np.rint(pu[finite_uv]).astype(np.int64)
         iv[finite_uv] = np.rint(pv[finite_uv]).astype(np.int64)
-        good = valid[source] & finite_uv & np.isfinite(world).all((0, 2))
+        # A source-grid anchor must denote the surface actually observed at
+        # that source pixel. Keep target-time occluded-but-valid supervision,
+        # but never anchor a trajectory that is already occluded at source.
+        good = valid[source] & vis[source] & finite_uv & np.isfinite(world).all((0, 2))
         good &= (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H)
         xyz = np.zeros((T, 3, H, W), np.float32); out_valid = np.zeros((T, H, W), bool); out_vis = np.zeros_like(out_valid)
         E = a["extrinsics"][f, :3].astype(np.float64)
