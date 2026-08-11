@@ -1,5 +1,6 @@
-current_task: T-20260810123317-66590b
+current_task: T-20260810175843-11d0f4
 active_hypotheses:
+  - H020
   - H017
   - H009
   - H004
@@ -435,4 +436,17 @@ h013_default_policy_change:
   decision: Apply to canonical profiles only. Historical experiment YAMLs are
     recoverable from Git. Run fresh full-DiT quality validation before treating
     the new route as scientifically superior.
-updated_at: 2026-08-10T12:33:17.728Z
+h020_pointodyssey_progressive:
+  task: T-20260810175843-11d0f4
+  target_updates: 100000
+  physical_batch_per_gpu: 1
+  target_gpus:
+    - 4
+    - 2
+    - 6
+  rejected_run: R-20260811055240-e3db36
+  rejection_reason: capacity helper violated the fixed batch-one protocol by selecting batch eight
+  corrected_tests: R-20260811060229-3fe845
+  corrected_tests_passed: 41
+  status: corrected_real_gate_pending
+updated_at: 2026-08-11T06:02:53.524Z
