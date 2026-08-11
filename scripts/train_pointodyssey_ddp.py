@@ -239,7 +239,11 @@ def main() -> None:
     resume_payload = torch.load(args.resume, map_location="cpu", mmap=True, weights_only=True) if args.resume else None
     if resume_payload is not None:
         model.load_state_dict(resume_payload["model"], strict=True)
-    ddp = DDP(model, device_ids=[local], output_device=local, broadcast_buffers=False)
+    # Structured hidden readout intentionally bypasses Wan blocks after the
+    # selected layer triad, so those trainable checkpoint parameters are
+    # unused on every update. DDP must explicitly detect that fixed subset.
+    ddp = DDP(model, device_ids=[local], output_device=local,
+              broadcast_buffers=False, find_unused_parameters=True)
     groups = parameter_groups(model, config)
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 1e-4)))
     if resume_payload is not None:
