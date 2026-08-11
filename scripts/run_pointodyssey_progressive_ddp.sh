@@ -9,6 +9,14 @@ OUTPUT="${POINTODYSSEY_OUTPUT:-/data/WorldBridge4D-persistent/pointodyssey_dense
 STOP_FILE="$OUTPUT/request_scale.stop"
 export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 mkdir -p "$OUTPUT/capacity"
+# A shared stop file and checkpoint make overlapping launchers unsafe. Hold an
+# exclusive descriptor for the full capacity/progressive lifecycle so probes or
+# retries cannot stop another run or overwrite its exact-resume checkpoint.
+exec 9>"$OUTPUT/progressive.lock"
+if ! flock -n 9; then
+  echo "[progressive] another launcher owns $OUTPUT; refusing concurrent execution" >&2
+  exit 73
+fi
 rm -f "$STOP_FILE"
 
 # Bind the handoff to the current large jobs, while ignoring small monitoring
@@ -96,6 +104,10 @@ while true; do
   wait "$child"; rc=$?
   (( rc == 0 )) || exit "$rc"
   if (( ! scale_requested )); then
+    if [[ -f "$STOP_FILE" ]]; then
+      echo "[progressive] unexpected external stop request; checkpoint retained but run is incomplete" >&2
+      exit 74
+    fi
     echo "[progressive] POINTODYSSEY_PROGRESSIVE_TRAIN_OK"
     exit 0
   fi
