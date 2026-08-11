@@ -43,7 +43,7 @@ def main():
     adapter_gradient=any(p.grad is not None for p in model.backbone.adapter_parameters if p.requires_grad)
     decoder_gradient=any(p.grad is not None for p in model.decoder.parameters() if p.requires_grad)
     run.finish()
-    result={'status':'pass','steps':2,'global_steps':[1,2],'wandb_mode':'offline','wandb_global_steps':[1,2],'losses':losses,'finite_gradients':finite_grad,'clean_latent_shape':list(clean.shape[1:]),'prediction_shape':list(pred.shape),'valid_points':int(valid_t.sum()),'wan_gradient':wan_gradient,'adapter_gradient':adapter_gradient,'decoder_gradient':decoder_gradient}
+    result={'status':'pass','steps':2,'global_steps':[1,2],'wandb_mode':'offline','wandb_global_steps':[1,2],'losses':losses,'finite_gradients':finite_grad,'clean_latent_shape':list(clean.shape[1:]),'prediction_shape':list(pred.shape),'valid_points':int(valid_t.sum()),'wan_gradient':wan_gradient,'adapter_gradient':adapter_gradient,'decoder_gradient':decoder_gradient,'peak_cuda_memory_gib':torch.cuda.max_memory_allocated()/2**30}
     if not (wan_gradient and adapter_gradient and decoder_gradient): raise RuntimeError('Wan/adapter/decoder gradient gate failed')
     a.output.parent.mkdir(parents=True,exist_ok=True); a.output.write_text(json.dumps(result,indent=2)+'\n'); print(json.dumps(result,indent=2))
 if __name__=='__main__': main()
