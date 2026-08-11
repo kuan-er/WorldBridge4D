@@ -448,5 +448,8 @@ h020_pointodyssey_progressive:
   rejection_reason: capacity helper violated the fixed batch-one protocol by selecting batch eight
   corrected_tests: R-20260811060229-3fe845
   corrected_tests_passed: 41
-  status: corrected_real_gate_pending
-updated_at: 2026-08-11T06:02:53.524Z
+  status: blocked_missing_raw_release
+  corrected_gate: R-20260811060358-8a4d9f
+  corrected_gate_failure: raw scene annotations under /dataset/PointOdyssey are absent although latent shards exist
+  fail_fast_validation_added: true
+updated_at: 2026-08-11T06:05:49.993Z
