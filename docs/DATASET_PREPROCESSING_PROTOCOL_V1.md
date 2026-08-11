@@ -149,6 +149,8 @@ The default consumer computes one source and all 21 targets using a bounded mult
 
 For dense storage, shard by contiguous clip range and keep source as a directly sliceable dimension. Recommended shape is `[clips,21,21,3,128,128]`; valid masks may be bit-packed. The loader must read only the selected source slice.
 
+Before creating an mmap tier, compare compressed size, uncompressed array size, available local-disk headroom, and dense-cache expansion. For scene-level compressed datasets, scene-local clip ordering plus a shared read-only scene LRU may remove the bottleneck without a persistent dense cache. The measured PointOdyssey case and its storage trade-offs are documented in `docs/POINTODYSSEY_INTEGRATION_LESSONS.md`.
+
 ## 6. Consumer and performance contract
 
 The dataset adapter exposes:
@@ -166,14 +168,16 @@ Canonical training behavior:
 - source plans determined by `(seed, global_step)` so prefetch does not alter exact resume;
 - geometry prefetch enabled by default;
 - 8 CPU workers and bounded queue depth 2 initially;
-- each worker owns its geometry cache; no mutable cache is shared across threads;
+- submit one Future per clip rather than wrapping the batch loop in one Future;
+- use worker-local caches for small independently decoded samples, but use a lock-protected shared read-only LRU when the storage unit is a large scene archive; never let workers redundantly decompress the same scene;
+- preserve storage locality: when annotations are scene-level, consume contiguous clips within scene blocks and randomize source frames or scene-block order instead of issuing globally random scene reads;
 - visibility disabled for XYZ-only training;
 - pinned host tensors and non-blocking host-to-device copies;
 - train EPE computed on GPU;
 - detailed diagnostics and W&B logging at step 1, every 20 steps, and final step;
 - every W&B payload includes explicit `global_step`.
 
-A producer is not complete until a consumer can run a two-step real-Wan forward/backward/Adam smoke with finite gradients in Wan, geometry adapter and decoder.
+A producer is not complete until a consumer can run a two-step real-Wan forward/backward/Adam smoke with finite gradients in Wan, geometry adapter and decoder. The two-step requirement is binding: selected hidden-layer readouts can leave trainable parameters unused, and the resulting DDP reduction-state error appears only when the second step begins.
 
 ## 7. Mandatory validation gates
 

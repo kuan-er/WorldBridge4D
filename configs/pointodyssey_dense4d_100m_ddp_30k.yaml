@@ -1,8 +1,10 @@
-# PointOdyssey H020: three physical GPUs (2,4,6), global 30k optimizer steps.
+# PointOdyssey H020: three physical GPUs (2,4,6), global 100k optimizer steps.
+# Historical filename retains "30k"; the resolved steps field is authoritative.
 data_root: /dataset/PointOdyssey
 cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1
+latent_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1/latents/train
 wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
-empty_text_condition: /data/WorldBridge4D-persistent/formal_h002_pipeline/h002_formal/wan_empty_text_condition.pt
+empty_text_condition: /tmp/worldbridge_dense4d/wan_empty_condition.pt
 clip_length: 21
 image_size: 128
 coordinate_frame: source
@@ -23,7 +25,7 @@ upsample_channels: [1024, 512, 256, 128]
 # The launcher keeps the cards occupied during cache creation and does not
 # silently increase this after training has started.
 batch_size_per_gpu: 1
-steps: 30000
+steps: 100000
 learning_rate: 0.0003
 geometry_learning_rate: 0.0003
 backbone_learning_rate: 0.00005
@@ -45,5 +47,5 @@ tracking:
   enabled: true
   project: worldbridge4d
   entity: zhaigong2023-sjtu-hpc-center
-  group: pointodyssey-dense4d-ddp-30k
+  group: pointodyssey-dense4d-ddp-100k
   tags: [h020, pointodyssey, source-frame, dense4d, ddp, 3gpu]
