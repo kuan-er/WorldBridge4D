@@ -39,8 +39,8 @@ def rank_info() -> tuple[int, int, int]:
     rank = int(os.environ.get("RANK", "0"))
     world = int(os.environ.get("WORLD_SIZE", "1"))
     local = int(os.environ.get("LOCAL_RANK", "0"))
-    if world != 3:
-        raise RuntimeError(f"PointOdyssey DDP requires exactly 3 processes, got WORLD_SIZE={world}")
+    if world < 1 or world > 3:
+        raise RuntimeError(f"PointOdyssey handoff supports 1..3 processes, got WORLD_SIZE={world}")
     torch.cuda.set_device(local)
     dist.init_process_group("nccl", init_method="env://", timeout=__import__("datetime").timedelta(hours=24))
     return rank, world, local
@@ -116,14 +116,27 @@ def ensure_latent_shard(dataset: PointOdysseyDataset, config: dict[str, Any],
     return path
 
 
-def load_latents(config: dict[str, Any], count: int, world: int) -> torch.Tensor:
+def load_latents(config: dict[str, Any], count: int) -> torch.Tensor:
+    """Load the canonical preprocessed shards, independent of DDP world size."""
     from safetensors.torch import load_file
-    shards = []
-    for rank in range(world):
-        path = Path(config["latent_root"]) / f"train-rank{rank:02d}-of{world:02d}.safetensors"
-        payload = load_file(str(path), device="cpu")
-        shards.append(payload["latent"])
-    # The split order is deterministic and matches np.array_split ranges.
+    root = Path(config["cache_root"]) / "latents" / "wan2.1_1.3b_fp32"
+    files = sorted(root.glob("shard-*.safetensors"))
+    if not files:
+        raise FileNotFoundError(f"no canonical PointOdyssey latent shards under {root}")
+    shards, expected = [], 0
+    for path in files:
+        first, last = (int(x) for x in path.stem.split("-")[1:3])
+        if first >= count:
+            break
+        if first != expected:
+            raise RuntimeError(f"latent shard order gap: expected {expected}, found {first} in {path}")
+        value = load_file(str(path), device="cpu")["latent"]
+        take = min(len(value), count - first)
+        shards.append(value[:take]); expected += take
+        if expected == count:
+            break
+    if expected != count:
+        raise RuntimeError(f"latent cache has {expected}/{count} training clips")
     return torch.cat(shards, dim=0).contiguous()
 
 
@@ -187,6 +200,8 @@ def main() -> None:
     ap.add_argument("--steps", type=int)
     ap.add_argument("--disable-wandb", action="store_true")
     ap.add_argument("--no-checkpoint", action="store_true")
+    ap.add_argument("--resume", help="resume model/optimizer/global step, including across DDP world sizes")
+    ap.add_argument("--stop-file", help="world-size-one handoff request; checkpoint and exit after an update")
     args = ap.parse_args()
     config = yaml.safe_load(Path(args.config).read_text())
     rank, world, local = rank_info()
@@ -198,14 +213,18 @@ def main() -> None:
     dataset = PointOdysseyDataset(config["cache_root"], "train")
     stats_file = np.load(Path(config["cache_root"]) / "stats" / "coordinate_stats_train_source.npz")
     mean, scale = stats_file["mean"].astype(np.float32), stats_file["scale"].astype(np.float32)
-    shard = ensure_latent_shard(dataset, config, rank, world, device)
+    clean_latents = load_latents(config, len(dataset))
     if rank == 0:
-        print(f"POINTODYSSEY_LATENT_CACHE_READY: {shard.parent}", flush=True)
-    clean_latents = load_latents(config, len(dataset), world)
+        print(f"POINTODYSSEY_LATENT_CACHE_READY: {len(clean_latents)} clips", flush=True)
     model = build_real_model(config, device)
+    resume_payload = torch.load(args.resume, map_location="cpu", mmap=True, weights_only=True) if args.resume else None
+    if resume_payload is not None:
+        model.load_state_dict(resume_payload["model"], strict=True)
     ddp = DDP(model, device_ids=[local], output_device=local, broadcast_buffers=False)
     groups = parameter_groups(model, config)
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config.get("weight_decay", 1e-4)))
+    if resume_payload is not None:
+        optimizer.load_state_dict(resume_payload["optimizer"])
     dtype = precision_dtype(config.get("precision", "bf16"))
     batch = int(args.batch_size_per_gpu or config.get("batch_size_per_gpu", config.get("batch_size", 1)))
     steps = int(args.steps or config.get("steps", 30000))
@@ -218,7 +237,15 @@ def main() -> None:
     started = time.perf_counter(); first_loss = None; last_loss = None
     out = Path(args.output_dir); out.mkdir(parents=True, exist_ok=True) if rank == 0 else None
     checkpoint_every = int(config.get("checkpoint_every_steps", 5000))
-    for step in range(steps):
+    start_step = int(resume_payload["training_state"]["global_step"]) if resume_payload is not None else 0
+    if start_step >= steps:
+        raise ValueError(f"resume global_step={start_step} already reaches target steps={steps}")
+    if rank == 0 and resume_payload is not None:
+        print(f"POINTODYSSEY_RESUME_LOADED: global_step={start_step}, world_size={world}", flush=True)
+    del resume_payload
+    stopped_for_scale = False
+    completed_steps = start_step
+    for step in range(start_step, steps):
         indices, source, target = plan(len(dataset), step, batch, world, seed)
         prefetch.submit(step, indices, source)
         # Maintain a bounded lookahead without changing the deterministic plan.
@@ -250,17 +277,27 @@ def main() -> None:
                        "timing/elapsed_seconds": time.perf_counter() - started}
             print(json.dumps(payload), flush=True)
             if run is not None: run.log(payload, step=step + 1)
-        if rank == 0 and not args.no_checkpoint and checkpoint_every and (step + 1) % checkpoint_every == 0:
+        completed_steps = step + 1
+        if rank == 0 and not args.no_checkpoint and checkpoint_every and completed_steps % checkpoint_every == 0:
             save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
-                            extra={"steps": steps, "total_steps": step + 1, "dataset": "PointOdyssey"},
-                            optimizer=optimizer, training_state={"global_step": step + 1, "optimizer_updates": step + 1})
+                            extra={"steps": steps, "total_steps": completed_steps, "dataset": "PointOdyssey"},
+                            optimizer=optimizer, training_state={"global_step": completed_steps, "optimizer_updates": completed_steps})
+        if args.stop_file and world == 1 and Path(args.stop_file).exists():
+            if rank == 0:
+                save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
+                                extra={"steps": steps, "total_steps": completed_steps, "dataset": "PointOdyssey", "scale_handoff": True},
+                                optimizer=optimizer, training_state={"global_step": completed_steps, "optimizer_updates": completed_steps})
+                print(f"POINTODYSSEY_SCALE_CHECKPOINT: global_step={completed_steps}", flush=True)
+            stopped_for_scale = True
+            break
     prefetch.close(); dist.barrier()
     if rank == 0:
-        if not args.no_checkpoint:
+        if not args.no_checkpoint and not stopped_for_scale:
             save_checkpoint(out / "checkpoint.pt", model, config, mean, scale,
-                            extra={"steps": steps, "total_steps": steps, "dataset": "PointOdyssey"},
-                            optimizer=optimizer, training_state={"global_step": steps, "optimizer_updates": steps})
-        result = {"dataset": "PointOdyssey", "world_size": world, "steps": steps,
+                            extra={"steps": steps, "total_steps": completed_steps, "dataset": "PointOdyssey"},
+                            optimizer=optimizer, training_state={"global_step": completed_steps, "optimizer_updates": completed_steps})
+        result = {"dataset": "PointOdyssey", "world_size": world, "target_steps": steps,
+                  "completed_steps": completed_steps, "stopped_for_scale": stopped_for_scale,
                   "batch_size_per_gpu": batch, "global_batch_size": batch * world,
                   "clips": len(dataset), "first_loss": first_loss, "final_loss": last_loss,
                   "elapsed_seconds": time.perf_counter() - started,
@@ -270,7 +307,8 @@ def main() -> None:
         (out / "train_metrics.json").write_text(json.dumps(result, indent=2))
         if run is not None:
             run.summary.update(result); run.finish()
-        print(json.dumps(result, indent=2), flush=True); print("POINTODYSSEY_DDP_TRAIN_OK", flush=True)
+        print(json.dumps(result, indent=2), flush=True)
+        print("POINTODYSSEY_SCALE_READY" if stopped_for_scale else "POINTODYSSEY_DDP_TRAIN_OK", flush=True)
     dist.barrier(); dist.destroy_process_group()
 
 
