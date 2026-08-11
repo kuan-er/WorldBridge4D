@@ -1,4 +1,4 @@
-# PointOdyssey H020: three physical GPUs (2,4,6), global 30k optimizer steps.
+# PointOdyssey H020: three physical GPUs (2,4,6), global 100k optimizer steps.
 data_root: /dataset/PointOdyssey
 cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1
 latent_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1/latents/train
