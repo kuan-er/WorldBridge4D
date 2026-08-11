@@ -24,7 +24,7 @@ upsample_channels: [1024, 512, 256, 128]
 # The launcher keeps the cards occupied during cache creation and does not
 # silently increase this after training has started.
 batch_size_per_gpu: 1
-steps: 30000
+steps: 100000
 learning_rate: 0.0003
 geometry_learning_rate: 0.0003
 backbone_learning_rate: 0.00005
