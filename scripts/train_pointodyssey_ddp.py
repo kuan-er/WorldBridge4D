@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 import random
 import sys
-import threading
 import time
 from typing import Any
 
@@ -56,11 +55,14 @@ def plan(num_clips: int, global_step: int, batch: int, world: int, seed: int,
     """Return this rank's deterministic slice of one global DDP batch."""
     total = batch * world
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), int(global_step)]))
-    indices = rng.integers(num_clips, size=total, dtype=np.int64)
-    sources = rng.integers(frames, size=total, dtype=np.int64)
-    begin = batch * int(os.environ.get("RANK", "0"))
-    indices = indices[begin:begin + batch]
-    sources = sources[begin:begin + batch]
+    # Sequential clip order keeps a batch within nearby scenes, allowing the
+    # shared scene LRU and the NAS page cache to work. Source frames remain
+    # independently random, so supervision is not fixed to one source.
+    rank = int(os.environ.get("RANK", "0"))
+    begin = batch * rank
+    positions = global_step * total + begin + np.arange(batch, dtype=np.int64)
+    indices = positions % num_clips
+    sources = rng.integers(frames, size=total, dtype=np.int64)[begin:begin + batch]
     source = np.broadcast_to(sources[:, None], (batch, frames)).copy()
     target = np.broadcast_to(np.arange(frames, dtype=np.int64)[None, :], (batch, frames)).copy()
     return indices, source, target
@@ -156,18 +158,13 @@ class GeometryPrefetcher:
     def __init__(self, dataset: PointOdysseyDataset, mean: np.ndarray, scale: np.ndarray,
                  workers: int, depth: int):
         self.dataset, self.mean, self.scale = dataset, mean.astype(np.float32), scale.astype(np.float32)
-        self.local = threading.local()
         self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="pointodyssey-geometry")
         self.futures: dict[int, Any] = {}
         self.depth = int(depth)
 
     def submit(self, step: int, indices: np.ndarray, source: np.ndarray) -> None:
         def make(index: int, src: int):
-            worker_dataset = getattr(self.local, "dataset", None)
-            if worker_dataset is None:
-                worker_dataset = PointOdysseyDataset(self.dataset.root, "train")
-                self.local.dataset = worker_dataset
-            xyz, valid = worker_dataset.source_all_targets(int(index), int(src))
+            xyz, valid = self.dataset.source_all_targets(int(index), int(src))
             normalized = (xyz - self.mean[None, :, None, None]) / self.scale[None, :, None, None]
             return normalized.astype(np.float32), valid
         # Submit one future per clip; wrapping the whole batch in one future
