@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from pathlib import Path
+import re
 
 import numpy as np
 import pytest
@@ -37,10 +39,18 @@ class TinyExplicitConditionMapping(nn.Module):
         return tuple(value * (layer + 1) for layer in layers), (6, 16, 16)
 
 
-def test_three_dataset_prompts_share_exact_task_instruction():
+def test_three_dataset_prompts_match_training_plan_and_yaml_exactly():
+    import yaml
+
     assert set(PROMPTS) == {"kubric", "pointodyssey", "dynamic_replica"}
     assert all(prompt.startswith(TASK_INSTRUCTION) for prompt in PROMPTS.values())
     assert all(prompt.count(TASK_INSTRUCTION) == 1 for prompt in PROMPTS.values())
+    root = Path(__file__).resolve().parents[1]
+    config = yaml.safe_load((root / "configs/worldbridge4d_256_three_dataset_200m_fsdp.yaml").read_text())
+    assert config["prompts"] == PROMPTS
+    plan = (root / "docs/WORLDBRIDGE4D_256_THREE_DATASET_TRAINING_PLAN.md").read_text()
+    documented = re.findall(r"```text\n(Estimate dense three-dimensional point trajectories[^\n]+)\n```", plan)
+    assert documented == [PROMPTS[name] for name in ("kubric", "pointodyssey", "dynamic_replica")]
 
 
 def test_256_latent_contract_and_explicit_prompt_reaches_mapping():
