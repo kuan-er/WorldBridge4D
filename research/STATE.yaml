@@ -484,11 +484,16 @@ h023_256_three_dataset_200m:
     resume_100_run: R-20260812223630-816837
     resume_100_result: failed_pre_model_stale_kubric_path
   k21_two_gpu_gate:
-    status: launching_shared_gpu_capacity_experiment
+    status: b1_a2_passed_b2_a1_gate_launching
     formal_allowed: false
     physical_gpus: [4, 6]
-    starting_free_memory_gib_approx: 63.4
-    note: external processes use about 16 GiB/card so throughput is not comparable to exclusive K6
+    successful_run: R-20260812224534-1bab51
+    peak_cuda_memory_gib_rank0: 30.910964488983154
+    second_step_seconds: 8.759
+    pairs_per_update: 84
+    microbatch2_accumulation1_effective_clips: 4
+    unique_lazy_clips_for_10k: 17208
+    estimated_training_hours_10k: 24
     blocked_resume_runs:
       - R-20260812223450-2f1c98
       - R-20260812223630-816837

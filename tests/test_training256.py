@@ -159,6 +159,24 @@ def test_200m_decoder_exact_parameter_count_component():
     assert sum(parameter.numel() for parameter in decoder.parameters()) == 175_178_627
 
 
+def test_required_latents_respect_true_microbatch_slots():
+    from scripts.train_three_dataset_256_fsdp import required_latent_indices
+
+    class Dataset:
+        rows = []
+        def __len__(self): return 100
+
+    datasets = {name: Dataset() for name in ("kubric", "pointodyssey", "dynamic_replica")}
+    accumulated = required_latent_indices(
+        datasets, 20260812, 0, 1, rank=0, accumulation=2, microbatch_per_gpu=1
+    )
+    batched = required_latent_indices(
+        datasets, 20260812, 0, 1, rank=0, accumulation=1, microbatch_per_gpu=2
+    )
+    assert accumulated == batched
+    assert sum(map(len, batched.values())) == 2
+
+
 def test_k21_is_permitted_only_for_two_gpu_gate():
     import scripts.train_three_dataset_256_fsdp as train
 
@@ -172,6 +190,10 @@ def test_k21_is_permitted_only_for_two_gpu_gate():
         "targets_per_source": 21,
     }
     train.validate_config(base, world=2, allow_two_gpu=True)
+    batched = {**base, "gradient_accumulation": 1, "microbatch_per_gpu": 2}
+    train.validate_config(batched, world=2, allow_two_gpu=True)
+    with pytest.raises(ValueError, match="only the two-GPU gate"):
+        train.validate_config(batched, world=4, allow_two_gpu=False)
     with pytest.raises(ValueError, match="gate-only"):
         train.validate_config(base, world=4, allow_two_gpu=False)
 

@@ -74,7 +74,7 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool) -> 
         "image_size": 256, "clip_length": 21, "latent_spatial_size": 32,
         "query_dim": 1536, "embedding_dim": 768, "num_cross_attn_layers": 5,
         "num_heads": 12, "geometry_dim": 512, "geometry_spatial_size": 32,
-        "motion_slots": 8, "gradient_accumulation": 2, "microbatch_per_gpu": 1,
+        "motion_slots": 8,
     }
     mismatches = {key: (config.get(key), value) for key, value in expected.items() if config.get(key) != value}
     if mismatches:
@@ -90,6 +90,13 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool) -> 
         raise ValueError(f"incorrect initial layer weights: {weights}")
     if world != 4 and not (allow_two_gpu and world == 2):
         raise ValueError(f"formal training requires 4 ranks; got {world} (use --allow-two-gpu-gate only for the gate)")
+    accumulation = int(config.get("gradient_accumulation", 0))
+    microbatch = int(config.get("microbatch_per_gpu", 0))
+    if accumulation < 1 or microbatch < 1:
+        raise ValueError("gradient_accumulation and microbatch_per_gpu must be positive")
+    if (accumulation, microbatch) != (2, 1):
+        if not (allow_two_gpu and world == 2 and (accumulation, microbatch) == (1, 2)):
+            raise ValueError("only the two-GPU gate may use microbatch=2, accumulation=1")
     k = int(config["targets_per_source"])
     allowed_k = (4, 6, 21) if allow_two_gpu and world == 2 else (4, 6)
     if k not in allowed_k:
@@ -107,15 +114,17 @@ def sha256(path: Path, chunk: int = 8 << 20) -> str:
 
 
 def required_latent_indices(datasets: dict[str, Any], seed: int, start_step: int,
-                            target_steps: int, rank: int, accumulation: int
+                            target_steps: int, rank: int, accumulation: int,
+                            microbatch_per_gpu: int = 1
                             ) -> dict[str, list[int]]:
     required: dict[str, set[int]] = {name: set() for name in DATASET_NAMES}
     for step in range(int(start_step), int(target_steps)):
         name = dataset_for_step(step, seed)
         dataset = datasets[name]
-        for micro in range(int(accumulation)):
+        slots_per_rank = int(accumulation) * int(microbatch_per_gpu)
+        for slot in range(slots_per_rank):
             index, _, _ = deterministic_sample_plan(
-                dataset, name, seed, step, micro, rank, accumulation
+                dataset, name, seed, step, slot, rank, slots_per_rank
             )
             required[name].add(int(index))
     return {name: sorted(indices) for name, indices in required.items()}
@@ -306,7 +315,7 @@ def main() -> None:
     if args.lazy_vae_cache:
         local_required = required_latent_indices(
             datasets, seed, planned_start, target_steps, rank,
-            int(config["gradient_accumulation"]),
+            int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
         )
         gathered: list[Any] = [None] * world
         dist.all_gather_object(gathered, local_required)
@@ -326,7 +335,7 @@ def main() -> None:
     # FSDP model is constructed and ranks enter collectives.
     required_check = required_latent_indices(
         datasets, seed, planned_start, target_steps, rank,
-        int(config["gradient_accumulation"]),
+        int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
     )
     for name, indices in required_check.items():
         for index in indices:
@@ -375,6 +384,7 @@ def main() -> None:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
     run = init_wandb(config, output, rank, args.disable_wandb)
     accumulation = int(config["gradient_accumulation"])
+    microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     checkpoint_steps = {int(value) for value in config.get("checkpoint_steps", [])}
@@ -382,19 +392,23 @@ def main() -> None:
     graceful_seconds = float(config.get("graceful_stop_hours", 68)) * 3600
     started = time.perf_counter()
     completed = start_step
-    pool = ThreadPoolExecutor(max_workers=accumulation, thread_name_prefix="three-dataset-geometry")
+    pool = ThreadPoolExecutor(
+        max_workers=accumulation * microbatch_per_gpu,
+        thread_name_prefix="three-dataset-geometry",
+    )
     optimizer.zero_grad(set_to_none=True)
     try:
         for step in range(start_step, target_steps):
             name = dataset_for_step(step, seed)
             dataset = datasets[name]
+            slots_per_rank = accumulation * microbatch_per_gpu
             plans = [deterministic_sample_plan(
-                dataset, name, seed, step, micro, rank, accumulation
-            ) for micro in range(accumulation)]
+                dataset, name, seed, step, slot, rank, slots_per_rank
+            ) for slot in range(slots_per_rank)]
             futures = [pool.submit(
                 source_with_eligible_targets, dataset, index,
-                np.random.default_rng(np.random.SeedSequence([seed, step, micro, rank, 771])).permutation(21)
-            ) for micro, (index, _source, _rng) in enumerate(plans)]
+                np.random.default_rng(np.random.SeedSequence([seed, step, slot, rank, 771])).permutation(21)
+            ) for slot, (index, _source, _rng) in enumerate(plans)]
             update_loss = 0.0
             update_epe = 0.0
             valid_points = 0
@@ -403,17 +417,38 @@ def main() -> None:
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
             step_started = time.perf_counter()
-            for micro, ((index, _source, rng), future) in enumerate(zip(plans, futures)):
-                source, xyz_all, valid_all = future.result()
-                targets = sample_eligible_targets(valid_all, k, rng)
-                xyz_np = xyz_all[targets]
-                valid_np = valid_all[targets]
-                normalized = (xyz_np - mean[None, :, None, None]) / scale[None, :, None, None]
-                latent = torch.from_numpy(dataset.clean_latent(index))[None].to(device, dtype=dtype, non_blocking=True)
-                source_t = torch.full((1, len(targets)), source, device=device, dtype=torch.long)
-                target_t = torch.from_numpy(targets)[None].to(device, non_blocking=True)
-                xyz = torch.from_numpy(normalized)[None].to(device, non_blocking=True)
-                valid = torch.from_numpy(valid_np)[None].to(device, non_blocking=True)
+            for micro in range(accumulation):
+                begin = micro * microbatch_per_gpu
+                group = list(zip(
+                    plans[begin:begin + microbatch_per_gpu],
+                    futures[begin:begin + microbatch_per_gpu],
+                ))
+                batch_values = []
+                target_counts = []
+                for (index, _source, rng), future in group:
+                    source, xyz_all, valid_all = future.result()
+                    targets = sample_eligible_targets(valid_all, k, rng)
+                    batch_values.append((index, source, targets, xyz_all[targets], valid_all[targets]))
+                    target_counts.append(len(targets))
+                if len(set(target_counts)) != 1:
+                    raise ValueError(
+                        f"microbatch clips have different eligible target counts: {target_counts}"
+                    )
+                latents_np = np.stack([dataset.clean_latent(value[0]) for value in batch_values])
+                normalized_np = np.stack([
+                    (value[3] - mean[None, :, None, None]) / scale[None, :, None, None]
+                    for value in batch_values
+                ])
+                valid_np = np.stack([value[4] for value in batch_values])
+                latent = torch.from_numpy(latents_np).to(device, dtype=dtype, non_blocking=True)
+                source_t = torch.tensor([
+                    [value[1]] * len(value[2]) for value in batch_values
+                ], device=device, dtype=torch.long)
+                target_t = torch.from_numpy(np.stack([value[2] for value in batch_values])).to(
+                    device, non_blocking=True
+                )
+                xyz = torch.from_numpy(normalized_np).to(device, non_blocking=True)
+                valid = torch.from_numpy(valid_np).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
@@ -431,11 +466,12 @@ def main() -> None:
                     epe = torch.linalg.vector_norm(metric_error, dim=2)
                     update_epe += float(epe[valid].sum())
                     valid_points += int(valid.sum())
-                pair_count += len(targets)
-                source_hist[source] += 1
-                for target_index in targets.tolist():
-                    target_hist[target_index] += 1
-                    gap_hist[abs(int(target_index) - source)] += 1
+                pair_count += sum(target_counts)
+                for _index, source, targets, _xyz, _valid in batch_values:
+                    source_hist[source] += 1
+                    for target_index in targets.tolist():
+                        target_hist[target_index] += 1
+                        gap_hist[abs(int(target_index) - source)] += 1
             gradient_norm = fsdp.clip_grad_norm_(float(config["gradient_clip"]))
             if not torch.isfinite(gradient_norm):
                 raise FloatingPointError(f"non-finite gradient norm at step={step + 1}")
@@ -444,7 +480,7 @@ def main() -> None:
             )
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
             completed = step + 1
-            clips_seen[name] += world * accumulation
+            clips_seen[name] += world * accumulation * microbatch_per_gpu
             elapsed = time.perf_counter() - started
             peak = torch.cuda.max_memory_allocated(device) / 2**30
             diagnostic = completed == start_step + 1 or completed % diagnostic_every == 0 or completed == target_steps
