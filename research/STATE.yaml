@@ -419,8 +419,16 @@ h023_256_three_dataset_200m:
   distributed: fsdp_full_shard
   formal_world_size: 4
   requested_gate_world_size: 2
-  tests_passed: 55
+  tests_passed: 56
   implementation_test_run: R-20260812210635-6c66cf
+  wandb:
+    status: online_verified_user_netrc
+    user: zhaigong2023
+    entity: zhaigong2023-sjtu-hpc-center
+    secret_committed: false
+  prompts:
+    status: updated_plan_script_yaml_exact_match
+    text_condition_cache: absent_needs_generation
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey
