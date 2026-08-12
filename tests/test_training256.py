@@ -17,7 +17,7 @@ from worldbridge.training256 import (
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
 from worldbridge.text_conditions import load_inference_text_condition
-from scripts.create_wan_text_conditions import PROMPTS, TASK_INSTRUCTION
+from scripts.create_wan_text_conditions import PROMPTS, TASK_INSTRUCTION, native_encoder
 
 
 class TinyExplicitConditionMapping(nn.Module):
@@ -39,6 +39,22 @@ class TinyExplicitConditionMapping(nn.Module):
         tokens = pooled.permute(0, 2, 3, 4, 1).reshape(latent.shape[0], 6 * 16 * 16, 16)
         value = self.projection(tokens)
         return tuple(value * (layer + 1) for layer in layers), (6, 16, 16)
+
+
+def test_native_wan_text_encoder_skips_official_package_init(tmp_path):
+    package = tmp_path / "wan"
+    modules = package / "modules"
+    modules.mkdir(parents=True)
+    (package / "__init__.py").write_text("raise RuntimeError('must not import wan.__init__')\n")
+    (modules / "__init__.py").write_text("raise RuntimeError('must not import modules.__init__')\n")
+    (modules / "tokenizers.py").write_text("class HuggingfaceTokenizer: pass\n")
+    (modules / "t5.py").write_text(
+        "from .tokenizers import HuggingfaceTokenizer\n"
+        "class T5EncoderModel: pass\n"
+    )
+    encoder, layout = native_encoder(tmp_path)
+    assert encoder.__name__ == "T5EncoderModel"
+    assert layout == "official_wan_package"
 
 
 def test_three_dataset_prompts_match_training_plan_and_yaml_exactly():

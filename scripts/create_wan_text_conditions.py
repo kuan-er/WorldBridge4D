@@ -30,19 +30,26 @@ def sha256(path: Path, chunk: int = 8 << 20) -> str:
     return value.hexdigest()
 
 
+def _load_t5_without_package_init(package_root: Path, module_prefix: str):
+    """Load only Wan's relative-import-compatible modules, not inference init."""
+    package = types.ModuleType(module_prefix)
+    package.__path__ = [str(package_root)]
+    modules = types.ModuleType(f"{module_prefix}.modules")
+    modules.__path__ = [str(package_root / "modules")]
+    sys.modules[package.__name__] = package
+    sys.modules[modules.__name__] = modules
+    return importlib.import_module(f"{module_prefix}.modules.t5").T5EncoderModel
+
+
 def native_encoder(source: Path):
     if (source / "wan/modules/t5.py").exists():
-        sys.path.insert(0, str(source))
-        from wan.modules.t5 import T5EncoderModel
-        return T5EncoderModel, "official_wan_package"
+        return _load_t5_without_package_init(
+            source / "wan", "_worldbridge_wan_official"
+        ), "official_wan_package"
     if (source / "wan_base/modules/t5.py").exists():
-        package = types.ModuleType("_worldbridge_wan_native")
-        package.__path__ = [str(source / "wan_base")]
-        modules = types.ModuleType("_worldbridge_wan_native.modules")
-        modules.__path__ = [str(source / "wan_base" / "modules")]
-        sys.modules[package.__name__] = package
-        sys.modules[modules.__name__] = modules
-        return importlib.import_module("_worldbridge_wan_native.modules.t5").T5EncoderModel, "vendored_wan_base_package"
+        return _load_t5_without_package_init(
+            source / "wan_base", "_worldbridge_wan_native"
+        ), "vendored_wan_base_package"
     raise FileNotFoundError(f"not a Wan2.1 source package: {source}")
 
 
