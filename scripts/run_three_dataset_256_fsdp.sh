@@ -22,6 +22,30 @@ if [[ -f "$OUTPUT/latest.pt" ]]; then
   EXTRA+=(--resume "$OUTPUT/latest.pt")
 fi
 
+# Fail before torchrun/NCCL initialization when a read-only raw mount has
+# disappeared or a copied gate config still names an obsolete mount. Every
+# dataset needs raw geometry even when all planned VAE latents are cached.
+python - "$CONFIG" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+config_path = Path(sys.argv[1])
+if not config_path.is_file():
+    raise SystemExit(f"three-dataset config is missing: {config_path}")
+config = yaml.safe_load(config_path.read_text())
+missing = []
+for name in ("kubric", "pointodyssey", "dynamic_replica"):
+    root = Path(config["datasets"][name]["raw_root"])
+    if not root.is_dir():
+        missing.append(f"{name}={root}")
+if missing:
+    raise SystemExit(
+        "required raw dataset mounts are unavailable; not launching FSDP: "
+        + ", ".join(missing)
+    )
+PY
+
 export CUDA_VISIBLE_DEVICES="$GPUS"
 export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"

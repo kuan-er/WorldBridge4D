@@ -159,6 +159,23 @@ def test_200m_decoder_exact_parameter_count_component():
     assert sum(parameter.numel() for parameter in decoder.parameters()) == 175_178_627
 
 
+def test_k21_is_permitted_only_for_two_gpu_gate():
+    import scripts.train_three_dataset_256_fsdp as train
+
+    base = {
+        "image_size": 256, "clip_length": 21, "latent_spatial_size": 32,
+        "query_dim": 1536, "embedding_dim": 768, "num_cross_attn_layers": 5,
+        "num_heads": 12, "geometry_dim": 512, "geometry_spatial_size": 32,
+        "motion_slots": 8, "gradient_accumulation": 2, "microbatch_per_gpu": 1,
+        "wan_hidden_layers": [13, 14, 15, 29],
+        "layer_gate_initial_logits": [0.0, 0.0, 0.0, -1.0986122887],
+        "targets_per_source": 21,
+    }
+    train.validate_config(base, world=2, allow_two_gpu=True)
+    with pytest.raises(ValueError, match="gate-only"):
+        train.validate_config(base, world=4, allow_two_gpu=False)
+
+
 def test_three_dataset_cycle_has_exact_ratio_and_is_resume_pure():
     cycle = deterministic_dataset_schedule(20260812)
     assert len(cycle) == 20

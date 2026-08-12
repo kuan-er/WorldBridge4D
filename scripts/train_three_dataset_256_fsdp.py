@@ -91,8 +91,11 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool) -> 
     if world != 4 and not (allow_two_gpu and world == 2):
         raise ValueError(f"formal training requires 4 ranks; got {world} (use --allow-two-gpu-gate only for the gate)")
     k = int(config["targets_per_source"])
-    if k not in (4, 6):
-        raise ValueError("targets_per_source must be the gated K=6 or K=4")
+    allowed_k = (4, 6, 21) if allow_two_gpu and world == 2 else (4, 6)
+    if k not in allowed_k:
+        raise ValueError(
+            f"targets_per_source must be one of {allowed_k}; K=21 is experimental and gate-only"
+        )
 
 
 def sha256(path: Path, chunk: int = 8 << 20) -> str:

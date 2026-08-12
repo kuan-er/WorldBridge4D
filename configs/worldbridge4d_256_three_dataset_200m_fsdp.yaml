@@ -67,7 +67,7 @@ prompts:
 
 datasets:
   kubric:
-    raw_root: /dataset/MOVi-F/512x512
+    raw_root: /dataset/nas0/yejun/MOVi-F/512x512
     cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/kubric
   pointodyssey:
     raw_root: /dataset/nas0/PointOdyssey
