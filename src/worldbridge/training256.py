@@ -298,22 +298,30 @@ class MOViF256Dataset:
         return self.latents[int(index)]
 
 
-def load_training_datasets(config: dict[str, Any]) -> dict[str, TrainingDataset]:
+def load_training_dataset(config: dict[str, Any], name: str) -> TrainingDataset:
+    """Load only one requested dataset (important for standalone inference)."""
     roots = config["datasets"]
     image_size = int(config["image_size"])
+    name = str(name).lower()
     if image_size != 256:
         raise ValueError("three-dataset route requires image_size=256")
-    kubric = MOViF256Dataset(roots["kubric"]["raw_root"], roots["kubric"]["cache_root"])
-    po_geometry = PointOdysseyDataset(
-        roots["pointodyssey"].get("geometry_cache_root", roots["pointodyssey"]["cache_root"]),
-        image_size=image_size, raw_root=roots["pointodyssey"]["raw_root"],
-    )
-    dr_geometry = DynamicReplicaDataset(
-        roots["dynamic_replica"].get("geometry_cache_root", roots["dynamic_replica"]["cache_root"]),
-        image_size=image_size, raw_root=roots["dynamic_replica"]["raw_root"],
-    )
-    return {
-        "kubric": kubric,
-        "pointodyssey": CachedExternalDataset(po_geometry, roots["pointodyssey"]["cache_root"]),
-        "dynamic_replica": CachedExternalDataset(dr_geometry, roots["dynamic_replica"]["cache_root"]),
-    }
+    if name not in DATASET_NAMES:
+        raise ValueError(f"dataset must be one of {DATASET_NAMES}, got {name!r}")
+    values = roots[name]
+    if name == "kubric":
+        return MOViF256Dataset(values["raw_root"], values["cache_root"])
+    if name == "pointodyssey":
+        geometry = PointOdysseyDataset(
+            values.get("geometry_cache_root", values["cache_root"]),
+            image_size=image_size, raw_root=values["raw_root"],
+        )
+    else:
+        geometry = DynamicReplicaDataset(
+            values.get("geometry_cache_root", values["cache_root"]),
+            image_size=image_size, raw_root=values["raw_root"],
+        )
+    return CachedExternalDataset(geometry, values["cache_root"])
+
+
+def load_training_datasets(config: dict[str, Any]) -> dict[str, TrainingDataset]:
+    return {name: load_training_dataset(config, name) for name in DATASET_NAMES}

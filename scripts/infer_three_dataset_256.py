@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from worldbridge.dense4d_runtime import build_real_model, precision_dtype
 from worldbridge.text_conditions import load_inference_text_condition
-from worldbridge.training256 import DATASET_NAMES, load_training_datasets
+from worldbridge.training256 import DATASET_NAMES, load_training_dataset
 
 
 def atomic_save(path: Path, payload: dict) -> None:
@@ -53,8 +53,7 @@ def main() -> None:
     training_prompt_metadata = checkpoint.get("training_state", {}).get("prompt_metadata")
     if training_prompt_metadata is not None and training_prompt_metadata.get(args.dataset) != prompt_metadata:
         raise ValueError("checkpoint prompt metadata differs from inference condition metadata")
-    datasets = load_training_datasets(config)
-    dataset = datasets[args.dataset]
+    dataset = load_training_dataset(config, args.dataset)
     if not 0 <= args.index < len(dataset):
         raise IndexError(f"index {args.index} outside {args.dataset} split of size {len(dataset)}")
     device = torch.device(args.device)

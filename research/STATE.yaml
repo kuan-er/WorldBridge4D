@@ -419,7 +419,7 @@ h023_256_three_dataset_200m:
   distributed: fsdp_full_shard
   formal_world_size: 4
   requested_gate_world_size: 2
-  tests_passed: 56
+  tests_passed: 58
   implementation_test_run: R-20260812210635-6c66cf
   final_verification_run: R-20260812211237-c19717
   final_verification:
@@ -435,7 +435,9 @@ h023_256_three_dataset_200m:
     secret_committed: false
   prompts:
     status: updated_plan_script_yaml_exact_match
-    text_condition_cache: absent_needs_generation
+    inference: dataset_condition_required_no_empty_fallback
+    text_condition_cache: generating_cpu
+    generation_run: R-20260812212122-b09ece
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey
