@@ -52,6 +52,12 @@ Wan2.1 source tree via `WAN_SOURCE_ROOT` or `--wan-source`. The source tree and
 checkpoint files are external inputs and must be recorded by commit/checksum,
 not added to Git.
 
+The raw PointOdyssey, Dynamic Replica/dynamic_stereo, and MOVi-F 512x512 mounts
+available on the current training server are recorded in
+[`DATASET_LOCATIONS.md`](DATASET_LOCATIONS.md). These raw mounts are not
+interchangeable with the prepared cache paths above; preprocess and validate
+them before training.
+
 For W&B, run `wandb login` on the machine or provide `WANDB_API_KEY` in the
 process environment. Never put the key in Git or in a committed `.env` file.
 

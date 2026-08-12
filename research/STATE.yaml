@@ -2,7 +2,6 @@ current_task: T-20260812101443-ad02ac
 active_hypotheses:
   - H022
   - H020
-  - H017
   - H009
   - H004
   - H002
@@ -469,4 +468,4 @@ h020_pointodyssey_progressive:
   exact_resume_batch_guard_added: true
   unexpected_stop_guard_added: true
   status: resume_from_step64_pending
-updated_at: 2026-08-12T10:14:43.256Z
+updated_at: 2026-08-12T16:37:10.142Z
