@@ -22,7 +22,7 @@ python scripts/create_wan_text_conditions.py \
 ```bash
 # MOVi-F 512 source
 python scripts/preprocess_three_dataset_256.py --dataset kubric \
-  --raw-root /dataset/nas0/yejun/MOVi-F/512x512 \
+  --raw-root /dataset/MOVi-F/512x512 \
   --cache-root /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/kubric
 
 # PointOdyssey：复用已验证 v1 scene index/物理 crop，只新建 256 index copy + latent tier
