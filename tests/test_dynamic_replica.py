@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import numpy as np
 from safetensors.numpy import save_file
 
@@ -23,6 +24,14 @@ def row() -> dict:
         "clip_id": "synthetic-left-000000",
         "frames": [{"depth": "unused.png", "viewpoint": viewpoint()} for _ in range(T)],
     }
+
+
+def test_raw_root_override_does_not_mutate_preprocessing_state(tmp_path):
+    split = tmp_path / "splits"; split.mkdir()
+    (split / "train.jsonl").write_text(json.dumps({"clip_id": "x", "index": 0}) + "\n")
+    (tmp_path / "PREPROCESSING_STATE.json").write_text(json.dumps({"raw_root": "/old"}))
+    dataset = DynamicReplicaDataset(tmp_path, raw_root="/dataset/data/Dynamic_dataset/dynamic_stereo")
+    assert dataset.raw_train_root == dynamic_replica.Path("/dataset/data/Dynamic_dataset/dynamic_stereo/train")
 
 
 def test_camera_projection_and_half_pixel_resize_are_consistent():

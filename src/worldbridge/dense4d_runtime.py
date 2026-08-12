@@ -48,18 +48,22 @@ def apply_linear_warmup(optimizer: torch.optim.Optimizer, update_number: int,
     return factor
 
 
-def load_empty_condition(path: str | Path) -> torch.Tensor:
+def load_text_condition(path: str | Path) -> torch.Tensor:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(
-            f"native Wan empty condition not found: {path}; create it with scripts/create_wan_empty_text_condition.py"
+            f"native Wan text condition not found: {path}; create it with scripts/create_wan_text_conditions.py"
         )
     value = torch.load(path, map_location="cpu", weights_only=True)
     value = value.get("encoder_hidden_states", value) if isinstance(value, dict) else value
     value = torch.as_tensor(value)
     if value.shape != (1, 512, 4096):
-        raise ValueError(f"empty Wan condition must be [1,512,4096], got {tuple(value.shape)}")
+        raise ValueError(f"Wan condition must be [1,512,4096], got {tuple(value.shape)}")
     return value
+
+
+# Backwards-compatible alias for existing 128/empty-condition configurations.
+load_empty_condition = load_text_condition
 
 
 def encode_clean_video_latents(samples: Sequence[MOViSample], wan_root: str | Path,
@@ -87,11 +91,15 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
     dtype = precision_dtype(config["precision"])
     readout = str(config.get("backbone_readout", "wan_velocity"))
     structured = readout == "wan_hidden_structured"
+    latent_spatial_size = int(config.get("latent_spatial_size", int(config["image_size"]) // 8))
+    wan_latent_shape = (16, 6, latent_spatial_size, latent_spatial_size)
     if readout in {"wan_velocity", "wan_hidden_structured"}:
-        condition = load_empty_condition(config["empty_text_condition"])
+        condition_path = config.get("empty_text_condition")
+        condition = load_text_condition(condition_path) if condition_path else None
         mapping = WanDiTMapping(
             Path(config["wan_root"]) / "diffusion_pytorch_model.safetensors",
             condition=condition, device=device, dtype=dtype,
+            expected_latent_shape=wan_latent_shape,
         )
         if bool(config.get("gradient_checkpointing", True)):
             mapping.dit.enable_gradient_checkpointing()
@@ -117,6 +125,7 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
                 layer_gate_top_k=config.get("layer_gate_top_k"),
                 layer_gate_init_std=float(config.get("layer_gate_init_std", 0.0)),
                 layer_gate_seed=int(config.get("layer_gate_seed", geometry_seed)),
+                layer_gate_initial_logits=config.get("layer_gate_initial_logits"),
             )
     elif readout == "clean_latent":
         backbone = CleanLatentBackbone()
@@ -132,7 +141,7 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
         int(config.get("geometry_dim", 128)), int(config["clip_length"]),
         int(config.get("geometry_spatial_size", WAN_LATENT_SHAPE[-1])),
         int(config.get("geometry_spatial_size", WAN_LATENT_SHAPE[-1])),
-    ) if structured else WAN_LATENT_SHAPE
+    ) if structured else wan_latent_shape
     decoder = DenseQueryDecoder(
         num_frames=int(config["clip_length"]), latent_shape=latent_shape,
         query_dim=int(config["query_dim"]), embedding_dim=int(config.get("embedding_dim", 128)),

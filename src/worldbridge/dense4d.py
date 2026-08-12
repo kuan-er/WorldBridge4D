@@ -523,7 +523,8 @@ class WanHiddenGeometryBackbone(nn.Module):
                  geometry_dim: int = 128, num_frames: int = 21, spatial_size: int = 16,
                  motion_slots: int = 16, num_heads: int = 8, use_clean_skip: bool = True,
                  layer_gate_temperature: float = 1.0, layer_gate_top_k: int | None = None,
-                 layer_gate_init_std: float = 0.0, layer_gate_seed: int = 0):
+                 layer_gate_init_std: float = 0.0, layer_gate_seed: int = 0,
+                 layer_gate_initial_logits: Sequence[float] | None = None):
         super().__init__()
         self.mapping = mapping
         self.hidden_layers = tuple(int(index) for index in hidden_layers)
@@ -551,7 +552,13 @@ class WanHiddenGeometryBackbone(nn.Module):
             for _ in self.hidden_layers
         ])
         initial_layer_logits = torch.zeros(len(self.hidden_layers))
-        if self.layer_gate_init_std:
+        if layer_gate_initial_logits is not None:
+            initial_layer_logits = torch.as_tensor(layer_gate_initial_logits, dtype=torch.float32).clone()
+            if initial_layer_logits.shape != (len(self.hidden_layers),):
+                raise ValueError("layer_gate_initial_logits must match hidden_layers")
+            if not torch.isfinite(initial_layer_logits).all():
+                raise ValueError("layer gate initial logits must be finite")
+        elif self.layer_gate_init_std:
             generator = torch.Generator(device="cpu")
             generator.manual_seed(int(layer_gate_seed))
             initial_layer_logits.normal_(std=self.layer_gate_init_std, generator=generator)
@@ -625,12 +632,18 @@ class WanHiddenGeometryBackbone(nn.Module):
         weights = self.soft_layer_weights()
         return -(weights * weights.clamp_min(1e-12).log()).sum()
 
-    def forward(self, clean_video_latent: torch.Tensor) -> StructuredZ4D:
+    def forward(self, clean_video_latent: torch.Tensor,
+                encoder_hidden_states: torch.Tensor | None = None) -> StructuredZ4D:
         flow_time = torch.zeros(clean_video_latent.shape[0], device=clean_video_latent.device,
                                 dtype=clean_video_latent.dtype)
-        hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
-            clean_video_latent, flow_time, self.hidden_layers
-        )
+        if encoder_hidden_states is None:
+            hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
+                clean_video_latent, flow_time, self.hidden_layers
+            )
+        else:
+            hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
+                clean_video_latent, flow_time, self.hidden_layers, encoder_hidden_states
+            )
         if grid_shape[0] != self.native_frames:
             raise RuntimeError(f"Wan hidden temporal grid {grid_shape[0]} != {self.native_frames}")
         projected = torch.stack([
@@ -685,8 +698,12 @@ class DenseQueryWanModel(nn.Module):
         self.decoder = decoder
 
     def forward(self, clean_video_latent: torch.Tensor, source: torch.Tensor,
-                target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | StructuredZ4D, DenseQueryOutput]:
-        z4d = self.backbone(clean_video_latent)
+                target: torch.Tensor, encoder_hidden_states: torch.Tensor | None = None
+                ) -> tuple[torch.Tensor, torch.Tensor | StructuredZ4D, DenseQueryOutput]:
+        if encoder_hidden_states is None:
+            z4d = self.backbone(clean_video_latent)
+        else:
+            z4d = self.backbone(clean_video_latent, encoder_hidden_states)
         output = self.decoder(z4d, source, target)
         return output.normalized_xyz, z4d, output
 
@@ -744,8 +761,12 @@ def masked_pair_smooth_l1(prediction: torch.Tensor, target: torch.Tensor,
         raise ValueError("validity must be [B,K,H,W]")
     error = F.smooth_l1_loss(prediction, target, beta=beta, reduction="none").sum(dim=2)
     mask = validity.to(dtype=error.dtype)
-    per_pair = (error * mask).sum(dim=(-2, -1)) / mask.sum(dim=(-2, -1)).clamp_min(1.0)
-    return per_pair.mean()
+    valid_count = mask.sum(dim=(-2, -1))
+    eligible = valid_count > 0
+    if not bool(eligible.any()):
+        raise ValueError("batch contains no pair with a valid XYZ target")
+    per_pair = (error * mask).sum(dim=(-2, -1)) / valid_count.clamp_min(1.0)
+    return per_pair[eligible].mean()
 
 
 def verify_flow_velocity_algebra(device: torch.device | str = "cpu") -> dict[str, float | str]:

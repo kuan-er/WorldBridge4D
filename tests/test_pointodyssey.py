@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+import json
 import numpy as np
 
 import worldbridge.pointodyssey as pointodyssey
 from worldbridge.pointodyssey import PointOdysseyDataset, T
+
+
+def test_raw_root_override_rebases_immutable_scene_references(tmp_path):
+    split = tmp_path / "splits"
+    split.mkdir()
+    (split / "train.jsonl").write_text(json.dumps({
+        "source_scene": "/dataset/PointOdyssey/train/scene_a", "start": 0,
+    }) + "\n")
+    dataset = PointOdysseyDataset(tmp_path, raw_root="/dataset/nas0/PointOdyssey")
+    assert dataset.rows[0]["source_scene"] == "/dataset/nas0/PointOdyssey/train/scene_a"
 
 
 def test_source_anchor_requires_visibility_but_targets_only_require_validity(monkeypatch):

@@ -8,7 +8,8 @@ PyYAML>=6.0,<7
 torch>=2.4,<2.11
 # Use the CPU TensorFlow wheel: this repository only uses TensorFlow to parse
 # MOVi-F TFRecords and must not let TensorFlow reserve training GPU memory.
-tensorflow-cpu>=2.15,<2.16
+tensorflow-cpu>=2.16,<2.17
+protobuf>=4.25.3,<5
 
 # Wan/Diffusers model loading. The exact 0.36 API is used by src/worldbridge/wan.py.
 diffusers==0.36.0
@@ -19,7 +20,7 @@ sentencepiece>=0.2,<0.3
 ftfy>=6.1,<7
 
 # Training tracking, diagnostics and analysis.
-wandb>=0.19,<1
+wandb>=0.19,<0.20
 matplotlib>=3.8,<4
 scikit-learn>=1.4,<1.8
 nvidia-ml-py>=12,<13

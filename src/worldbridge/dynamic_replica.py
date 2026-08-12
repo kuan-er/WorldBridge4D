@@ -28,33 +28,35 @@ _SCALE = W / CROP_SIZE
 _P3D_TO_PROTOCOL = np.array([-1.0, 1.0, -1.0], dtype=np.float64)
 
 
-def _spatial_affine() -> np.ndarray:
-    """Original pixel centres to PIL crop/resize output pixel centres."""
+def _spatial_affine(image_size: int = W) -> np.ndarray:
+    """Original pixel centres to crop/resize output pixel centres."""
+    scale = int(image_size) / CROP_SIZE
     return np.array([
-        [_SCALE, 0.0, (0.5 - CROP_X) * _SCALE - 0.5],
-        [0.0, _SCALE, (0.5 - CROP_Y) * _SCALE - 0.5],
+        [scale, 0.0, (0.5 - CROP_X) * scale - 0.5],
+        [0.0, scale, (0.5 - CROP_Y) * scale - 0.5],
         [0.0, 0.0, 1.0],
     ], dtype=np.float64)
 
 
-def _transform_uv(uv: np.ndarray) -> np.ndarray:
+def _transform_uv(uv: np.ndarray, image_size: int = W) -> np.ndarray:
     uv = np.asarray(uv, dtype=np.float64)
+    scale = int(image_size) / CROP_SIZE
     out = np.empty_like(uv[..., :2], dtype=np.float64)
-    out[..., 0] = (uv[..., 0] - CROP_X + 0.5) * _SCALE - 0.5
-    out[..., 1] = (uv[..., 1] - CROP_Y + 0.5) * _SCALE - 0.5
+    out[..., 0] = (uv[..., 0] - CROP_X + 0.5) * scale - 0.5
+    out[..., 1] = (uv[..., 1] - CROP_Y + 0.5) * scale - 0.5
     return out
 
 
-def _rgb(path: Path) -> np.ndarray:
+def _rgb(path: Path, image_size: int = W) -> np.ndarray:
     with Image.open(path) as im:
         im = im.convert("RGB")
         if im.size != (RAW_W, RAW_H):
             raise ValueError(f"unexpected Dynamic Replica RGB size {im.size}: {path}")
         im = im.crop((CROP_X, CROP_Y, CROP_X + CROP_SIZE, CROP_Y + CROP_SIZE))
-        return np.asarray(im.resize((W, H), Image.Resampling.LANCZOS), dtype=np.uint8)
+        return np.asarray(im.resize((image_size, image_size), Image.Resampling.LANCZOS), dtype=np.uint8)
 
 
-def _depth(path: Path) -> tuple[np.ndarray, np.ndarray]:
+def _depth(path: Path, image_size: int = W) -> tuple[np.ndarray, np.ndarray]:
     """Decode Dynamic Replica's uint16-bit-pattern float16 z-depth."""
     with Image.open(path) as im:
         raw = np.asarray(im, dtype=np.uint16)
@@ -63,13 +65,13 @@ def _depth(path: Path) -> tuple[np.ndarray, np.ndarray]:
     raw = raw[CROP_Y:CROP_Y + CROP_SIZE, CROP_X:CROP_X + CROP_SIZE]
     # Nearest-neighbour preserves the float16 bit pattern and does not blend
     # across foreground/background depth discontinuities.
-    raw = np.asarray(Image.fromarray(raw).resize((W, H), Image.Resampling.NEAREST), dtype=np.uint16)
+    raw = np.asarray(Image.fromarray(raw).resize((image_size, image_size), Image.Resampling.NEAREST), dtype=np.uint16)
     depth = raw.view(np.float16).astype(np.float32)
     valid = np.isfinite(depth) & (depth > 0)
     return depth, valid
 
 
-def _pixel_intrinsics(viewpoint: dict[str, Any]) -> np.ndarray:
+def _pixel_intrinsics(viewpoint: dict[str, Any], image_size: int = W) -> np.ndarray:
     if str(viewpoint["intrinsics_format"]).lower() != "ndc_isotropic":
         raise ValueError(f"unsupported Dynamic Replica intrinsics: {viewpoint['intrinsics_format']}")
     focal_ndc = np.asarray(viewpoint["focal_length"], dtype=np.float64)
@@ -78,7 +80,7 @@ def _pixel_intrinsics(viewpoint: dict[str, Any]) -> np.ndarray:
     focal = focal_ndc * rescale
     principal = np.array([RAW_W / 2.0, RAW_H / 2.0]) - principal_ndc * rescale
     K = np.array([[focal[0], 0.0, principal[0]], [0.0, focal[1], principal[1]], [0.0, 0.0, 1.0]])
-    return _spatial_affine() @ K
+    return _spatial_affine(image_size) @ K
 
 
 def _camera_to_world(viewpoint: dict[str, Any]) -> np.ndarray:
@@ -92,12 +94,13 @@ def _camera_to_world(viewpoint: dict[str, Any]) -> np.ndarray:
 
 
 def _select_source_tracks(annotation: dict[str, np.ndarray], source: int,
-                          viewpoint: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                          viewpoint: dict[str, Any], image_size: int = W
+                          ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Select one source-visible persistent track per output raster cell."""
     uv = annotation["trajs_2d"][source].astype(np.float64)
     world = annotation["trajs_3d_world"].astype(np.float64)
     visible = annotation["visible"]
-    mapped = _transform_uv(uv)
+    mapped = _transform_uv(uv, image_size)
     finite_uv = np.isfinite(mapped).all(1)
     iu = np.full(len(mapped), -1, dtype=np.int64)
     iv = np.full(len(mapped), -1, dtype=np.int64)
@@ -105,11 +108,11 @@ def _select_source_tracks(annotation: dict[str, np.ndarray], source: int,
     iv[finite_uv] = np.rint(mapped[finite_uv, 1]).astype(np.int64)
     finite_source = np.isfinite(world[source]).all(1)
     good = visible[source] & finite_uv & finite_source
-    good &= (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H)
+    good &= (iu >= 0) & (iu < image_size) & (iv >= 0) & (iv < image_size)
     ids = np.flatnonzero(good)
     if not len(ids):
         return ids, np.empty(0, np.int64), np.empty(0, np.int64)
-    linear = iv[ids] * W + iu[ids]
+    linear = iv[ids] * image_size + iu[ids]
     distance = (mapped[ids, 0] - iu[ids]) ** 2 + (mapped[ids, 1] - iv[ids]) ** 2
     R = np.asarray(viewpoint["R"], dtype=np.float64)
     translation = np.asarray(viewpoint["T"], dtype=np.float64)
@@ -124,8 +127,12 @@ def _select_source_tracks(annotation: dict[str, np.ndarray], source: int,
 class DynamicReplicaDataset:
     """Protocol-v1 consumer for left- or right-camera Dynamic Replica caches."""
 
-    def __init__(self, cache_root: str | Path, split: str = "train") -> None:
+    def __init__(self, cache_root: str | Path, split: str = "train", image_size: int = W,
+                 raw_root: str | Path | None = None) -> None:
         self.root = Path(cache_root)
+        self.image_size = int(image_size)
+        if self.image_size not in (128, 256):
+            raise ValueError("Dynamic Replica adapter supports only audited 128 or 256 grids")
         index = self.root / "splits" / f"{split}.jsonl"
         if not index.exists():
             raise FileNotFoundError(f"Dynamic Replica cache index is missing: {index}")
@@ -134,7 +141,8 @@ class DynamicReplicaDataset:
         if not state_path.exists():
             raise FileNotFoundError(f"Dynamic Replica preprocessing state is missing: {state_path}")
         state = json.loads(state_path.read_text(encoding="utf-8"))
-        self.raw_train_root = Path(state["raw_root"]) / "train"
+        selected_raw_root = Path(raw_root).resolve() if raw_root is not None else Path(state["raw_root"])
+        self.raw_train_root = selected_raw_root / "train"
         self._clips: OrderedDict[str, dict[str, np.ndarray]] = OrderedDict()
         self._max_clip_cache = 2
         self._streams: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -244,13 +252,13 @@ class DynamicReplicaDataset:
 
     def rgb(self, index: int) -> np.ndarray:
         row = self.rows[index]
-        return np.stack([_rgb(self.raw_train_root / frame["rgb"]) for frame in row["frames"]])
+        return np.stack([_rgb(self.raw_train_root / frame["rgb"], self.image_size) for frame in row["frames"]])
 
     def camera(self, index: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         row = self.rows[index]
-        intrinsics = np.stack([_pixel_intrinsics(frame["viewpoint"]) for frame in row["frames"]])
+        intrinsics = np.stack([_pixel_intrinsics(frame["viewpoint"], self.image_size) for frame in row["frames"]])
         camera_to_world = np.stack([_camera_to_world(frame["viewpoint"]) for frame in row["frames"]])
-        depth, depth_valid = zip(*[_depth(self.raw_train_root / frame["depth"]) for frame in row["frames"]])
+        depth, depth_valid = zip(*[_depth(self.raw_train_root / frame["depth"], self.image_size) for frame in row["frames"]])
         return intrinsics, camera_to_world, np.stack(depth), np.stack(depth_valid)
 
     def source_all_targets(self, index: int, source: int) -> tuple[np.ndarray, np.ndarray]:
@@ -267,10 +275,11 @@ class DynamicReplicaDataset:
         visible = annotation["visible"]
         finite_world = np.isfinite(world).all(2)
         viewpoint = row["frames"][source]["viewpoint"]
-        chosen, ys, xs = _select_source_tracks(annotation, source, viewpoint)
+        size = getattr(self, "image_size", W)
+        chosen, ys, xs = _select_source_tracks(annotation, source, viewpoint, size)
 
-        xyz = np.zeros((T, 3, H, W), dtype=np.float32)
-        out_valid = np.zeros((T, H, W), dtype=bool)
+        xyz = np.zeros((T, 3, size, size), dtype=np.float32)
+        out_valid = np.zeros((T, size, size), dtype=bool)
         out_visible = np.zeros_like(out_valid)
         if len(chosen):
             R = np.asarray(viewpoint["R"], dtype=np.float64)
@@ -285,8 +294,9 @@ class DynamicReplicaDataset:
         # The protocol diagonal is the point observed at the output pixel
         # centre.  Replace only the source diagonal with canonical resized-depth
         # backprojection; off-diagonal identity remains the persistent track.
-        depth, depth_valid = _depth(self.raw_train_root / row["frames"][source]["depth"])
-        K = _pixel_intrinsics(row["frames"][source]["viewpoint"])
+        depth_path = self.raw_train_root / row["frames"][source]["depth"]
+        depth, depth_valid = _depth(depth_path) if size == W else _depth(depth_path, size)
+        K = _pixel_intrinsics(row["frames"][source]["viewpoint"], size)
         track_ys, track_xs = np.where(out_valid[source])
         if len(track_ys):
             source_ok = depth_valid[track_ys, track_xs]

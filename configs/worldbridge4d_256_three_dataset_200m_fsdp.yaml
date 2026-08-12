@@ -1,0 +1,88 @@
+# Frozen configuration from docs/WORLDBRIDGE4D_256_THREE_DATASET_TRAINING_PLAN.md
+image_size: 256
+clip_length: 21
+latent_spatial_size: 32
+coordinate_frame: source
+
+wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
+vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
+backbone_readout: wan_hidden_structured
+wan_hidden_layers: [13, 14, 15, 29]
+layer_gate_initial_logits: [0.0, 0.0, 0.0, -1.0986122887]
+layer_gate_temperature: 1.0
+layer_gate_top_k: 4
+geometry_dim: 512
+geometry_spatial_size: 32
+geometry_num_heads: 8
+geometry_clean_skip: true
+motion_slots: 8
+structured_local_queries: true
+
+query_dim: 1536
+embedding_dim: 768
+num_cross_attn_layers: 5
+num_heads: 12
+query_grid_size: 32
+upsample_channels: [1536, 768, 384, 192]
+expected_non_wan_parameters: 193586693
+
+precision: bf16
+trainable_mode: full
+fsdp: full_shard
+fsdp_min_num_params: 5000000
+microbatch_per_gpu: 1
+gradient_accumulation: 2
+targets_per_source: 6
+
+learning_rate: 0.0003
+geometry_learning_rate: 0.0003
+backbone_learning_rate: 0.00005
+weight_decay: 0.0001
+warmup_steps: 1000
+lr_schedule: cosine
+schedule_horizon_steps: 100000
+max_steps: 100000
+gradient_clip: 1.0
+smooth_l1_beta: 0.05
+gradient_checkpointing: true
+seed: 20260812
+geometry_seed: 20260812
+decoder_seed: 424242
+
+checkpoint_steps: [2000, 5000, 10000]
+checkpoint_every_after: 5000
+diagnostic_every_steps: 20
+graceful_stop_hours: 68
+
+mixture_coordinate_stats: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/stats/coordinate_stats_train_source_mixture.npz
+text_conditions:
+  kubric: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/kubric.pt
+  pointodyssey: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/pointodyssey.pt
+  dynamic_replica: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/dynamic_replica.pt
+  metadata: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/metadata.json
+prompts:
+  kubric: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows multiple rigid objects moving independently in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear."
+  pointodyssey: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated characters and objects undergoing diverse rigid and non-rigid motion in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear."
+  dynamic_replica: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated people moving through a rendered furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear."
+
+datasets:
+  kubric:
+    raw_root: /dataset/nas0/yejun/MOVi-F/512x512
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/kubric
+  pointodyssey:
+    raw_root: /dataset/nas0/PointOdyssey
+    # Existing v1 index/scene references remain valid; only the 256 latent tier
+    # is written under the new immutable cache root.
+    geometry_cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/pointodyssey
+  dynamic_replica:
+    raw_root: /dataset/data/Dynamic_dataset/dynamic_stereo
+    geometry_cache_root: /data/WorldBridge4D-persistent/datasets/dynamic_stereo_worldbridge4d_v1
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica
+
+tracking:
+  enabled: true
+  project: worldbridge4d
+  entity: zhaigong2023-sjtu-hpc-center
+  group: worldbridge4d-256-three-dataset-200m
+  tags: [h023, 256px, 200m-readout, three-dataset, fsdp, full-shard]

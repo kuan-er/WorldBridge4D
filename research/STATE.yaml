@@ -1,5 +1,6 @@
-current_task: T-20260812101443-ad02ac
+current_task: T-20260812203622-0b7bc8
 active_hypotheses:
+  - H023
   - H022
   - H020
   - H009
@@ -407,6 +408,117 @@ final_h006_motion_slot_ablation:
     direct and zero-initialized pooled pair-motion shortcuts are rejected
     because ordinary gains cause severe late-appearing regressions.
   artifact: /tmp/worldbridge_h006_slots_aggregate.json
+h023_256_three_dataset_200m:
+  status: two_gpu_k6_minimal_gate_passed_extended_gate_pending
+  task: T-20260812203622-0b7bc8
+  resolution: 256
+  latent_shape: [16, 6, 32, 32]
+  readout_layers: [13, 14, 15, 29]
+  initial_layer_weights: [0.3, 0.3, 0.3, 0.1]
+  non_wan_parameters: 193586693
+  distributed: fsdp_full_shard
+  formal_world_size: 4
+  requested_gate_world_size: 2
+  tests_passed: 62
+  implementation_test_run: R-20260812210635-6c66cf
+  final_verification_run: R-20260812211237-c19717
+  final_verification:
+    compileall: passed
+    launcher_shell_syntax: passed
+    pytest: 56_passed
+    prompt_config_code_parity: passed
+    shared_task_instruction_once_per_prompt: passed
+  wandb:
+    status: online_verified_user_netrc
+    user: zhaigong2023
+    entity: zhaigong2023-sjtu-hpc-center
+    secret_committed: false
+  prompts:
+    status: updated_plan_script_yaml_exact_match
+    inference: dataset_condition_required_no_empty_fallback
+    text_condition_cache: complete_verified
+    generation_run: R-20260812212737-c0b152
+    condition_shape: [1, 512, 4096]
+    unpadded_tokens:
+      kubric: 58
+      pointodyssey: 68
+      dynamic_replica: 60
+    cache_checksums_verified: true
+    concurrent_creation_serialized: true
+  lazy_vae_gate_cache:
+    status: implemented_real_vae_encode_verified
+    mode: pre_fsdp_deterministic_read_through
+    cache_format: per_clip_atomic_safetensors
+    identity: dataset_clip_id_index_vae_sha256_contract
+    vae_model_co_resident: false
+    formal_training_policy: complete_shards_still_required
+    verification_run: R-20260812220655-985f1e
+  two_gpu_gate:
+    first_run: R-20260812221743-23c5d0
+    first_run_result: failed_pre_fsdp_bf16_gate_audit
+    fix: compare_gate_probabilities_after_parameter_dtype_quantization
+    successful_run: R-20260812223248-4899fa
+    result: passed_two_real_optimizer_updates_and_full_checkpoint
+    world_size: 2
+    physical_gpus: [4, 6]
+    targets_per_source: 6
+    microbatch_per_gpu: 1
+    gradient_accumulation: 2
+    effective_clips_per_update: 4
+    pairs_per_update: 24
+    optimizer_updates_completed: 2
+    clips_seen:
+      kubric: 0
+      pointodyssey: 4
+      dynamic_replica: 4
+    losses: [1.0498198271, 1.1565223932]
+    raw_epe_m: [3.9179910009, 3.2507678641]
+    step_seconds: [7.0902425880, 4.3224183780]
+    peak_cuda_memory_gib_rank0: 14.1309847832
+    non_wan_parameters: 193586693
+    checkpoint: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_k6/latest.pt
+    checkpoint_bytes: 9676545791
+    checkpoint_contains_full_model_optimizer_rng: true
+    wandb: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/8qnz9067
+    limitation: minimal two-step gate used lazy cached latents and did not yet exercise a Kubric update, exact resume, or the planned 100-200-update throughput gate
+    resume_100_run: R-20260812223630-816837
+    resume_100_result: failed_pre_model_stale_kubric_path
+  k21_two_gpu_gate:
+    status: b1_a2_selected_10k_launching
+    formal_allowed: false
+    physical_gpus: [4, 6]
+    b1_a2_run: R-20260812224534-1bab51
+    b1_a2_peak_cuda_memory_gib_rank0: 30.910964488983154
+    b1_a2_second_step_seconds: 8.759
+    b2_a1_run: R-20260812225242-a82268
+    b2_a1_peak_cuda_memory_gib_rank0: 77.0455117225647
+    b2_a1_second_step_seconds: 17.66759
+    b2_a1_checkpoint: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_k21_b2/latest.pt
+    b2_a1_decision: rejected_near_oom_and_two_times_slower
+    selected_10k_mode: k21_b1_a2
+    pairs_per_update: 84
+    effective_clips_per_update: 4
+    registered_safe_memory_ceiling_gib: 74
+    unique_lazy_clips_for_10k: 17208
+    earlier_estimated_training_hours_10k: 24
+    blocked_resume_runs:
+      - R-20260812223450-2f1c98
+      - R-20260812223630-816837
+    resume_attempt_result: blocked_before_checkpoint_load_by_missing_raw_mounts_and_obsolete_gate_kubric_path
+    resume_checkpoint_preserved_at_step: 2
+    launcher_raw_mount_preflight_added: true
+  datasets:
+    kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
+    pointodyssey_raw: /dataset/nas0/PointOdyssey
+    dynamic_replica_raw: /dataset/data/Dynamic_dataset/dynamic_stereo
+  data_availability_at_final_verification:
+    kubric_512_visible: /dataset/MOVi-F/512x512
+    configured_nas0_roots_visible: false
+    pointodyssey_raw_visible: false
+    dynamic_replica_raw_visible: false
+    text_condition_cache_exists: true
+    three_dataset_256_latent_cache_exists: false
+  next_step: Restore all raw mounts and regenerate the gate YAML with current canonical roots; then verify exact resume from step 2 through a Kubric update and run the extended 100-200-update K=6 gate. Generate and audit complete 256 latent shards before any four-card formal run.
 next_step: Keep the H005 triad with eight learned motion slots. Future slot work
   should preserve late-appearing behavior and test source-valid/appearance-aware
   gating or slot-specific residuals on a fresh development split; do not select
