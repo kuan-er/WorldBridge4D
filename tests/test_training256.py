@@ -99,6 +99,13 @@ def test_inference_condition_is_dataset_specific_and_checksum_verified(tmp_path)
         load_inference_text_condition(config, "kubric")
 
 
+def test_inference_script_encodes_backbone_once_before_target_chunks():
+    source = (Path(__file__).resolve().parents[1] / "scripts/infer_three_dataset_256.py").read_text()
+    assert "z4d = model.backbone(latent, condition)" in source
+    assert "model.decoder(z4d, source_tensor, target_tensor)" in source
+    assert "model(latent, source_tensor, target_tensor, condition)" not in source
+
+
 def test_256_latent_contract_and_explicit_prompt_reaches_mapping():
     assert WAN_LATENT_SHAPE_256 == (16, 6, 32, 32)
     mapping = TinyExplicitConditionMapping()

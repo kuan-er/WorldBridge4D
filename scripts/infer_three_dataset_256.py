@@ -65,11 +65,14 @@ def main() -> None:
     condition = condition.to(device, dtype=dtype)
     outputs = []
     with torch.inference_mode(), torch.autocast(device_type=device.type, dtype=dtype, enabled=device.type == "cuda"):
+        # Encode the video once with the dataset-specific prompt, then chunk
+        # only target-dependent decoder work across all requested targets.
+        z4d = model.backbone(latent, condition)
         for start in range(0, len(targets), args.target_chunk):
             chunk = targets[start:start + args.target_chunk]
             source_tensor = torch.full((1, len(chunk)), args.source, device=device, dtype=torch.long)
             target_tensor = torch.tensor(chunk, device=device, dtype=torch.long)[None]
-            prediction, _, _ = model(latent, source_tensor, target_tensor, condition)
+            prediction = model.decoder(z4d, source_tensor, target_tensor).normalized_xyz
             outputs.append(prediction.float().cpu())
     normalized = torch.cat(outputs, dim=1)[0]
     mean = torch.as_tensor(checkpoint["coordinate_mean"], dtype=torch.float32).reshape(1, 3, 1, 1)

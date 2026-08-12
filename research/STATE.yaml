@@ -419,7 +419,7 @@ h023_256_three_dataset_200m:
   distributed: fsdp_full_shard
   formal_world_size: 4
   requested_gate_world_size: 2
-  tests_passed: 58
+  tests_passed: 59
   implementation_test_run: R-20260812210635-6c66cf
   final_verification_run: R-20260812211237-c19717
   final_verification:
