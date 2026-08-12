@@ -91,29 +91,29 @@ output_size: 256
 
 ## 3. Wan 文本条件
 
-### 3.1 固定 prompts
+### 3.1 固定的任务条件 prompts
 
-三个数据集使用固定、caption-style、结构匹配的英文描述。描述只包含视频中可观察的场景和运动语义，不包含数据集名称、标注密度、监督类型或任务答案。
+参考 GenCeption 使用文本指令指定目标视觉模态的做法，三个 prompt 都以完全相同的任务指令开头，再补充可观察的场景和运动语义。任务部分明确要求从单目视频估计 dense 3D point trajectories；域部分不包含数据集名称、标注密度、validity/visibility 或 GT 协议。
 
 **Kubric MOVi-F**
 
 ```text
-A rendered monocular video of multiple rigid objects moving independently in a three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.
+Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows multiple rigid objects moving independently in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.
 ```
 
 **PointOdyssey**
 
 ```text
-A rendered monocular video of articulated characters and objects undergoing diverse rigid and non-rigid motion in a three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.
+Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated characters and objects undergoing diverse rigid and non-rigid motion in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.
 ```
 
 **Dynamic Replica**
 
 ```text
-A rendered monocular video of articulated people moving through a furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear.
+Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated people moving through a rendered furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear.
 ```
 
-本轮不使用 prompt dropout、prompt augmentation、CFG 或可学习 prompt token。
+固定三个 prompt 的第一句可以避免把任务变化和数据域变化混在一起；后续句子只提供域和运动先验。本轮不使用 prompt dropout、prompt augmentation、CFG 或可学习 prompt token。
 
 ### 3.2 编码和注入
 
