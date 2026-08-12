@@ -5,6 +5,7 @@ latent_spatial_size: 32
 coordinate_frame: source
 
 wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
+vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
 backbone_readout: wan_hidden_structured
 wan_hidden_layers: [13, 14, 15, 29]
 layer_gate_initial_logits: [0.0, 0.0, 0.0, -1.0986122887]

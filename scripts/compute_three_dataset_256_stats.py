@@ -26,7 +26,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=20260812)
     args = parser.parse_args()
     config = yaml.safe_load(Path(args.config).read_text())
-    datasets = load_training_datasets(config)
+    # Coordinate moments use geometry only; allow this prerequisite to run
+    # before either compact shards or the lazy VAE tier exists.
+    datasets = load_training_datasets(config, allow_missing_latents=True)
     summaries = {}
     for dataset_id, name in enumerate(DATASET_NAMES):
         dataset = datasets[name]

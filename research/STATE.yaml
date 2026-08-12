@@ -419,7 +419,7 @@ h023_256_three_dataset_200m:
   distributed: fsdp_full_shard
   formal_world_size: 4
   requested_gate_world_size: 2
-  tests_passed: 60
+  tests_passed: 62
   implementation_test_run: R-20260812210635-6c66cf
   final_verification_run: R-20260812211237-c19717
   final_verification:
@@ -445,6 +445,13 @@ h023_256_three_dataset_200m:
       dynamic_replica: 60
     cache_checksums_verified: true
     concurrent_creation_serialized: true
+  lazy_vae_gate_cache:
+    status: implemented_static_and_real_rgb_verified
+    mode: pre_fsdp_deterministic_read_through
+    cache_format: per_clip_atomic_safetensors
+    identity: dataset_clip_id_index_vae_sha256_contract
+    vae_model_co_resident: false
+    formal_training_policy: complete_shards_still_required
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey

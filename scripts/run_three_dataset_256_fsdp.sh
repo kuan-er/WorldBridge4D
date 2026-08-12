@@ -7,12 +7,16 @@ OUTPUT="${OUTPUT:-/data/WorldBridge4D-runs/worldbridge4d_256_three_dataset_200m}
 GPUS="${GPUS:-0,1,2,3}"
 NPROC="${NPROC:-4}"
 STEPS="${STEPS:-}"
+LAZY_VAE_CACHE="${LAZY_VAE_CACHE:-0}"
 EXTRA=()
 if [[ "$NPROC" == "2" ]]; then
   EXTRA+=(--allow-two-gpu-gate)
 fi
 if [[ -n "$STEPS" ]]; then
   EXTRA+=(--steps "$STEPS")
+fi
+if [[ "$LAZY_VAE_CACHE" == "1" ]]; then
+  EXTRA+=(--lazy-vae-cache)
 fi
 if [[ -f "$OUTPUT/latest.pt" ]]; then
   EXTRA+=(--resume "$OUTPUT/latest.pt")

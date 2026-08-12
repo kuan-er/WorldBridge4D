@@ -55,18 +55,22 @@ stats 脚本只使用 train split，每 clip 最多固定采样 4096 个 valid d
 
 ## 4. 两卡 optimizer gate
 
-先选择两张空闲卡，执行至少两个 optimizer updates；建议完整 gate 为 100–200 updates。首次先测 K=6：
+先选择两张空闲卡，执行至少两个 optimizer updates；建议完整 gate 为 100–200 updates。若完整 latent 尚未生成，可启用确定性 lazy VAE warmup：每个 rank 根据 `(seed, step, microstep, rank)` 先计算本次 gate 实际会访问的 clips，多 rank 重叠由确定性 owner 去重，结果以 per-clip safetensors + 文件锁 + 原子 rename 写入 persistent cache。VAE 在 FSDP 模型构建前释放，因此不会与 Wan/Adam 同时常驻显存；resume 和后续 gate 直接命中缓存。
+
+这不是在训练 forward 中反复运行 VAE：训练开始前会 fail-closed 验证本次计划的所有 latent 已可读取。仅推荐 gate 使用；正式四卡训练仍应完成完整 shard cache 和审计。
 
 ```bash
-GPUS=1,2 NPROC=2 STEPS=2 \
+LAZY_VAE_CACHE=1 GPUS=1,2 NPROC=2 STEPS=2 \
 OUTPUT=/data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_k6 \
   bash scripts/run_three_dataset_256_fsdp.sh
 ```
 
+lazy 文件位于各数据集 `cache_root/latents/wan2.1_1.3b_fp32_256_lazy/`，metadata 严格绑定 dataset、clip ID、split-local index、VAE SHA-256 和 posterior-mean FP32 contract。完整 gate：
+
 完整 gate：
 
 ```bash
-GPUS=1,2 NPROC=2 STEPS=200 \
+LAZY_VAE_CACHE=1 GPUS=1,2 NPROC=2 STEPS=200 \
 OUTPUT=/data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_k6 \
   bash scripts/run_three_dataset_256_fsdp.sh
 ```

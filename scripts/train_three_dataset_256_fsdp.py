@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 from contextlib import nullcontext
 import datetime as dt
 import json
@@ -34,9 +35,10 @@ from worldbridge.dense4d_runtime import (
 )
 from worldbridge.training256 import (
     DATASET_NAMES, apply_cosine_schedule, dataset_for_step,
-    deterministic_sample_plan, load_training_datasets, sample_eligible_targets,
-    source_with_eligible_targets,
+    deterministic_sample_plan, load_training_datasets, prepare_training_indexes,
+    sample_eligible_targets, source_with_eligible_targets,
 )
+from worldbridge.wan import WAN_LATENT_SHAPE_256, WanVAEEncoder
 from worldbridge.text_conditions import load_dataset_text_conditions
 
 _STOP = False
@@ -91,6 +93,76 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool) -> 
     k = int(config["targets_per_source"])
     if k not in (4, 6):
         raise ValueError("targets_per_source must be the gated K=6 or K=4")
+
+
+def sha256(path: Path, chunk: int = 8 << 20) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while value := stream.read(chunk):
+            digest.update(value)
+    return digest.hexdigest()
+
+
+def required_latent_indices(datasets: dict[str, Any], seed: int, start_step: int,
+                            target_steps: int, rank: int, accumulation: int
+                            ) -> dict[str, list[int]]:
+    required: dict[str, set[int]] = {name: set() for name in DATASET_NAMES}
+    for step in range(int(start_step), int(target_steps)):
+        name = dataset_for_step(step, seed)
+        dataset = datasets[name]
+        for micro in range(int(accumulation)):
+            index, _, _ = deterministic_sample_plan(
+                dataset, name, seed, step, micro, rank, accumulation
+            )
+            required[name].add(int(index))
+    return {name: sorted(indices) for name, indices in required.items()}
+
+
+def warm_lazy_latents(config: dict[str, Any], datasets: dict[str, Any],
+                      required: dict[str, list[int]], device: torch.device,
+                      rank: int) -> dict[str, int]:
+    """Populate only this rank's planned cache misses, then release the VAE."""
+    checkpoint = Path(config.get(
+        "vae_checkpoint", Path(config["wan_root"]) / "Wan2.1_VAE.pth"
+    )).resolve()
+    if not checkpoint.is_file():
+        raise FileNotFoundError(f"WAN VAE checkpoint missing: {checkpoint}")
+    checksum = sha256(checkpoint)
+    for dataset in datasets.values():
+        dataset.set_lazy_vae_sha256(checksum)
+    missing = [(name, index) for name in DATASET_NAMES for index in required[name]
+               if not datasets[name].latent_cached(index)]
+    counts = {"required": sum(len(x) for x in required.values()), "misses": len(missing),
+              "written": 0, "reused_after_wait": 0}
+    if not missing:
+        print(json.dumps({"event": "lazy_vae_warmup", "rank": rank, **counts}), flush=True)
+        return counts
+    # FP32 is the canonical offline contract. The VAE is deleted before the
+    # trainable 1.3B model/FSDP/optimizer are constructed, avoiding co-residency.
+    encoder = WanVAEEncoder(
+        checkpoint, device=device, dtype=torch.float32,
+        expected_shape=WAN_LATENT_SHAPE_256,
+    )
+    for name, index in missing:
+        dataset = datasets[name]
+        if dataset.latent_cached(index):
+            counts["reused_after_wait"] += 1
+            continue
+        rgb = torch.from_numpy(np.asarray(dataset.rgb(index))).permute(0, 3, 1, 2)[None]
+        with torch.inference_mode():
+            value = encoder(rgb).float().cpu().numpy()[0]
+        if dataset.cache_latent(index, value, checksum):
+            counts["written"] += 1
+        else:
+            counts["reused_after_wait"] += 1
+        print(json.dumps({
+            "event": "lazy_vae_clip", "rank": rank, "dataset": name,
+            "index": index, "written": counts["written"], "misses": len(missing),
+        }), flush=True)
+    del encoder
+    torch.cuda.empty_cache()
+    print(json.dumps({"event": "lazy_vae_warmup", "rank": rank, **counts}), flush=True)
+    return counts
 
 
 def load_stats(config: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
@@ -195,6 +267,8 @@ def main() -> None:
     parser.add_argument("--allow-two-gpu-gate", action="store_true")
     parser.add_argument("--disable-wandb", action="store_true")
     parser.add_argument("--checkpoint-at-end", action="store_true")
+    parser.add_argument("--lazy-vae-cache", action="store_true",
+                        help="encode/cache only planned missing latents before constructing FSDP")
     args = parser.parse_args()
     for value in (signal.SIGINT, signal.SIGTERM, signal.SIGUSR1):
         signal.signal(value, stop_signal)
@@ -207,10 +281,53 @@ def main() -> None:
     output = Path(args.output_dir).resolve()
     if rank == 0:
         output.mkdir(parents=True, exist_ok=True)
+        prepare_training_indexes(config)
     dist.barrier()
     mean, scale = load_stats(config)
     conditions, prompt_metadata = load_dataset_text_conditions(config)
-    datasets = load_training_datasets(config)
+    datasets = load_training_datasets(config, allow_missing_latents=args.lazy_vae_cache)
+    target_steps = int(args.steps if args.steps is not None else config["max_steps"])
+    resume = Path(args.resume) if args.resume else (output / "latest.pt")
+    # Cache generation needs to know exact post-resume indices before model
+    # construction. A tiny rank-0 metadata read avoids loading model/Adam here.
+    metadata = [None]
+    if rank == 0 and resume.is_file():
+        checkpoint_metadata = torch.load(resume, map_location="cpu", mmap=True, weights_only=True)
+        metadata[0] = int(checkpoint_metadata["training_state"]["global_step"])
+        del checkpoint_metadata
+    dist.broadcast_object_list(metadata, src=0)
+    planned_start = int(metadata[0] or 0)
+    if planned_start >= target_steps:
+        raise ValueError(f"checkpoint step {planned_start} already reaches target {target_steps}")
+    lazy_counts = None
+    if args.lazy_vae_cache:
+        local_required = required_latent_indices(
+            datasets, seed, planned_start, target_steps, rank,
+            int(config["gradient_accumulation"]),
+        )
+        gathered: list[Any] = [None] * world
+        dist.all_gather_object(gathered, local_required)
+        # A clip needed by multiple ranks gets one deterministic owner, so the
+        # expensive VAE forward is not duplicated. File locks still protect
+        # against independent jobs sharing the same persistent cache.
+        owned = {name: [] for name in DATASET_NAMES}
+        for name in DATASET_NAMES:
+            all_indices = sorted({index for item in gathered for index in item[name]})
+            for index in all_indices:
+                owner = next(owner for owner, item in enumerate(gathered) if index in item[name])
+                if owner == rank:
+                    owned[name].append(index)
+        lazy_counts = warm_lazy_latents(config, datasets, owned, device, rank)
+        dist.barrier()
+    # Fail closed now: every planned access must resolve before the expensive
+    # FSDP model is constructed and ranks enter collectives.
+    required_check = required_latent_indices(
+        datasets, seed, planned_start, target_steps, rank,
+        int(config["gradient_accumulation"]),
+    )
+    for name, indices in required_check.items():
+        for index in indices:
+            datasets[name].clean_latent(index)
     if rank == 0:
         print(json.dumps({"event": "three_dataset_cache_ready", "clips": {k: len(v) for k, v in datasets.items()}}), flush=True)
 
@@ -238,12 +355,10 @@ def main() -> None:
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config["weight_decay"]))
     start_step = 0
     clips_seen = {name: 0 for name in DATASET_NAMES}
-    resume = Path(args.resume) if args.resume else (output / "latest.pt")
     if resume.is_file():
         state = load_checkpoint(resume, fsdp, optimizer, rank, world)
         start_step = int(state["global_step"])
         clips_seen.update({key: int(value) for key, value in state["clips_seen"].items()})
-    target_steps = int(args.steps if args.steps is not None else config["max_steps"])
     if start_step >= target_steps:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
     run = init_wandb(config, output, rank, args.disable_wandb)
@@ -376,6 +491,8 @@ def main() -> None:
             "clips_seen": clips_seen, "non_wan_parameters": non_wan_count,
             "targets_per_source": k, "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,
             "elapsed_seconds": time.perf_counter() - started,
+            "lazy_vae_cache": bool(args.lazy_vae_cache),
+            "lazy_vae_rank0": lazy_counts,
         }
         atomic_json(output / "train_status.json", result)
         print(json.dumps(result, indent=2), flush=True)

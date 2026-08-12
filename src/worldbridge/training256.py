@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import dataclass
+import fcntl
 import json
 import math
+import os
 from pathlib import Path
 import re
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import torch
@@ -30,7 +31,10 @@ class TrainingDataset(Protocol):
     rows: list[dict[str, Any]]
     def __len__(self) -> int: ...
     def source_all_targets(self, index: int, source: int) -> tuple[np.ndarray, np.ndarray]: ...
+    def rgb(self, index: int) -> np.ndarray: ...
     def clean_latent(self, index: int) -> np.ndarray: ...
+    def latent_cached(self, index: int) -> bool: ...
+    def cache_latent(self, index: int, value: np.ndarray, vae_sha256: str) -> bool: ...
 
 
 def deterministic_dataset_schedule(seed: int) -> tuple[str, ...]:
@@ -178,11 +182,82 @@ class LatentShardStore:
         raise IndexError(f"latent index {index} is not covered by {self.root}")
 
 
+class LazyLatentCache:
+    """Per-clip read-through cache with process locks and atomic publication."""
+    CONTRACT = "wan2.1_vae_posterior_mean_fp32_256_v1"
+
+    def __init__(self, root: str | Path, dataset: str,
+                 expected_shape: tuple[int, ...] = (16, 6, 32, 32)) -> None:
+        self.root = Path(root)
+        self.dataset = str(dataset)
+        self.expected_shape = tuple(expected_shape)
+        self.expected_vae_sha256: str | None = None
+
+    def path(self, index: int) -> Path:
+        return self.root / f"latent_{int(index):08d}.safetensors"
+
+    def set_vae_sha256(self, value: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{64}", str(value)):
+            raise ValueError("VAE SHA-256 must be 64 lowercase hex characters")
+        self.expected_vae_sha256 = str(value)
+
+    def read(self, index: int, clip_id: str) -> np.ndarray:
+        from safetensors import safe_open
+        path = self.path(index)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        with safe_open(str(path), framework="np") as handle:
+            metadata = handle.metadata() or {}
+            if metadata.get("contract") != self.CONTRACT:
+                raise RuntimeError(f"lazy latent contract mismatch: {path}")
+            if metadata.get("dataset") != self.dataset or metadata.get("clip_id") != str(clip_id):
+                raise RuntimeError(f"lazy latent identity mismatch: {path}")
+            if metadata.get("index") != str(int(index)):
+                raise RuntimeError(f"lazy latent index mismatch: {path}")
+            if self.expected_vae_sha256 is not None and metadata.get("vae_sha256") != self.expected_vae_sha256:
+                raise RuntimeError(f"lazy latent VAE checksum mismatch: {path}")
+            value = handle.get_tensor("latent")
+        if tuple(value.shape) != self.expected_shape or value.dtype != np.float32:
+            raise RuntimeError(f"lazy latent shape/dtype mismatch in {path}: {value.shape}/{value.dtype}")
+        if not np.isfinite(value).all():
+            raise RuntimeError(f"non-finite lazy latent: {path}")
+        return np.asarray(value, dtype=np.float32)
+
+    def write(self, index: int, clip_id: str, value: np.ndarray,
+              vae_sha256: str) -> bool:
+        """Write once; return True only when this process produced the file."""
+        from safetensors.numpy import save_file
+        value = np.asarray(value, dtype=np.float32)
+        if tuple(value.shape) != self.expected_shape or not np.isfinite(value).all():
+            raise ValueError(f"invalid lazy latent for {self.dataset}/{index}: {value.shape}")
+        self.set_vae_sha256(vae_sha256)
+        path = self.path(index)
+        lock_path = self.root / ".locks" / f"latent_{int(index):08d}.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+b") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            if path.is_file():
+                self.read(index, clip_id)
+                return False
+            temporary = path.with_suffix(f".{os.getpid()}.tmp.safetensors")
+            save_file({"latent": np.ascontiguousarray(value)}, str(temporary), metadata={
+                "contract": self.CONTRACT, "dataset": self.dataset,
+                "clip_id": str(clip_id), "index": str(int(index)),
+                "vae_sha256": vae_sha256,
+            })
+            temporary.replace(path)
+            self.read(index, clip_id)
+            return True
+
+
 class CachedExternalDataset:
-    """Attach one canonical 256 latent store to PO/DR geometry adapters."""
+    """Attach canonical sharded and optional lazy 256 latents to PO/DR geometry."""
     def __init__(self, geometry: PointOdysseyDataset | DynamicReplicaDataset,
-                 cache_root: str | Path) -> None:
+                 cache_root: str | Path, dataset_name: str,
+                 allow_missing_latents: bool = False) -> None:
         self.geometry = geometry
+        self.dataset_name = str(dataset_name)
         cache_root = Path(cache_root)
         index_path = cache_root / "splits" / "train.jsonl"
         if not index_path.is_file():
@@ -193,8 +268,16 @@ class CachedExternalDataset:
             self.geometry_indices = [by_clip[str(row["clip_id"])] for row in self.rows]
         except KeyError as exc:
             raise ValueError(f"256 index is not a subset of its geometry cache: {exc}") from exc
-        self.latents = LatentShardStore(
-            cache_root / "latents" / "wan2.1_1.3b_fp32_256"
+        try:
+            self.latents: LatentShardStore | None = LatentShardStore(
+                cache_root / "latents" / "wan2.1_1.3b_fp32_256"
+            )
+        except FileNotFoundError:
+            if not allow_missing_latents:
+                raise
+            self.latents = None
+        self.lazy_latents = LazyLatentCache(
+            cache_root / "latents" / "wan2.1_1.3b_fp32_256_lazy", self.dataset_name
         )
 
     def __len__(self) -> int:
@@ -208,16 +291,38 @@ class CachedExternalDataset:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         return self.geometry.source_all_targets_with_visibility(self.geometry_indices[index], source)
 
+    def rgb(self, index: int) -> np.ndarray:
+        return self.geometry.rgb(self.geometry_indices[int(index)])
+
+    def set_lazy_vae_sha256(self, value: str) -> None:
+        self.lazy_latents.set_vae_sha256(value)
+
     def clean_latent(self, index: int) -> np.ndarray:
-        # The 256 producer writes each split in split-local row order; training
-        # consumes the train split beginning at latent index zero.
-        return self.latents[int(index)]
+        # Prefer immutable compact shards, then the atomic per-clip lazy tier.
+        if self.latents is not None:
+            try:
+                return self.latents[int(index)]
+            except IndexError:
+                pass
+        return self.lazy_latents.read(int(index), str(self.rows[int(index)]["clip_id"]))
+
+    def latent_cached(self, index: int) -> bool:
+        try:
+            self.clean_latent(index)
+            return True
+        except (FileNotFoundError, IndexError):
+            return False
+
+    def cache_latent(self, index: int, value: np.ndarray, vae_sha256: str) -> bool:
+        return self.lazy_latents.write(
+            int(index), str(self.rows[int(index)]["clip_id"]), value, vae_sha256
+        )
 
 
 class MOViF256Dataset:
     """Read-only MOVi-F 512 source -> audited 256 geometry and latent cache."""
     def __init__(self, raw_root: str | Path, cache_root: str | Path,
-                 split: str = "train") -> None:
+                 split: str = "train", allow_missing_latents: bool = False) -> None:
         cache_root = Path(cache_root)
         self.cache_root = cache_root
         index_path = cache_root / "splits" / f"{split}.jsonl"
@@ -231,6 +336,11 @@ class MOViF256Dataset:
                                    max_examples=max_index + 1)
         latent_root = cache_root / "latents" / "wan2.1_1.3b_fp32_256"
         self.latents = LatentShardStore(latent_root) if latent_root.is_dir() and any(latent_root.glob("*.safetensors")) else None
+        if self.latents is None and not allow_missing_latents:
+            raise FileNotFoundError("MOVi-F 256 latent cache has not been generated")
+        self.lazy_latents = LazyLatentCache(
+            cache_root / "latents" / "wan2.1_1.3b_fp32_256_lazy", "kubric"
+        )
         self._sample_cache: OrderedDict[int, MOViSample] = OrderedDict()
 
     def __len__(self) -> int:
@@ -292,13 +402,60 @@ class MOViF256Dataset:
     def rgb(self, index: int) -> np.ndarray:
         return self.sample(index).rgb
 
+    def set_lazy_vae_sha256(self, value: str) -> None:
+        self.lazy_latents.set_vae_sha256(value)
+
     def clean_latent(self, index: int) -> np.ndarray:
-        if self.latents is None:
-            raise FileNotFoundError("MOVi-F 256 latent cache has not been generated")
-        return self.latents[int(index)]
+        if self.latents is not None:
+            try:
+                return self.latents[int(index)]
+            except IndexError:
+                pass
+        return self.lazy_latents.read(int(index), str(self.rows[int(index)]["clip_id"]))
+
+    def latent_cached(self, index: int) -> bool:
+        try:
+            self.clean_latent(index)
+            return True
+        except (FileNotFoundError, IndexError):
+            return False
+
+    def cache_latent(self, index: int, value: np.ndarray, vae_sha256: str) -> bool:
+        return self.lazy_latents.write(
+            int(index), str(self.rows[int(index)]["clip_id"]), value, vae_sha256
+        )
 
 
-def load_training_dataset(config: dict[str, Any], name: str) -> TrainingDataset:
+def prepare_training_indexes(config: dict[str, Any]) -> None:
+    """Create missing train indexes outside raw mounts before lazy VAE warmup."""
+    for name in DATASET_NAMES:
+        values = config["datasets"][name]
+        destination = Path(values["cache_root"]) / "splits" / "train.jsonl"
+        if destination.is_file():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if name == "kubric":
+            native = MOViFDataset(values["raw_root"], split="train", clip_length=21, clip_start=0)
+            rows = [{
+                "index": index, "raw_index": index,
+                "clip_id": f"movi-f/train/{index:06d}",
+                "parent_id": f"movi-f-train-{index:06d}",
+                "start": 0, "stride": 1,
+                "timestamps": [frame / 12.0 for frame in range(21)],
+            } for index in range(len(native))]
+            text = "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows)
+        else:
+            source = Path(values.get("geometry_cache_root", values["cache_root"])) / "splits" / "train.jsonl"
+            if not source.is_file():
+                raise FileNotFoundError(source)
+            text = source.read_text()
+        temporary = destination.with_suffix(f".{os.getpid()}.tmp.jsonl")
+        temporary.write_text(text)
+        temporary.replace(destination)
+
+
+def load_training_dataset(config: dict[str, Any], name: str,
+                          allow_missing_latents: bool = False) -> TrainingDataset:
     """Load only one requested dataset (important for standalone inference)."""
     roots = config["datasets"]
     image_size = int(config["image_size"])
@@ -309,7 +466,10 @@ def load_training_dataset(config: dict[str, Any], name: str) -> TrainingDataset:
         raise ValueError(f"dataset must be one of {DATASET_NAMES}, got {name!r}")
     values = roots[name]
     if name == "kubric":
-        return MOViF256Dataset(values["raw_root"], values["cache_root"])
+        return MOViF256Dataset(
+            values["raw_root"], values["cache_root"],
+            allow_missing_latents=allow_missing_latents,
+        )
     if name == "pointodyssey":
         geometry = PointOdysseyDataset(
             values.get("geometry_cache_root", values["cache_root"]),
@@ -320,8 +480,15 @@ def load_training_dataset(config: dict[str, Any], name: str) -> TrainingDataset:
             values.get("geometry_cache_root", values["cache_root"]),
             image_size=image_size, raw_root=values["raw_root"],
         )
-    return CachedExternalDataset(geometry, values["cache_root"])
+    return CachedExternalDataset(
+        geometry, values["cache_root"], name,
+        allow_missing_latents=allow_missing_latents,
+    )
 
 
-def load_training_datasets(config: dict[str, Any]) -> dict[str, TrainingDataset]:
-    return {name: load_training_dataset(config, name) for name in DATASET_NAMES}
+def load_training_datasets(config: dict[str, Any],
+                           allow_missing_latents: bool = False) -> dict[str, TrainingDataset]:
+    return {
+        name: load_training_dataset(config, name, allow_missing_latents=allow_missing_latents)
+        for name in DATASET_NAMES
+    }

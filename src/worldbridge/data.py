@@ -122,12 +122,14 @@ class MOViFDataset:
     def _index_records(self, max_examples: int | None) -> list[tuple[Path, int]]:
         limit = int(max_examples) if max_examples is not None else None
         records: list[tuple[Path, int]] = []
-        if limit is None:
-            lengths = self._metadata_shard_lengths()
-            if lengths is not None:
-                for path, length in zip(self.files, lengths):
-                    records.extend((path, local_index) for local_index in range(length))
-                return records
+        lengths = self._metadata_shard_lengths()
+        if lengths is not None:
+            for path, length in zip(self.files, lengths):
+                remaining = length if limit is None else max(0, limit - len(records))
+                records.extend((path, local_index) for local_index in range(min(length, remaining)))
+                if limit is not None and len(records) >= limit:
+                    break
+            return records
         tf = self._tf()
         for path in self.files:
             for local_index, _ in enumerate(tf.data.TFRecordDataset([str(path)])):

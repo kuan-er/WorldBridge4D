@@ -12,7 +12,7 @@ from torch import nn
 
 from worldbridge.dense4d import DenseQueryDecoder, WanHiddenGeometryBackbone, masked_pair_smooth_l1
 from worldbridge.training256 import (
-    CachedExternalDataset, apply_cosine_schedule, dataset_for_step,
+    CachedExternalDataset, LazyLatentCache, apply_cosine_schedule, dataset_for_step,
     deterministic_dataset_schedule, deterministic_sample_plan, sample_eligible_targets,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
@@ -173,10 +173,43 @@ def test_small_256_index_maps_back_to_geometry_clip_ids(tmp_path, monkeypatch):
     class Latents:
         def __getitem__(self, index): return index
     monkeypatch.setattr("worldbridge.training256.LatentShardStore", lambda *_args, **_kwargs: Latents())
-    dataset = CachedExternalDataset(Geometry(), tmp_path)
+    dataset = CachedExternalDataset(Geometry(), tmp_path, "pointodyssey")
     assert len(dataset) == 1
     assert dataset.source_all_targets(0, 7) == (1, 7)
     assert dataset.clean_latent(0) == 0
+
+
+def test_lazy_latent_cache_roundtrip_identity_checksum_and_no_overwrite(tmp_path):
+    cache = LazyLatentCache(tmp_path, "kubric")
+    checksum = "a" * 64
+    value = np.arange(np.prod(WAN_LATENT_SHAPE_256), dtype=np.float32).reshape(WAN_LATENT_SHAPE_256)
+    assert cache.write(7, "clip-7", value, checksum)
+    assert not cache.write(7, "clip-7", value + 1, checksum)
+    np.testing.assert_array_equal(cache.read(7, "clip-7"), value)
+    with pytest.raises(RuntimeError, match="identity mismatch"):
+        cache.read(7, "wrong-clip")
+    cache.set_vae_sha256("b" * 64)
+    with pytest.raises(RuntimeError, match="checksum mismatch"):
+        cache.read(7, "clip-7")
+
+
+def test_cached_external_dataset_falls_back_to_lazy_latent(tmp_path):
+    split = tmp_path / "splits"; split.mkdir()
+    (split / "train.jsonl").write_text('{"clip_id":"keep"}\n')
+    class Geometry:
+        rows = [{"clip_id": "keep"}]
+        def source_all_targets(self, index, source): return index, source
+        def source_all_targets_with_visibility(self, index, source): return index, source, True
+        def rgb(self, index): return np.zeros((21, 256, 256, 3), np.uint8)
+    dataset = CachedExternalDataset(
+        Geometry(), tmp_path, "pointodyssey", allow_missing_latents=True
+    )
+    assert not dataset.latent_cached(0)
+    value = np.zeros(WAN_LATENT_SHAPE_256, np.float32)
+    assert dataset.cache_latent(0, value, "c" * 64)
+    assert dataset.latent_cached(0)
+    np.testing.assert_array_equal(dataset.clean_latent(0), value)
+    assert dataset.rgb(0).shape == (21, 256, 256, 3)
 
 
 def test_parent_balanced_plan_keeps_ranks_in_one_scene_block():
