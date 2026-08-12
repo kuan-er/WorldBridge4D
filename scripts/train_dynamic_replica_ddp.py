@@ -267,8 +267,8 @@ def main() -> None:
         optimizer.load_state_dict(resume_payload["optimizer"])
     batch = int(config.get("batch_size_per_gpu", config.get("batch_size", 1)))
     steps = int(args.steps or config.get("steps", 500000))
-    if batch != 8:
-        raise ValueError(f"the registered Dynamic Replica capacity run requires batch_size_per_gpu=8, got {batch}")
+    if batch != 4:
+        raise ValueError(f"the registered Dynamic Replica capacity run requires batch_size_per_gpu=4, got {batch}")
     if resume_payload is not None:
         old_batch = int(resume_payload.get("config", {}).get("batch_size_per_gpu", batch))
         if old_batch != batch:

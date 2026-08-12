@@ -32,8 +32,8 @@ import sys, yaml
 with open(sys.argv[1]) as f:
     cfg = yaml.safe_load(f)
 value = int(cfg.get("batch_size_per_gpu", cfg.get("batch_size", 1)))
-if value != 8:
-    raise SystemExit(f"registered Dynamic Replica batch must be 8, got {value}")
+if value != 4:
+    raise SystemExit(f"registered Dynamic Replica batch must be 4, got {value}")
 print(value)
 PY
 )"

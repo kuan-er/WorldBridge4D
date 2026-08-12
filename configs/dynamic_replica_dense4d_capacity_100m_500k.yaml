@@ -29,9 +29,9 @@ num_cross_attn_layers: 5
 num_heads: 8
 upsample_channels: [1024, 512, 256, 128]
 
-# Capacity-tested per-GPU batch for the current A100 80GB route.
-batch_size_per_gpu: 8
-batch_size: 8
+# Safe optimizer-tested per-GPU batch for the current A100 80GB route.
+batch_size_per_gpu: 4
+batch_size: 4
 steps: 500000
 learning_rate: 0.0003
 geometry_learning_rate: 0.0003
