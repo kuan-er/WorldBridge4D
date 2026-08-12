@@ -100,7 +100,8 @@ def sample_eligible_targets(valid: np.ndarray, k: int,
 
 def deterministic_sample_plan(dataset: TrainingDataset, dataset_name: str,
                               seed: int, global_step: int, microstep: int,
-                              rank: int) -> tuple[int, int, np.random.Generator]:
+                              rank: int, microsteps_per_rank: int = 2
+                              ) -> tuple[int, int, np.random.Generator]:
     """Plan one clip/source from only checkpointed counters and rank."""
     if not len(dataset):
         raise ValueError(f"empty dataset: {dataset_name}")
@@ -122,9 +123,14 @@ def deterministic_sample_plan(dataset: TrainingDataset, dataset_name: str,
         ]))
         parent = names[int(parent_rng.integers(len(names)))]
         members = parents[parent]
-        index = members[int(rng.integers(len(members)))]
+        base = int(parent_rng.integers(len(members)))
+        index = members[(base + rank * int(microsteps_per_rank) + int(microstep)) % len(members)]
     else:
-        index = int(rng.integers(len(dataset)))
+        base_rng = np.random.default_rng(np.random.SeedSequence([
+            int(seed), int(global_step), dataset_id, 557,
+        ]))
+        base = int(base_rng.integers(len(dataset)))
+        index = (base + rank * int(microsteps_per_rank) + int(microstep)) % len(dataset)
     source = int(rng.integers(21))
     return index, source, rng
 

@@ -82,8 +82,9 @@ def test_parent_balanced_plan_keeps_ranks_in_one_scene_block():
 
     dataset = Dataset()
     first = deterministic_sample_plan(dataset, "pointodyssey", 5, 8, 0, 0)
-    second = deterministic_sample_plan(dataset, "pointodyssey", 5, 8, 1, 3)
+    second = deterministic_sample_plan(dataset, "pointodyssey", 5, 8, 1, 1)
     assert dataset.rows[first[0]]["parent_id"] == dataset.rows[second[0]]["parent_id"]
+    assert first[0] != second[0]
 
 
 def test_eligible_k_sampling_excludes_empty_pairs_and_is_deterministic():

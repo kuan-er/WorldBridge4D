@@ -60,9 +60,9 @@ text_conditions:
   dynamic_replica: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/dynamic_replica.pt
   metadata: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/metadata.json
 prompts:
-  kubric: "A rendered monocular video of multiple rigid objects moving independently in a three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear."
-  pointodyssey: "A rendered monocular video of articulated characters and objects undergoing diverse rigid and non-rigid motion in a three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear."
-  dynamic_replica: "A rendered monocular video of articulated people moving through a furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear."
+  kubric: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows multiple rigid objects moving independently in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear."
+  pointodyssey: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated characters and objects undergoing diverse rigid and non-rigid motion in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear."
+  dynamic_replica: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated people moving through a rendered furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear."
 
 datasets:
   kubric:

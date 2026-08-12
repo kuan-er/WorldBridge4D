@@ -420,6 +420,7 @@ h023_256_three_dataset_200m:
   formal_world_size: 4
   requested_gate_world_size: 2
   tests_passed: 54
+  implementation_test_run: R-20260812210635-6c66cf
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey

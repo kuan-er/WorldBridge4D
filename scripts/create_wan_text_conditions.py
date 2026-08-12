@@ -14,10 +14,11 @@ import types
 
 import torch
 
+TASK_INSTRUCTION = "Estimate dense three-dimensional point trajectories over time from this monocular video."
 PROMPTS = {
-    "kubric": "A rendered monocular video of multiple rigid objects moving independently in a three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.",
-    "pointodyssey": "A rendered monocular video of articulated characters and objects undergoing diverse rigid and non-rigid motion in a three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.",
-    "dynamic_replica": "A rendered monocular video of articulated people moving through a furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear.",
+    "kubric": f"{TASK_INSTRUCTION} The video shows multiple rigid objects moving independently in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.",
+    "pointodyssey": f"{TASK_INSTRUCTION} The video shows articulated characters and objects undergoing diverse rigid and non-rigid motion in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.",
+    "dynamic_replica": f"{TASK_INSTRUCTION} The video shows articulated people moving through a rendered furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear.",
 }
 
 

@@ -273,8 +273,9 @@ def main() -> None:
         for step in range(start_step, target_steps):
             name = dataset_for_step(step, seed)
             dataset = datasets[name]
-            plans = [deterministic_sample_plan(dataset, name, seed, step, micro, rank)
-                     for micro in range(accumulation)]
+            plans = [deterministic_sample_plan(
+                dataset, name, seed, step, micro, rank, accumulation
+            ) for micro in range(accumulation)]
             futures = [pool.submit(
                 source_with_eligible_targets, dataset, index,
                 np.random.default_rng(np.random.SeedSequence([seed, step, micro, rank, 771])).permutation(21)
