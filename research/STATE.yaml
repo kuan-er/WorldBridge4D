@@ -456,8 +456,17 @@ h023_256_three_dataset_200m:
   two_gpu_gate:
     first_run: R-20260812221743-23c5d0
     first_run_result: failed_pre_fsdp_bf16_gate_audit
-    optimizer_updates_completed: 0
     fix: compare_gate_probabilities_after_parameter_dtype_quantization
+    successful_run: R-20260812223248-4899fa
+    result: two_optimizer_updates_succeeded_k6
+    optimizer_updates_completed: 2
+    peak_cuda_memory_gib: 14.130984783172607
+    second_step_seconds: 4.32242
+    final_loss: 1.15652
+    final_raw_epe_m: 3.25077
+    gradient_norm_clipped: 103
+    exact_resume_checkpoint_gib: 9.1
+    wandb_run: 8qnz9067
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey
