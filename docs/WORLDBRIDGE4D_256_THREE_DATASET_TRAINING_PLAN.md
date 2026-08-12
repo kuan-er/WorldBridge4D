@@ -1,13 +1,13 @@
-# WorldBridge4D 256×256 三数据集三天训练方案
+# WorldBridge4D 256×256 / 200M Readout 三数据集三天训练方案
 
-状态：**训练前方案，尚未完成 256 路线的工程验证或质量验证**  
+状态：**训练前方案，尚未完成 256 / 200M 路线的工程验证或质量验证**
 日期：2026-08-12
 
 ## 1. 目标与边界
 
-本轮目标是在 4×A100 80GB、约 72 小时 wall-clock 预算内，直接检验扩大输入信息、有效 Wan 深度、动态数据覆盖和训练预算后，WorldBridge4D 的 4D 几何与跟踪质量能达到什么水平。
+本轮目标是在 4×A100 80GB、约 72 小时 wall-clock 预算内，直接检验扩大输入信息、有效 Wan 深度、非 Wan readout 容量、动态数据覆盖和训练预算后，WorldBridge4D 的 4D 几何与跟踪质量能达到什么水平。
 
-这不是单变量消融。本轮同时改变分辨率、readout、文本条件和训练数据，因此结果用于筛选一条强配置，不能把收益单独归因于其中某个组件。
+这不是单变量消融。本轮同时改变分辨率、readout 层与容量、文本条件和训练数据，因此结果用于筛选一条强配置，不能把收益单独归因于其中某个组件。
 
 保持以下方法边界：
 
@@ -50,9 +50,9 @@ block 29: 0.10
 
 不使用 entropy regularization 或 top-k gate。训练中记录四个有效融合权重。该初始化保留已经验证的 `[13,14,15]` 中层 triad 为主路径，同时允许 block 29 的贡献随训练增加。
 
-### 2.3 Geometry adapter 和 decoder
+### 2.3 Geometry adapter 和约 200M readout
 
-采用当前约 100M 非 Wan readout 配置：
+本方案把“200M decoder”严格定义为 **geometry adapter + dense decoder 的非 Wan readout 总容量约 200M**。采用 width scaling：保留 5 个 cross-attention blocks，将 query width 从 1024 扩到 1536；不通过堆叠更多高成本 cross-attention 层凑参数。
 
 ```yaml
 geometry_dim: 512
@@ -62,14 +62,24 @@ geometry_clean_skip: true
 motion_slots: 8
 structured_local_queries: true
 
-query_dim: 1024
-embedding_dim: 512
+query_dim: 1536
+embedding_dim: 768
 num_cross_attn_layers: 5
-num_heads: 8
+num_heads: 12
 query_grid_size: 32
-upsample_channels: [1024, 512, 256, 128]
+upsample_channels: [1536, 768, 384, 192]
 output_size: 256
 ```
+
+`query_dim=1536` 与 Wan hidden width 对齐，`12` heads 给出 `128` 的 head dimension，也与 Wan attention head dimension 一致。按当前实现精确计数：
+
+| 模块 | 参数量 |
+|---|---:|
+| Geometry adapter（4-layer readout，`geometry_dim=512`） | 18,408,066 |
+| Dense decoder | 175,178,627 |
+| 非 Wan readout 合计 | **193,586,693** |
+
+因此文档中简称为 **200M readout**。它不是“dense decoder 单体严格 200M”；若把 decoder 增至 6 层，非 Wan 总容量会达到约 218.8M，并显著增加 256 大 memory 上的重复 cross-attention，故本轮不采用。
 
 空间解码路径为：
 
@@ -199,7 +209,7 @@ Kubric/DR 的 dense clips 通常有 `V_s={0,…,20}`，此时右侧就是 21-tar
 
 ### 5.3 K 的选择
 
-首选 K=6。在正式训练前运行 100–200 个真实 optimizer updates 的系统 gate：
+200M readout 的首选仍为 K=6，但相比原 100M 方案显存和吞吐风险更高；预计 K=4 更可能成为 optimizer-safe 配置。在正式训练前运行 100–200 个真实 optimizer updates 的系统 gate：
 
 - 4×A100 80GB；
 - BF16；
@@ -208,7 +218,7 @@ Kubric/DR 的 dense clips 通常有 `V_s={0,…,20}`，此时右侧就是 21-tar
 - gradient accumulation 2；
 - 包含 optimizer state、backward、clip 和 checkpoint smoke。
 
-若 K=6 OOM、peak allocated 超过约 72–74GiB，或吞吐明显不可接受，则固定退到 K=4。该 gate 只选择可运行配置，不构成质量消融。正式 run 启动后不改变 K。
+先测 K=6；若 OOM、peak allocated 超过约 72–74GiB，或吞吐明显不可接受，则固定退到 K=4。若 K=4 仍不能完成包含 optimizer state、backward 和 checkpoint 的完整 gate，不得静默缩回 100M；应停止并记录 200M 方案在当前系统上不可运行。该 gate 只选择可运行配置，不构成质量消融。正式 run 启动后不改变 K。
 
 ## 6. 损失
 
@@ -299,17 +309,17 @@ gradient_clip: 1.0
 - 最多约 68 小时训练；
 - 预留约 4 小时做 checkpoint、三个数据集固定验证和最终状态保存。
 
-现有 128 实测不能精确外推 256 + block29 + FSDP。规划区间为约 10k–30k optimizer updates/三天。正式速度必须由最初 200 个稳定 optimizer updates 的 median step time重新估计，记录而不是假定。
+现有 128 实测不能精确外推 256 + block29 + 200M readout + FSDP。相较先前 100M 计划，200M readout 的端到端 step time 预期增加约 30%–80%，但该区间不是实测结论。保守规划为约 7k–23k optimizer updates/三天；正式速度必须由最初 200 个稳定 optimizer updates 的 median step time 重新估计，记录而不是假定。
 
 有效 global batch 为 8 时：
 
 | optimizer updates | clips seen | Kubric 35% | PO 30% | DR 35% |
 |---:|---:|---:|---:|---:|
-| 10k | 80k | 28k | 24k | 28k |
-| 20k | 160k | 56k | 48k | 56k |
-| 30k | 240k | 84k | 72k | 84k |
+| 7k | 56k | 19.6k | 16.8k | 19.6k |
+| 15k | 120k | 42k | 36k | 42k |
+| 23k | 184k | 64.4k | 55.2k | 64.4k |
 
-以当前 train clips `5737/9746/6090` 粗略换算，20k updates 约为 Kubric 9.8、PO 4.9、DR 9.2 个 dataset passes。
+以当前 train clips `5737/9746/6090` 粗略换算，15k updates 约为 Kubric 7.3、PO 3.7、DR 6.9 个 dataset passes。该表只用于资源规划；正式报告使用实际 clips seen 和 wall-clock GPU-hours。
 
 三天后如果 48h→68h 的 held-out Sim(3)-aligned EPE 仍稳定改善，则从完整 model/optimizer/scheduler/RNG 状态继续训练；否则先分析数据集负迁移、吞吐和子集误差，不机械跑满 100k。
 
@@ -391,13 +401,14 @@ checkpoint 选择可使用三个数据集各自的 aligned EPE relative-to-basel
 1. 三个 256 数据集 manifest、几何审计和 latent cache 完成；
 2. 三个 UMT5 condition 的 shape、token metadata 和 checksum 完成；
 3. `[13,14,15,29]` 初始权重精确为 `0.30/0.30/0.30/0.10`；
-4. block 16–29、geometry adapter 和 decoder 梯度均非零且有限；
-5. K=6 或回退 K=4 的完整 optimizer-step capacity gate；
-6. 4-rank FSDP、gradient accumulation 和 mixed-dataset schedule 可精确 resume；
-7. K-chunk evaluation 与一次性相同 K evaluation 在容差内一致；
-8. per-clip RANSAC Sim(3) evaluator 在合成已知变换上恢复正确 `s,R,t`；
-9. correct prompt condition 确实进入所有执行的 Wan blocks；
-10. W&B/offline logging、checkpoint 原子替换和 68h graceful-stop 已验证。
+4. 非 Wan readout 参数量审计为 `193,586,693`，且 query width/head 配置为 `1536/12`；
+5. block 16–29、geometry adapter 和 decoder 梯度均非零且有限；
+6. K=6 或回退 K=4 的完整 optimizer-step capacity gate；
+7. 4-rank FSDP、gradient accumulation 和 mixed-dataset schedule 可精确 resume；
+8. K-chunk evaluation 与一次性相同 K evaluation 在容差内一致；
+9. per-clip RANSAC Sim(3) evaluator 在合成已知变换上恢复正确 `s,R,t`；
+10. correct prompt condition 确实进入所有执行的 Wan blocks；
+11. W&B/offline logging、checkpoint 原子替换和 68h graceful-stop 已验证。
 
 ## 12. 本轮最终冻结项
 
@@ -408,8 +419,9 @@ Wan latent:             16×6×32×32
 Readout blocks:         [13,14,15,29]
 Initial layer weights:  [0.30,0.30,0.30,0.10]
 Text:                   三个固定语义 prompts，无 dropout
-Decoder:                约 100M
-Training targets:       K=6；OOM/吞吐 gate 失败则固定 K=4
+Readout:                193,586,693 参数（约 200M）
+Decoder topology:       query_dim 1536 / 12 heads / 5 blocks
+Training targets:       先测 K=6；OOM/吞吐 gate 失败则固定 K=4
 Loss:                   validity-masked XYZ SmoothL1 only
 Data mix:               Kubric 35% / PO 30% / DR 35%
 Hardware:               4×A100 80GB
