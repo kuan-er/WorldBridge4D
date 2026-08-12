@@ -13,6 +13,7 @@ from worldbridge.training256 import (
     deterministic_dataset_schedule, deterministic_sample_plan, sample_eligible_targets,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
+from scripts.create_wan_text_conditions import PROMPTS, TASK_INSTRUCTION
 
 
 class TinyExplicitConditionMapping(nn.Module):
@@ -34,6 +35,12 @@ class TinyExplicitConditionMapping(nn.Module):
         tokens = pooled.permute(0, 2, 3, 4, 1).reshape(latent.shape[0], 6 * 16 * 16, 16)
         value = self.projection(tokens)
         return tuple(value * (layer + 1) for layer in layers), (6, 16, 16)
+
+
+def test_three_dataset_prompts_share_exact_task_instruction():
+    assert set(PROMPTS) == {"kubric", "pointodyssey", "dynamic_replica"}
+    assert all(prompt.startswith(TASK_INSTRUCTION) for prompt in PROMPTS.values())
+    assert all(prompt.count(TASK_INSTRUCTION) == 1 for prompt in PROMPTS.values())
 
 
 def test_256_latent_contract_and_explicit_prompt_reaches_mapping():
