@@ -446,12 +446,13 @@ h023_256_three_dataset_200m:
     cache_checksums_verified: true
     concurrent_creation_serialized: true
   lazy_vae_gate_cache:
-    status: implemented_static_and_real_rgb_verified
+    status: implemented_real_vae_encode_verified
     mode: pre_fsdp_deterministic_read_through
     cache_format: per_clip_atomic_safetensors
     identity: dataset_clip_id_index_vae_sha256_contract
     vae_model_co_resident: false
     formal_training_policy: complete_shards_still_required
+    verification_run: R-20260812220655-985f1e
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey
