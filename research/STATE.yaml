@@ -453,6 +453,11 @@ h023_256_three_dataset_200m:
     vae_model_co_resident: false
     formal_training_policy: complete_shards_still_required
     verification_run: R-20260812220655-985f1e
+  two_gpu_gate:
+    first_run: R-20260812221743-23c5d0
+    first_run_result: failed_pre_fsdp_bf16_gate_audit
+    optimizer_updates_completed: 0
+    fix: compare_gate_probabilities_after_parameter_dtype_quantization
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey
