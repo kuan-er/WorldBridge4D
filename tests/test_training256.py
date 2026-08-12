@@ -9,8 +9,8 @@ from torch import nn
 
 from worldbridge.dense4d import DenseQueryDecoder, WanHiddenGeometryBackbone, masked_pair_smooth_l1
 from worldbridge.training256 import (
-    apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
-    deterministic_sample_plan, sample_eligible_targets,
+    CachedExternalDataset, apply_cosine_schedule, dataset_for_step,
+    deterministic_dataset_schedule, deterministic_sample_plan, sample_eligible_targets,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
 
@@ -69,6 +69,24 @@ def test_three_dataset_cycle_has_exact_ratio_and_is_resume_pure():
     assert cycle.count("pointodyssey") == 6
     assert cycle.count("dynamic_replica") == 7
     assert [dataset_for_step(step, 20260812) for step in range(40)] == list(cycle) * 2
+
+
+def test_small_256_index_maps_back_to_geometry_clip_ids(tmp_path, monkeypatch):
+    split = tmp_path / "splits"; split.mkdir()
+    (split / "train.jsonl").write_text('{"clip_id":"keep"}\n')
+    latent = tmp_path / "latents" / "wan2.1_1.3b_fp32_256"; latent.mkdir(parents=True)
+    class Geometry:
+        rows = [{"clip_id": "skip"}, {"clip_id": "keep"}]
+        def __len__(self): return 2
+        def source_all_targets(self, index, source): return index, source
+        def source_all_targets_with_visibility(self, index, source): return index, source, True
+    class Latents:
+        def __getitem__(self, index): return index
+    monkeypatch.setattr("worldbridge.training256.LatentShardStore", lambda *_args, **_kwargs: Latents())
+    dataset = CachedExternalDataset(Geometry(), tmp_path)
+    assert len(dataset) == 1
+    assert dataset.source_all_targets(0, 7) == (1, 7)
+    assert dataset.clean_latent(0) == 0
 
 
 def test_parent_balanced_plan_keeps_ranks_in_one_scene_block():

@@ -183,21 +183,30 @@ class CachedExternalDataset:
     def __init__(self, geometry: PointOdysseyDataset | DynamicReplicaDataset,
                  cache_root: str | Path) -> None:
         self.geometry = geometry
-        self.rows = geometry.rows
+        cache_root = Path(cache_root)
+        index_path = cache_root / "splits" / "train.jsonl"
+        if not index_path.is_file():
+            raise FileNotFoundError(index_path)
+        self.rows = [json.loads(line) for line in index_path.read_text().splitlines() if line]
+        by_clip = {str(row["clip_id"]): index for index, row in enumerate(geometry.rows)}
+        try:
+            self.geometry_indices = [by_clip[str(row["clip_id"])] for row in self.rows]
+        except KeyError as exc:
+            raise ValueError(f"256 index is not a subset of its geometry cache: {exc}") from exc
         self.latents = LatentShardStore(
-            Path(cache_root) / "latents" / "wan2.1_1.3b_fp32_256"
+            cache_root / "latents" / "wan2.1_1.3b_fp32_256"
         )
 
     def __len__(self) -> int:
-        return len(self.geometry)
+        return len(self.rows)
 
     def source_all_targets(self, index: int, source: int) -> tuple[np.ndarray, np.ndarray]:
-        return self.geometry.source_all_targets(index, source)
+        return self.geometry.source_all_targets(self.geometry_indices[index], source)
 
     def source_all_targets_with_visibility(
         self, index: int, source: int,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        return self.geometry.source_all_targets_with_visibility(index, source)
+        return self.geometry.source_all_targets_with_visibility(self.geometry_indices[index], source)
 
     def clean_latent(self, index: int) -> np.ndarray:
         # The 256 producer writes each split in split-local row order; training
@@ -215,7 +224,9 @@ class MOViF256Dataset:
         if not index_path.is_file():
             raise FileNotFoundError(index_path)
         self.rows = [json.loads(line) for line in index_path.read_text().splitlines() if line]
-        max_index = max(int(row["raw_index"]) for row in self.rows) if self.rows else -1
+        if not self.rows:
+            raise RuntimeError(f"empty MOVi-F 256 index: {index_path}")
+        max_index = max(int(row["raw_index"]) for row in self.rows)
         self.native = MOViFDataset(raw_root, split=split, clip_length=21, clip_start=0,
                                    max_examples=max_index + 1)
         latent_root = cache_root / "latents" / "wan2.1_1.3b_fp32_256"

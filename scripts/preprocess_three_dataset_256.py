@@ -91,18 +91,6 @@ def main() -> None:
         raise FileNotFoundError(args.vae)
     output = args.cache_root / "latents" / "wan2.1_1.3b_fp32_256"
     output.mkdir(parents=True, exist_ok=True)
-    if args.dataset != "kubric":
-        geometry_root = (args.geometry_cache_root or args.cache_root).resolve()
-        for split in args.splits:
-            source_index = geometry_root / "splits" / f"{split}.jsonl"
-            target_index = args.cache_root / "splits" / f"{split}.jsonl"
-            if not source_index.is_file():
-                raise FileNotFoundError(source_index)
-            target_index.parent.mkdir(parents=True, exist_ok=True)
-            if target_index.exists() and target_index.read_bytes() != source_index.read_bytes():
-                raise RuntimeError(f"refusing to overwrite different 256 index: {target_index}")
-            if not target_index.exists():
-                target_index.write_bytes(source_index.read_bytes())
     encoder = WanVAEEncoder(args.vae, device=args.device, dtype=torch.float32,
                             expected_shape=WAN_LATENT_SHAPE_256)
     pool = ThreadPoolExecutor(max_workers=max(1, args.io_workers))
@@ -116,6 +104,14 @@ def main() -> None:
         geometry_root = (args.geometry_cache_root or args.cache_root).resolve()
         dataset = dataset_reader(args.dataset, args.raw_root.resolve(), geometry_root, split)
         count = len(dataset) if args.max_clips is None else min(len(dataset), args.max_clips)
+        target_index = args.cache_root / "splits" / f"{split}.jsonl"
+        target_index.parent.mkdir(parents=True, exist_ok=True)
+        selected_rows = dataset.rows[:count]
+        selected_text = "".join(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n" for row in selected_rows)
+        if target_index.exists() and target_index.read_text() != selected_text:
+            raise RuntimeError(f"refusing to overwrite different 256 index: {target_index}")
+        if not target_index.exists():
+            target_index.write_text(selected_text)
         for offset in range(0, count, args.shard_size):
             end = min(count, offset + args.shard_size)
             shard = split_output / f"shard_{split_index:08d}_{end-offset:05d}.safetensors"
