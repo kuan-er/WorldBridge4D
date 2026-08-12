@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from worldbridge.dense4d import masked_pair_smooth_l1
 from worldbridge.dense4d_runtime import (
-    build_real_model, capture_rng_state, load_text_condition, parameter_groups,
+    build_real_model, capture_rng_state, parameter_groups,
     precision_dtype, restore_rng_state,
 )
 from worldbridge.training256 import (
@@ -37,6 +37,7 @@ from worldbridge.training256 import (
     deterministic_sample_plan, load_training_datasets, sample_eligible_targets,
     source_with_eligible_targets,
 )
+from worldbridge.text_conditions import load_dataset_text_conditions
 
 _STOP = False
 
@@ -104,19 +105,6 @@ def load_stats(config: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     if not np.isfinite(mean).all() or not np.isfinite(scale).all() or np.any(scale <= 0):
         raise ValueError("invalid mixture coordinate statistics")
     return mean, scale
-
-
-def text_conditions(config: dict[str, Any]) -> dict[str, torch.Tensor]:
-    paths = config["text_conditions"]
-    result = {name: load_text_condition(paths[name]).cpu() for name in DATASET_NAMES}
-    metadata_path = Path(paths["metadata"])
-    if not metadata_path.is_file():
-        raise FileNotFoundError(metadata_path)
-    metadata = json.loads(metadata_path.read_text())
-    for name in DATASET_NAMES:
-        if metadata.get(name, {}).get("prompt") != config["prompts"][name]:
-            raise ValueError(f"prompt metadata mismatch for {name}")
-    return result
 
 
 def init_wandb(config: dict[str, Any], output: Path, rank: int, disabled: bool):
@@ -221,7 +209,7 @@ def main() -> None:
         output.mkdir(parents=True, exist_ok=True)
     dist.barrier()
     mean, scale = load_stats(config)
-    conditions = text_conditions(config)
+    conditions, prompt_metadata = load_dataset_text_conditions(config)
     datasets = load_training_datasets(config)
     if rank == 0:
         print(json.dumps({"event": "three_dataset_cache_ready", "clips": {k: len(v) for k, v in datasets.items()}}), flush=True)
@@ -367,7 +355,11 @@ def main() -> None:
             periodic = completed in checkpoint_steps or (completed > 10000 and checkpoint_every and completed % checkpoint_every == 0)
             final = completed == target_steps or bool(stop_tensor.item())
             if periodic or final or (args.checkpoint_at_end and completed == target_steps):
-                state = {"global_step": completed, "clips_seen": clips_seen, "dataset_cycle_offset": completed % 20}
+                state = {
+                    "global_step": completed, "clips_seen": clips_seen,
+                    "dataset_cycle_offset": completed % 20,
+                    "prompt_metadata": prompt_metadata,
+                }
                 save_checkpoint(output / "latest.pt", fsdp, optimizer, config, state, mean, scale, rank, world)
                 if periodic:
                     save_checkpoint(output / f"checkpoint-{completed:07d}.pt", fsdp, optimizer, config, state, mean, scale, rank, world)

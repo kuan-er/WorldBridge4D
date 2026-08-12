@@ -82,13 +82,13 @@ def main() -> None:
             "dataset": name, "prompt": prompt, "unpadded_tokens": int(len(unpadded)),
             "source_commit": commit, "source_layout": layout, "source_root": str(source),
             "t5_checkpoint": str(t5_checkpoint), "t5_checkpoint_sha256": sha256(t5_checkpoint),
-            "tokenizer": str(tokenizer),
+            "tokenizer": str(tokenizer), "shape": list(condition.shape),
         }
         path = output / f"{name}.pt"
         temporary = path.with_suffix(".pt.tmp")
         torch.save({"encoder_hidden_states": condition, "metadata": metadata}, temporary)
         temporary.replace(path)
-        summary[name] = {"path": str(path), "shape": list(condition.shape), **metadata}
+        summary[name] = {"path": str(path), **metadata, "condition_sha256": sha256(path)}
     (output / "metadata.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     print("WAN_THREE_TEXT_CONDITIONS_READY", flush=True)

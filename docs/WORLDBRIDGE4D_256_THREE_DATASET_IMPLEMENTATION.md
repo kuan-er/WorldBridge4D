@@ -13,6 +13,8 @@ python scripts/create_wan_text_conditions.py \
   --output-dir /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions
 ```
 
+生成器会保存每个 condition 的 prompt、shape 和 SHA-256；训练与推理都会严格校验 metadata，禁止回退到 empty condition。
+
 ## 2. 重新生成 256 latent
 
 旧 128 RGB/16×16 latent 不可复用。以下命令总是读取原始 RGB，先构造 256 RGB，再用 frozen Wan VAE posterior mean 生成 `[16,6,32,32]` float32 safetensors。
@@ -82,6 +84,22 @@ OUTPUT=/data/WorldBridge4D-runs/worldbridge4d_256_three_dataset_200m \
 ```
 
 launcher 检测到 `OUTPUT/latest.pt` 后自动 exact resume。Checkpoint 包含 full model、AdamW、global step、各数据集 clips seen、每 rank Python/NumPy/Torch/CUDA RNG 和数据集 cycle offset。
+
+## 6. 带对应 prompt 的推理
+
+推理必须显式指定数据集，脚本据此加载同一数据集训练时使用的 condition：
+
+```bash
+python scripts/infer_three_dataset_256.py \
+  --config configs/worldbridge4d_256_three_dataset_200m_fsdp.yaml \
+  --checkpoint /data/WorldBridge4D-runs/worldbridge4d_256_three_dataset_200m/latest.pt \
+  --dataset pointodyssey --index 0 --source 0 \
+  --targets 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+  --target-chunk 2 \
+  --output /data/WorldBridge4D-runs/inference/pointodyssey_000000.pt
+```
+
+checkpoint、配置和 condition metadata 中的 prompt 必须逐字一致；否则推理会直接失败。
 
 ## 已实现 gate
 

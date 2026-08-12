@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from pathlib import Path
+import json
 import re
 
 import numpy as np
@@ -15,6 +16,7 @@ from worldbridge.training256 import (
     deterministic_dataset_schedule, deterministic_sample_plan, sample_eligible_targets,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
+from worldbridge.text_conditions import load_inference_text_condition
 from scripts.create_wan_text_conditions import PROMPTS, TASK_INSTRUCTION
 
 
@@ -51,6 +53,34 @@ def test_three_dataset_prompts_match_training_plan_and_yaml_exactly():
     plan = (root / "docs/WORLDBRIDGE4D_256_THREE_DATASET_TRAINING_PLAN.md").read_text()
     documented = re.findall(r"```text\n(Estimate dense three-dimensional point trajectories[^\n]+)\n```", plan)
     assert documented == [PROMPTS[name] for name in ("kubric", "pointodyssey", "dynamic_replica")]
+
+
+def test_inference_condition_is_dataset_specific_and_checksum_verified(tmp_path):
+    import hashlib
+
+    prompts = {name: PROMPTS[name] for name in PROMPTS}
+    paths = {"metadata": str(tmp_path / "metadata.json")}
+    metadata = {}
+    for index, name in enumerate(("kubric", "pointodyssey", "dynamic_replica")):
+        path = tmp_path / f"{name}.pt"
+        value = torch.full((1, 512, 4096), float(index), dtype=torch.bfloat16)
+        torch.save({"encoder_hidden_states": value}, path)
+        paths[name] = str(path)
+        metadata[name] = {
+            "dataset": name, "prompt": prompts[name], "shape": [1, 512, 4096],
+            "condition_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata))
+    config = {"prompts": prompts, "text_conditions": paths}
+    pointodyssey, record = load_inference_text_condition(config, "pointodyssey")
+    assert torch.equal(pointodyssey, torch.ones_like(pointodyssey))
+    assert record["prompt"] == PROMPTS["pointodyssey"]
+    with pytest.raises(ValueError, match="dataset must be"):
+        load_inference_text_condition(config, "unknown")
+    with Path(paths["kubric"]).open("ab") as stream:
+        stream.write(b"corrupt")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        load_inference_text_condition(config, "kubric")
 
 
 def test_256_latent_contract_and_explicit_prompt_reaches_mapping():
