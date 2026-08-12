@@ -126,6 +126,13 @@ def test_inference_script_encodes_backbone_once_before_target_chunks():
     assert "model(latent, source_tensor, target_tensor, condition)" not in source
 
 
+def test_bf16_layer_gate_audit_uses_quantized_config_logits():
+    logits = torch.tensor([0.0, 0.0, 0.0, -1.0986122887], dtype=torch.bfloat16)
+    weights = logits.float().softmax(0)
+    assert not torch.allclose(weights, torch.tensor([0.3, 0.3, 0.3, 0.1]), atol=1e-7, rtol=0)
+    torch.testing.assert_close(weights, logits.float().softmax(0), atol=1e-7, rtol=0)
+
+
 def test_256_latent_contract_and_explicit_prompt_reaches_mapping():
     assert WAN_LATENT_SHAPE_256 == (16, 6, 32, 32)
     mapping = TinyExplicitConditionMapping()

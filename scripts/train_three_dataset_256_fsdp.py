@@ -333,8 +333,17 @@ def main() -> None:
 
     model = build_real_model(config, device)
     layer_weights = model.backbone.layer_weights().detach().float().cpu().numpy()
-    if not np.allclose(layer_weights, [0.3, 0.3, 0.3, 0.1], atol=1e-7):
-        raise RuntimeError(f"constructed readout weights changed: {layer_weights}")
+    # build_real_model intentionally materializes the BF16 training model before
+    # this audit. Compare against the configured logits after the same dtype
+    # quantization, rather than impossible exact FP32 probabilities.
+    quantized_logits = torch.as_tensor(
+        config["layer_gate_initial_logits"], dtype=model.backbone.layer_logits.dtype,
+    ).float()
+    expected_layer_weights = quantized_logits.softmax(0).cpu().numpy()
+    if not np.allclose(layer_weights, expected_layer_weights, atol=1e-7):
+        raise RuntimeError(
+            f"constructed readout weights changed: {layer_weights} != {expected_layer_weights}"
+        )
     adapter_count = sum(p.numel() for p in model.backbone.adapter_parameters)
     decoder_count = sum(p.numel() for p in model.decoder.parameters())
     non_wan_count = adapter_count + decoder_count
