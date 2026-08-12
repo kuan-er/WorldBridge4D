@@ -481,6 +481,9 @@ h023_256_three_dataset_200m:
     checkpoint_contains_full_model_optimizer_rng: true
     wandb: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/8qnz9067
     limitation: minimal two-step gate used lazy cached latents and did not yet exercise a Kubric update, exact resume, or the planned 100-200-update throughput gate
+    resume_attempt: R-20260812223450-2f1c98
+    resume_attempt_result: blocked_before_checkpoint_load_by_transient_raw_mount_loss
+    resume_checkpoint_preserved_at_step: 2
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey
