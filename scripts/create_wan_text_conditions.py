@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import importlib
 import json
@@ -53,6 +54,25 @@ def native_encoder(source: Path):
     raise FileNotFoundError(f"not a Wan2.1 source package: {source}")
 
 
+def completed_cache(output: Path) -> dict | None:
+    """Return a verified complete cache, never a partial concurrent write."""
+    metadata_path = output / "metadata.json"
+    if not metadata_path.is_file():
+        return None
+    try:
+        summary = json.loads(metadata_path.read_text())
+        for name, prompt in PROMPTS.items():
+            record = summary[name]
+            path = output / f"{name}.pt"
+            if (record.get("dataset") != name or record.get("prompt") != prompt
+                    or record.get("shape") != [1, 512, 4096]
+                    or not path.is_file() or record.get("condition_sha256") != sha256(path)):
+                return None
+        return summary
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--wan-source", default=os.getenv("WAN_SOURCE_ROOT"), required=os.getenv("WAN_SOURCE_ROOT") is None)
@@ -63,6 +83,15 @@ def main() -> None:
     source = Path(args.wan_source).resolve()
     checkpoint = Path(args.checkpoint_dir).resolve()
     output = Path(args.output_dir).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    # Several launchers may notice the same absent cache at once. Serialize the
+    # expensive UMT5 load/encode and let later processes reuse verified output.
+    lock_handle = (output / ".create.lock").open("a+b")
+    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+    if cached := completed_cache(output):
+        print(json.dumps(cached, indent=2))
+        print("WAN_THREE_TEXT_CONDITIONS_READY", flush=True)
+        return
     T5EncoderModel, layout = native_encoder(source)
     t5_checkpoint = checkpoint / "models_t5_umt5-xxl-enc-bf16.pth"
     tokenizer = checkpoint / "google/umt5-xxl"
@@ -77,7 +106,6 @@ def main() -> None:
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
     except (OSError, subprocess.CalledProcessError):
         commit = "unavailable"
-    output.mkdir(parents=True, exist_ok=True)
     summary = {}
     names = list(PROMPTS)
     with torch.inference_mode():
@@ -97,11 +125,14 @@ def main() -> None:
             "tokenizer": str(tokenizer), "shape": list(condition.shape),
         }
         path = output / f"{name}.pt"
-        temporary = path.with_suffix(".pt.tmp")
+        temporary = path.with_suffix(f".pt.{os.getpid()}.tmp")
         torch.save({"encoder_hidden_states": condition, "metadata": metadata}, temporary)
         temporary.replace(path)
         summary[name] = {"path": str(path), **metadata, "condition_sha256": sha256(path)}
-    (output / "metadata.json").write_text(json.dumps(summary, indent=2) + "\n")
+    metadata_path = output / "metadata.json"
+    metadata_temporary = output / f"metadata.json.{os.getpid()}.tmp"
+    metadata_temporary.write_text(json.dumps(summary, indent=2) + "\n")
+    metadata_temporary.replace(metadata_path)
     print(json.dumps(summary, indent=2))
     print("WAN_THREE_TEXT_CONDITIONS_READY", flush=True)
 

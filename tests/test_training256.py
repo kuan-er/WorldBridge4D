@@ -17,7 +17,9 @@ from worldbridge.training256 import (
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
 from worldbridge.text_conditions import load_inference_text_condition
-from scripts.create_wan_text_conditions import PROMPTS, TASK_INSTRUCTION, native_encoder
+from scripts.create_wan_text_conditions import (
+    PROMPTS, TASK_INSTRUCTION, completed_cache, native_encoder,
+)
 
 
 class TinyExplicitConditionMapping(nn.Module):
@@ -55,6 +57,24 @@ def test_native_wan_text_encoder_skips_official_package_init(tmp_path):
     encoder, layout = native_encoder(tmp_path)
     assert encoder.__name__ == "T5EncoderModel"
     assert layout == "official_wan_package"
+
+
+def test_completed_text_condition_cache_rejects_partial_and_accepts_verified(tmp_path):
+    import hashlib
+
+    assert completed_cache(tmp_path) is None
+    summary = {}
+    for name, prompt in PROMPTS.items():
+        path = tmp_path / f"{name}.pt"
+        path.write_bytes(name.encode())
+        summary[name] = {
+            "dataset": name, "prompt": prompt, "shape": [1, 512, 4096],
+            "condition_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    (tmp_path / "metadata.json").write_text(json.dumps(summary))
+    assert completed_cache(tmp_path) == summary
+    (tmp_path / "kubric.pt").write_bytes(b"partial")
+    assert completed_cache(tmp_path) is None
 
 
 def test_three_dataset_prompts_match_training_plan_and_yaml_exactly():
