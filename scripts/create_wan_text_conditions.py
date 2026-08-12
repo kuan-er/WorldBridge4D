@@ -79,9 +79,14 @@ def main() -> None:
         commit = "unavailable"
     output.mkdir(parents=True, exist_ok=True)
     summary = {}
-    for name, prompt in PROMPTS.items():
-        with torch.inference_mode():
-            unpadded = encoder([prompt], device)[0].detach()
+    names = list(PROMPTS)
+    with torch.inference_mode():
+        encoded = encoder([PROMPTS[name] for name in names], device)
+    if len(encoded) != len(names):
+        raise RuntimeError(f"native UMT5 returned {len(encoded)}/{len(names)} conditions")
+    for name, unpadded in zip(names, encoded):
+        prompt = PROMPTS[name]
+        unpadded = unpadded.detach()
         if unpadded.ndim != 2 or unpadded.shape[1] != 4096 or unpadded.shape[0] > 512:
             raise RuntimeError(f"{name}: unexpected UMT5 output {tuple(unpadded.shape)}")
         condition = torch.cat((unpadded, unpadded.new_zeros(512 - len(unpadded), 4096)))[None].cpu()
