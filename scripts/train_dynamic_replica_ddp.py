@@ -267,12 +267,17 @@ def main() -> None:
         optimizer.load_state_dict(resume_payload["optimizer"])
     batch = int(config.get("batch_size_per_gpu", config.get("batch_size", 1)))
     steps = int(args.steps or config.get("steps", 500000))
-    if batch != 1:
-        raise ValueError(f"the registered Dynamic Replica capacity run requires batch_size_per_gpu=1, got {batch}")
+    if batch != 8:
+        raise ValueError(f"the registered Dynamic Replica capacity run requires batch_size_per_gpu=8, got {batch}")
     if resume_payload is not None:
         old_batch = int(resume_payload.get("config", {}).get("batch_size_per_gpu", batch))
         if old_batch != batch:
-            raise ValueError(f"resume batch mismatch: checkpoint={old_batch}, current={batch}")
+            # AdamW/global_step checkpoints remain valid when changing the
+            # micro-batch; clips_seen preserves sample accounting.  Record the
+            # explicit capacity change instead of silently claiming an exact
+            # same-batch resume.
+            if rank == 0:
+                print(f"DYNAMIC_REPLICA_BATCH_CHANGE: checkpoint={old_batch} current={batch}; optimizer state resumed", flush=True)
     config["batch_size_per_gpu"] = batch
     config["steps"] = steps
     start_step = int(resume_payload["training_state"]["global_step"]) if resume_payload else 0

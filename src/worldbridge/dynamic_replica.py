@@ -137,10 +137,14 @@ class DynamicReplicaDataset:
         self.raw_train_root = Path(state["raw_root"]) / "train"
         self._clips: OrderedDict[str, dict[str, np.ndarray]] = OrderedDict()
         self._max_clip_cache = 2
+        self._streams: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._max_stream_cache = 2
         self._clip_lock = threading.RLock()
+        self._stream_lock = threading.RLock()
         # Different clips may decode concurrently.  A single lock around all 21
         # torch.load calls would silently serialize the geometry prefetch pool;
-        # per-clip locks only coalesce duplicate requests for the same clip.
+        # per-stream locks only coalesce duplicate scene loads.
+        self._stream_load_locks: dict[str, threading.Lock] = {}
         self._clip_load_locks: dict[str, threading.Lock] = {}
 
     def __len__(self) -> int:
@@ -148,6 +152,61 @@ class DynamicReplicaDataset:
 
     def clip_id(self, index: int) -> str:
         return str(self.rows[index]["clip_id"])
+
+    def _load_stream(self, stream: str) -> dict[str, Any]:
+        """Load one complete stream into a shared read-only geometry cache.
+
+        The old cache under ``dynamic_pointmap`` contains only diagnostic
+        examples, not all training clips.  This stream-local cache is the
+        usable geometry cache for the formal route: each trajectory archive is
+        decoded once, then all contiguous 21-frame clips reuse its arrays.
+        """
+        with self._stream_lock:
+            cached = self._streams.get(stream)
+            if cached is not None:
+                self._streams.move_to_end(stream)
+                return cached
+            load_lock = self._stream_load_locks.setdefault(stream, threading.Lock())
+        with load_lock:
+            with self._stream_lock:
+                cached = self._streams.get(stream)
+                if cached is not None:
+                    self._streams.move_to_end(stream)
+                    return cached
+            trajectory_dir = self.raw_train_root / stream / "trajectories"
+            paths = sorted(trajectory_dir.glob("*.pth"))
+            if not paths:
+                raise FileNotFoundError(f"no trajectory files for Dynamic Replica stream {stream}: {trajectory_dir}")
+            uv, world, visible, instances = [], [], [], []
+            expected_points: int | None = None
+            for path in paths:
+                value = torch.load(path, map_location="cpu", weights_only=True)
+                n = int(value["traj_3d_world"].shape[0])
+                if expected_points is None:
+                    expected_points = n
+                if n != expected_points or int(value["traj_2d"].shape[0]) != expected_points:
+                    raise ValueError(f"track count changed in stream {stream}: {path}")
+                uv.append(value["traj_2d"][:, :2].numpy())
+                world.append(value["traj_3d_world"].numpy())
+                visible.append(value["verts_inds_vis"].numpy())
+                instances.append(value["instances"].numpy())
+            cache = {
+                "paths": [str(path.relative_to(self.raw_train_root)) for path in paths],
+                "path_to_index": {str(path.relative_to(self.raw_train_root)): i for i, path in enumerate(paths)},
+                "trajs_2d": np.stack(uv), "trajs_3d_world": np.stack(world),
+                "visible": np.stack(visible).astype(bool), "instances": np.stack(instances),
+            }
+            if not np.all(cache["instances"] == cache["instances"][0:1]):
+                raise ValueError(f"track instance identity changed in stream {stream}")
+            for key, value in cache.items():
+                if isinstance(value, np.ndarray):
+                    value.setflags(write=False)
+            with self._stream_lock:
+                self._streams[stream] = cache
+                self._streams.move_to_end(stream)
+                while len(self._streams) > self._max_stream_cache:
+                    self._streams.popitem(last=False)
+                return cache
 
     def _load_clip(self, row: dict[str, Any]) -> dict[str, np.ndarray]:
         key = str(row["clip_id"])
@@ -157,42 +216,25 @@ class DynamicReplicaDataset:
                 self._clips.move_to_end(key)
                 return cached
             load_lock = self._clip_load_locks.setdefault(key, threading.Lock())
-
         with load_lock:
-            # Another worker may have completed this clip while we waited.
             with self._clip_lock:
                 cached = self._clips.get(key)
                 if cached is not None:
                     self._clips.move_to_end(key)
                     return cached
-
-            # Do expensive independent file reads outside the global LRU lock.
-            uv, world, visible, instances = [], [], [], []
-            expected_points: int | None = None
-            for frame in row["frames"]:
-                path = self.raw_train_root / frame["trajectory"]
-                value = torch.load(path, map_location="cpu", weights_only=True)
-                n = int(value["traj_3d_world"].shape[0])
-                if expected_points is None:
-                    expected_points = n
-                if n != expected_points or int(value["traj_2d"].shape[0]) != expected_points:
-                    raise ValueError(f"track count changed inside {key}: {path}")
-                uv.append(value["traj_2d"][:, :2].numpy())
-                world.append(value["traj_3d_world"].numpy())
-                visible.append(value["verts_inds_vis"].numpy())
-                instances.append(value["instances"].numpy())
+            stream = self._load_stream(str(row["stream"]))
+            try:
+                indices = [stream["path_to_index"][str(frame["trajectory"])] for frame in row["frames"]]
+            except KeyError as exc:
+                raise FileNotFoundError(f"clip {key} is not covered by stream cache") from exc
             annotation = {
-                "trajs_2d": np.stack(uv),
-                "trajs_3d_world": np.stack(world),
-                "visible": np.stack(visible).astype(bool),
-                "instances": np.stack(instances),
+                "trajs_2d": stream["trajs_2d"][indices],
+                "trajs_3d_world": stream["trajs_3d_world"][indices],
+                "visible": stream["visible"][indices],
+                "instances": stream["instances"][indices],
             }
-            # Point indices must retain object identity across the clip.
             if not np.all(annotation["instances"] == annotation["instances"][0:1]):
                 raise ValueError(f"track instance identity changed inside {key}")
-            for value in annotation.values():
-                value.setflags(write=False)
-
             with self._clip_lock:
                 self._clips[key] = annotation
                 self._clips.move_to_end(key)

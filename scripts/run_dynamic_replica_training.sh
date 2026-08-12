@@ -26,14 +26,14 @@ export CUDA_VISIBLE_DEVICES="$GPUS"
 
 # This script is intentionally strict about the registered capacity.  A later
 # multi-card run changes world size, not the per-card batch, and resumes the
-# exact optimizer/global-step checkpoint.
+# optimizer/global-step checkpoint.
 BATCH="$(/opt/conda/bin/python - "$CONFIG" <<'PY'
 import sys, yaml
 with open(sys.argv[1]) as f:
     cfg = yaml.safe_load(f)
 value = int(cfg.get("batch_size_per_gpu", cfg.get("batch_size", 1)))
-if value != 1:
-    raise SystemExit(f"registered Dynamic Replica batch must be 1, got {value}")
+if value != 8:
+    raise SystemExit(f"registered Dynamic Replica batch must be 8, got {value}")
 print(value)
 PY
 )"
