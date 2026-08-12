@@ -484,7 +484,7 @@ h023_256_three_dataset_200m:
     resume_100_run: R-20260812223630-816837
     resume_100_result: failed_pre_model_stale_kubric_path
   k21_two_gpu_gate:
-    status: b1_a2_and_b2_a1_passed_b2_above_safe_memory_ceiling
+    status: b1_a2_selected_10k_launching
     formal_allowed: false
     physical_gpus: [4, 6]
     b1_a2_run: R-20260812224534-1bab51
@@ -494,6 +494,8 @@ h023_256_three_dataset_200m:
     b2_a1_peak_cuda_memory_gib_rank0: 77.0455117225647
     b2_a1_second_step_seconds: 17.66759
     b2_a1_checkpoint: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_k21_b2/latest.pt
+    b2_a1_decision: rejected_near_oom_and_two_times_slower
+    selected_10k_mode: k21_b1_a2
     pairs_per_update: 84
     effective_clips_per_update: 4
     registered_safe_memory_ceiling_gib: 74
