@@ -1,0 +1,65 @@
+# Dynamic Replica single-GPU formal run.
+# Architecture and optimizer values are inherited from configs/dense4d_capacity_100m.yaml;
+# the dataset-specific paths and the 500k global optimizer-step target are explicit.
+data_root: /dataset/Dynamic_dataset/dynamic_stereo
+cache_root: /data/WorldBridge4D-persistent/datasets/dynamic_stereo_worldbridge4d_v1
+wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
+empty_text_condition: /data/WorldBridge4D-persistent/datasets/dynamic_stereo_worldbridge4d_v1/audit/wan_empty_condition.pt
+coordinate_stats: /data/WorldBridge4D-persistent/datasets/dynamic_stereo_worldbridge4d_v1/stats/coordinate_stats_train_source.npz
+coordinate_frame: source
+clip_length: 21
+clip_start: 0
+image_size: 128
+num_query_pairs: 21
+pair_sampling: source_all_targets
+evaluation_pairs: [[0, 0], [7, 7], [20, 20], [0, 1], [0, 20], [7, 14], [20, 0], [14, 7], [20, 19], [3, 18]]
+
+backbone_readout: wan_hidden_structured
+wan_hidden_layers: [13, 14, 15]
+geometry_dim: 512
+geometry_spatial_size: 16
+geometry_num_heads: 8
+geometry_clean_skip: true
+motion_slots: 8
+structured_local_queries: true
+
+query_dim: 1024
+embedding_dim: 512
+num_cross_attn_layers: 5
+num_heads: 8
+upsample_channels: [1024, 512, 256, 128]
+
+# One A100/A800 is intentionally conservative.  The trainer uses this as the
+# per-rank batch and is DDP-compatible when more cards are handed off later.
+batch_size_per_gpu: 1
+batch_size: 1
+steps: 500000
+learning_rate: 0.0003
+geometry_learning_rate: 0.0003
+backbone_learning_rate: 0.00005
+warmup_steps: 256
+weight_decay: 0.0001
+precision: bf16
+gradient_checkpointing: true
+gradient_accumulation: 1
+gradient_clip: 1.0
+trainable_mode: full
+seed: 2026
+geometry_seed: 2026
+decoder_seed: 424242
+smooth_l1_beta: 0.05
+geometry_prefetch_workers: 8
+geometry_prefetch_depth: 2
+diagnostic_every_steps: 20
+save_checkpoint: true
+keep_checkpoint: true
+# Matches the reference capacity config.  The latest checkpoint is atomically
+# replaced; handoff requests always save at the next optimizer boundary.
+checkpoint_every_steps: 256
+
+tracking:
+  enabled: true
+  project: worldbridge4d
+  entity: zhaigong2023-sjtu-hpc-center
+  group: dynamic-replica-dense4d-500k
+  tags: [dynamic-replica, dense4d, source-frame, full-finetune]

@@ -185,7 +185,10 @@ def capture_rng_state(numpy_generator: np.random.Generator | None = None,
         "python": random.getstate(),
         "numpy_global": {
             "bit_generator": numpy_global[0],
-            "state": torch.from_numpy(numpy_global[1].copy()),
+            # PyTorch 2.4/2.5 cannot serialize TypedStorage(torch.uint32).
+            # int64 is weights_only-safe and restore_rng_state casts back to
+            # NumPy's required uint32 representation exactly.
+            "state": torch.from_numpy(numpy_global[1].astype(np.int64, copy=True)),
             "position": int(numpy_global[2]),
             "has_gauss": int(numpy_global[3]),
             "cached_gaussian": float(numpy_global[4]),
