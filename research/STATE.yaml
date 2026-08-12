@@ -436,8 +436,15 @@ h023_256_three_dataset_200m:
   prompts:
     status: updated_plan_script_yaml_exact_match
     inference: dataset_condition_required_no_empty_fallback
-    text_condition_cache: generating_cpu
-    generation_run: R-20260812212122-b09ece
+    text_condition_cache: complete_verified
+    generation_run: R-20260812212737-c0b152
+    condition_shape: [1, 512, 4096]
+    unpadded_tokens:
+      kubric: 58
+      pointodyssey: 68
+      dynamic_replica: 60
+    cache_checksums_verified: true
+    concurrent_creation_serialized: true
   datasets:
     kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
     pointodyssey_raw: /dataset/nas0/PointOdyssey
@@ -448,7 +455,7 @@ h023_256_three_dataset_200m:
     pointodyssey_raw_visible: false
     dynamic_replica_raw_visible: false
     three_dataset_256_cache_exists: false
-  next_step: Verify/rebase all raw mounts, generate and audit all 256 latent caches and native UMT5 conditions, then run the two-card K=6 optimizer gate before any four-card formal run.
+  next_step: Verify/rebase all raw mounts, generate and audit all three 256 latent caches, then run the two-card K=6 optimizer gate before any four-card formal run.
 next_step: Keep the H005 triad with eight learned motion slots. Future slot work
   should preserve late-appearing behavior and test source-valid/appearance-aware
   gating or slot-specific residuals on a fresh development split; do not select
