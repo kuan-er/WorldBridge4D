@@ -12,6 +12,7 @@ import torch
 from torch import nn
 
 WAN_LATENT_SHAPE = (16, 6, 16, 16)
+WAN_LATENT_SHAPE_256 = (16, 6, 32, 32)
 
 
 def freeze_module(module: nn.Module) -> nn.Module:
@@ -119,10 +120,14 @@ class WanDiTMapping(nn.Module):
 
     def __init__(self, checkpoint: str | Path, condition: torch.Tensor | None = None,
                  device: torch.device | str = "cpu", dtype: torch.dtype = torch.float32,
-                 timestep_scale: float = WAN_TIMESTEP_SCALE):
+                 timestep_scale: float = WAN_TIMESTEP_SCALE,
+                 expected_latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE):
         super().__init__()
         self.checkpoint = str(checkpoint)
         self.timestep_scale = float(timestep_scale)
+        self.expected_latent_shape = tuple(int(value) for value in expected_latent_shape)
+        if len(self.expected_latent_shape) != 4 or self.expected_latent_shape[:2] != (16, 6):
+            raise ValueError(f"unsupported Wan latent contract: {self.expected_latent_shape}")
         self.dit = self._load(self.checkpoint, torch.device(device), dtype)
         self.register_buffer("empty_condition", torch.empty(0), persistent=False)
         if condition is not None:
@@ -167,19 +172,31 @@ class WanDiTMapping(nn.Module):
         self.empty_condition = condition.to(device=next(self.dit.parameters()).device,
                                            dtype=next(self.dit.parameters()).dtype)
 
-    def _condition(self, batch: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        if self.empty_condition.numel() == 0:
-            # This is a fixed null/empty cross-attention context. A native
-            # empty-T5 tensor can be supplied with set_condition; zeros are a
-            # deterministic fallback for architecture/smoke tests.
+    def _condition(self, batch: int, device: torch.device, dtype: torch.dtype,
+                   encoder_hidden_states: torch.Tensor | None = None) -> torch.Tensor:
+        condition = self.empty_condition if encoder_hidden_states is None else torch.as_tensor(encoder_hidden_states)
+        if condition.numel() == 0:
+            # Retained only for synthetic architecture tests. Formal training
+            # always passes a native UMT5 condition explicitly on every call.
             return torch.zeros(batch, 512, 4096, device=device, dtype=dtype)
-        if self.empty_condition.shape[0] not in (1, batch):
-            raise ValueError("null condition batch dimension does not match latent batch")
-        return self.empty_condition.expand(batch, -1, -1).to(device=device, dtype=dtype)
+        if condition.ndim == 2:
+            condition = condition[None]
+        expected_text_dim = int(getattr(self.dit.config, "text_dim", 4096))
+        if condition.ndim != 3 or condition.shape[1:] != (512, expected_text_dim):
+            raise ValueError(
+                f"WAN condition must be [1 or B,512,{expected_text_dim}], got {tuple(condition.shape)}"
+            )
+        if condition.shape[0] not in (1, batch):
+            raise ValueError("WAN condition batch dimension does not match latent batch")
+        return condition.expand(batch, -1, -1).to(device=device, dtype=dtype)
 
-    def _inputs(self, latent: torch.Tensor, tau: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if latent.ndim != 5 or tuple(latent.shape[1:]) != WAN_LATENT_SHAPE:
-            raise ValueError(f"WAN mapper input must be [B,{','.join(map(str, WAN_LATENT_SHAPE))}], got {tuple(latent.shape)}")
+    def _inputs(self, latent: torch.Tensor, tau: torch.Tensor,
+                encoder_hidden_states: torch.Tensor | None = None
+                ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        expected_shape = getattr(self, "expected_latent_shape", WAN_LATENT_SHAPE)
+        if latent.ndim != 5 or tuple(latent.shape[1:]) != expected_shape:
+            expected = ','.join(map(str, expected_shape))
+            raise ValueError(f"WAN mapper input must be [B,{expected}], got {tuple(latent.shape)}")
         tau = torch.as_tensor(tau, device=latent.device, dtype=latent.dtype).flatten()
         if tau.shape != (latent.shape[0],):
             raise ValueError(f"tau must be [B]={latent.shape[0]}, got {tuple(tau.shape)}")
@@ -188,11 +205,14 @@ class WanDiTMapping(nn.Module):
         dit_dtype = next(self.dit.parameters()).dtype
         hidden_states = latent.to(dtype=dit_dtype)
         timestep = (tau * self.timestep_scale).to(dtype=dit_dtype)
-        condition = self._condition(latent.shape[0], latent.device, dit_dtype)
+        condition = self._condition(
+            latent.shape[0], latent.device, dit_dtype, encoder_hidden_states
+        )
         return hidden_states, timestep, condition
 
-    def forward(self, latent: torch.Tensor, tau: torch.Tensor) -> torch.Tensor:
-        hidden_states, timestep, condition = self._inputs(latent, tau)
+    def forward(self, latent: torch.Tensor, tau: torch.Tensor,
+                encoder_hidden_states: torch.Tensor | None = None) -> torch.Tensor:
+        hidden_states, timestep, condition = self._inputs(latent, tau, encoder_hidden_states)
         output = self.dit(hidden_states, timestep=timestep,
                           encoder_hidden_states=condition, return_dict=True).sample
         output = output.to(dtype=latent.dtype)
@@ -205,6 +225,7 @@ class WanDiTMapping(nn.Module):
         latent: torch.Tensor,
         tau: torch.Tensor,
         layers: tuple[int, ...],
+        encoder_hidden_states: torch.Tensor | None = None,
     ) -> tuple[tuple[torch.Tensor, ...], tuple[int, int, int]]:
         """Run Wan through selected transformer blocks without its RF output head.
 
@@ -218,7 +239,7 @@ class WanDiTMapping(nn.Module):
         if layers[0] < 0 or layers[-1] >= len(self.dit.blocks):
             raise ValueError(f"hidden layer outside [0,{len(self.dit.blocks) - 1}]: {layers}")
 
-        hidden_states, timestep, condition = self._inputs(latent, tau)
+        hidden_states, timestep, condition = self._inputs(latent, tau, encoder_hidden_states)
         batch, _, frames, height, width = hidden_states.shape
         patch_t, patch_h, patch_w = map(int, self.dit.config.patch_size)
         grid_shape = (frames // patch_t, height // patch_h, width // patch_w)

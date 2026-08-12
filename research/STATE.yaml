@@ -1,5 +1,6 @@
-current_task: T-20260812101443-ad02ac
+current_task: T-20260812203622-0b7bc8
 active_hypotheses:
+  - H023
   - H022
   - H020
   - H009
@@ -407,6 +408,24 @@ final_h006_motion_slot_ablation:
     direct and zero-initialized pooled pair-motion shortcuts are rejected
     because ordinary gains cause severe late-appearing regressions.
   artifact: /tmp/worldbridge_h006_slots_aggregate.json
+h023_256_three_dataset_200m:
+  status: implementation_complete_gpu_gate_pending
+  task: T-20260812203622-0b7bc8
+  resolution: 256
+  latent_shape: [16, 6, 32, 32]
+  readout_layers: [13, 14, 15, 29]
+  initial_layer_weights: [0.3, 0.3, 0.3, 0.1]
+  non_wan_parameters: 193586693
+  distributed: fsdp_full_shard
+  formal_world_size: 4
+  requested_gate_world_size: 2
+  tests_passed: 54
+  datasets:
+    kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
+    pointodyssey_raw: /dataset/nas0/PointOdyssey
+    dynamic_replica_raw: /dataset/data/Dynamic_dataset/dynamic_stereo
+  next_step: Generate and audit all 256 latent caches and native UMT5 conditions,
+    then run the two-card K=6 optimizer gate before any four-card formal run.
 next_step: Keep the H005 triad with eight learned motion slots. Future slot work
   should preserve late-appearing behavior and test source-valid/appearance-aware
   gating or slot-specific residuals on a fresh development split; do not select

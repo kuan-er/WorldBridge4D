@@ -16,14 +16,15 @@ D = np.diag([1.0, -1.0, -1.0, 1.0])
 DEPTH_SCALE = np.float32(1000.0 / 65535.0)
 
 
-def _rgb(path: Path) -> np.ndarray:
+def _rgb(path: Path, image_size: int = W) -> np.ndarray:
     im = Image.open(path).convert("RGB")
-    return np.asarray(im.crop((CROP_X, CROP_Y, CROP_X + CROP_SIZE, CROP_SIZE)).resize((W, H), Image.Resampling.BILINEAR), np.uint8)
+    return np.asarray(im.crop((CROP_X, CROP_Y, CROP_X + CROP_SIZE, CROP_SIZE)).resize(
+        (image_size, image_size), Image.Resampling.BICUBIC), np.uint8)
 
 
-def _depth(path: Path) -> tuple[np.ndarray, np.ndarray]:
+def _depth(path: Path, image_size: int = W) -> tuple[np.ndarray, np.ndarray]:
     raw = np.asarray(Image.open(path), dtype=np.uint16)[CROP_Y:CROP_Y + CROP_SIZE, CROP_X:CROP_X + CROP_SIZE]
-    raw = np.asarray(Image.fromarray(raw).resize((W, H), Image.Resampling.NEAREST), dtype=np.uint16)
+    raw = np.asarray(Image.fromarray(raw).resize((image_size, image_size), Image.Resampling.NEAREST), dtype=np.uint16)
     depth = raw.astype(np.float32) * DEPTH_SCALE
     return depth, (raw > 0) & np.isfinite(depth) & (depth > 0)
 
@@ -36,12 +37,20 @@ class PointOdysseyDataset:
     invalid.  ``visibs`` is exposed only through ``source_all_targets_with_visibility``;
     it never masks canonical XYZ validity.
     """
-    def __init__(self, cache_root: str | Path, split: str = "train") -> None:
+    def __init__(self, cache_root: str | Path, split: str = "train", image_size: int = W,
+                 raw_root: str | Path | None = None) -> None:
         self.root = Path(cache_root)
+        self.image_size = int(image_size)
+        self.raw_root = Path(raw_root).resolve() if raw_root is not None else None
+        if self.image_size not in (128, 256):
+            raise ValueError("PointOdyssey adapter supports only audited 128 or 256 grids")
         index = self.root / "splits" / f"{split}.jsonl"
         if not index.exists():
             raise FileNotFoundError(f"PointOdyssey cache index is missing: {index}")
         self.rows = [json.loads(x) for x in index.read_text().splitlines() if x]
+        if self.raw_root is not None:
+            for row in self.rows:
+                row["source_scene"] = str(self.raw_root / split / Path(row["source_scene"]).name)
         # An annotation can be hundreds of MB.  Keep a small per-consumer LRU;
         # the DDP geometry workers each create their own dataset instance.
         self._anno: OrderedDict[str, dict[str, np.ndarray]] = OrderedDict()
@@ -74,16 +83,17 @@ class PointOdysseyDataset:
     def rgb(self, index: int) -> np.ndarray:
         row = self.rows[index]
         scene, start = Path(row["source_scene"]), int(row["start"])
-        return np.stack([_rgb(scene / "rgbs" / f"rgb_{start + j:05d}.jpg") for j in range(T)])
+        return np.stack([_rgb(scene / "rgbs" / f"rgb_{start + j:05d}.jpg", self.image_size) for j in range(T)])
 
     def camera(self, index: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         row, a = self.rows[index], self._load(self.rows[index])
         start = int(row["start"])
         scene = Path(row["source_scene"])
-        depth, depth_valid = zip(*[_depth(scene / "depths" / f"depth_{start+j:05d}.png") for j in range(T)])
+        size = self.image_size
+        depth, depth_valid = zip(*[_depth(scene / "depths" / f"depth_{start+j:05d}.png", size) for j in range(T)])
         # PointOdyssey intrinsics are constant here, but preserve all 3x3 terms.
         K = a["intrinsics"][start:start + T].astype(np.float64).copy()
-        S = np.array([[W / CROP_SIZE, 0, -CROP_X * W / CROP_SIZE], [0, W / CROP_SIZE, 0], [0, 0, 1]], np.float64)
+        S = np.array([[size / CROP_SIZE, 0, -CROP_X * size / CROP_SIZE], [0, size / CROP_SIZE, 0], [0, 0, 1]], np.float64)
         K = np.einsum("ij,tjk->tik", S, K)
         c2w = np.linalg.inv(np.einsum("ij,tjk->tik", D, a["extrinsics"][start:start + T].astype(np.float64)))
         return K, c2w, np.stack(depth), np.stack(depth_valid)
@@ -101,8 +111,9 @@ class PointOdysseyDataset:
         world = a["trajs_3d"][start:start + T].astype(np.float64)
         valid = a["valids"][start:start + T].astype(bool)
         vis = a["visibs"][start:start + T].astype(bool)
-        pu = (uv[:, 0] - CROP_X + 0.5) * W / CROP_SIZE - 0.5
-        pv = (uv[:, 1] - CROP_Y + 0.5) * H / CROP_SIZE - 0.5
+        size = getattr(self, "image_size", W)
+        pu = (uv[:, 0] - CROP_X + 0.5) * size / CROP_SIZE - 0.5
+        pv = (uv[:, 1] - CROP_Y + 0.5) * size / CROP_SIZE - 0.5
         finite_uv = np.isfinite(uv).all(1)
         iu = np.full(len(uv), -1, dtype=np.int64)
         iv = np.full(len(uv), -1, dtype=np.int64)
@@ -112,15 +123,15 @@ class PointOdysseyDataset:
         # that source pixel. Keep target-time occluded-but-valid supervision,
         # but never anchor a trajectory that is already occluded at source.
         good = valid[source] & vis[source] & finite_uv & np.isfinite(world).all((0, 2))
-        good &= (iu >= 0) & (iu < W) & (iv >= 0) & (iv < H)
-        xyz = np.zeros((T, 3, H, W), np.float32); out_valid = np.zeros((T, H, W), bool); out_vis = np.zeros_like(out_valid)
+        good &= (iu >= 0) & (iu < size) & (iv >= 0) & (iv < size)
+        xyz = np.zeros((T, 3, size, size), np.float32); out_valid = np.zeros((T, size, size), bool); out_vis = np.zeros_like(out_valid)
         E = a["extrinsics"][f, :3].astype(np.float64)
         ids = np.flatnonzero(good)
         if len(ids):
             # Deterministic nearest-track-per-pixel selection without a Python
             # loop over tracks.  Lexicographic sort uses raster pixel first,
             # then subpixel distance, so the first item in each run wins.
-            linear = iv[ids] * W + iu[ids]
+            linear = iv[ids] * size + iu[ids]
             distance = (pu[ids] - iu[ids]) ** 2 + (pv[ids] - iv[ids]) ** 2
             order = np.lexsort((distance, linear))
             sorted_linear = linear[order]
@@ -141,9 +152,10 @@ class PointOdysseyDataset:
         # not call camera() inside the pixel loop: that would decode all 21
         # depth images once per sparse track.
         scene = Path(row["source_scene"])
-        depth, depth_valid = _depth(scene / "depths" / f"depth_{f:05d}.png")
+        depth_path = scene / "depths" / f"depth_{f:05d}.png"
+        depth, depth_valid = _depth(depth_path) if size == W else _depth(depth_path, size)
         K = a["intrinsics"][f].astype(np.float64).copy()
-        S = np.array([[W / CROP_SIZE, 0, -CROP_X * W / CROP_SIZE], [0, W / CROP_SIZE, 0], [0, 0, 1]], np.float64)
+        S = np.array([[size / CROP_SIZE, 0, -CROP_X * size / CROP_SIZE], [0, size / CROP_SIZE, 0], [0, 0, 1]], np.float64)
         K = S @ K
         ys, xs = np.where(out_valid[source])
         if len(ys):
