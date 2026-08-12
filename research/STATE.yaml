@@ -419,7 +419,7 @@ h023_256_three_dataset_200m:
   distributed: fsdp_full_shard
   formal_world_size: 4
   requested_gate_world_size: 2
-  tests_passed: 59
+  tests_passed: 60
   implementation_test_run: R-20260812210635-6c66cf
   final_verification_run: R-20260812211237-c19717
   final_verification:
@@ -450,11 +450,12 @@ h023_256_three_dataset_200m:
     pointodyssey_raw: /dataset/nas0/PointOdyssey
     dynamic_replica_raw: /dataset/data/Dynamic_dataset/dynamic_stereo
   data_availability_at_final_verification:
-    kubric_512_visible: /dataset/MOVi-F/512x512
-    configured_nas0_roots_visible: false
-    pointodyssey_raw_visible: false
-    dynamic_replica_raw_visible: false
-    three_dataset_256_cache_exists: false
+    kubric_512_visible: /dataset/nas0/yejun/MOVi-F/512x512
+    configured_nas0_roots_visible: true
+    pointodyssey_raw_visible: true
+    dynamic_replica_raw_visible: true
+    text_condition_cache_exists: true
+    three_dataset_256_latent_cache_exists: false
   next_step: Verify/rebase all raw mounts, generate and audit all three 256 latent caches, then run the two-card K=6 optimizer gate before any four-card formal run.
 next_step: Keep the H005 triad with eight learned motion slots. Future slot work
   should preserve late-appearing behavior and test source-valid/appearance-aware
