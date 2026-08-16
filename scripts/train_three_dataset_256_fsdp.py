@@ -84,8 +84,14 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
     mismatches = {key: (config.get(key), value) for key, value in expected.items() if config.get(key) != value}
     if mismatches:
         raise ValueError(f"256/200M frozen configuration mismatch: {mismatches}")
-    if list(config.get("wan_hidden_layers", [])) != [13, 14, 15, 29]:
-        raise ValueError("wan_hidden_layers must be [13,14,15,29]")
+    wan_num_layers = int(config.get("wan_num_layers", 30))
+    if wan_num_layers < 16:
+        raise ValueError("wan_num_layers must include readout blocks 13,14,15")
+    expected_hidden_layers = [13, 14, 15, wan_num_layers - 1]
+    if list(config.get("wan_hidden_layers", [])) != expected_hidden_layers:
+        raise ValueError(
+            f"wan_hidden_layers must include the model's final block: {expected_hidden_layers}"
+        )
     mode = str(config.get("trainable_mode", "full"))
     if mode not in {"full", "lora"}:
         raise ValueError("three-dataset training supports trainable_mode full or lora")

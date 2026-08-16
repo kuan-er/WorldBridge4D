@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import torch
 from torch import nn
+import yaml
 
-from scripts.train_three_dataset_256_fsdp import wan_block_auto_wrap_policy
+from scripts.train_three_dataset_256_fsdp import validate_config, wan_block_auto_wrap_policy
 from worldbridge.wan import LoRALinear, WanDiTMapping, inject_wan_lora
 
 
@@ -77,6 +79,24 @@ def test_lora_fsdp_policy_wraps_blocks_but_not_bypassed_parent() -> None:
     assert wan_block_auto_wrap_policy(parent, recurse=True, nonwrapped_numel=10)
     assert wan_block_auto_wrap_policy(block, recurse=False, nonwrapped_numel=10)
     assert not wan_block_auto_wrap_policy(parent, recurse=False, nonwrapped_numel=10)
+
+
+def test_wan14b_training_config_reads_true_final_block_from_local_stage() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = yaml.safe_load((
+        root / "configs/worldbridge4d_256_three_dataset_200m_wan14b_lora_fsdp_2gpu_k16_100k.yaml"
+    ).read_text())
+
+    assert config["wan_num_layers"] == 40
+    assert config["wan_hidden_layers"] == [13, 14, 15, 39]
+    assert config["wan_truncate_after_block"] == 39
+    assert config["wan_dit_root"] == "/tmp/worldbridge4d-models/Wan2.1-T2V-14B"
+    validate_config(config, world=2, allow_two_gpu=True)
+    with pytest.raises(ValueError, match="final block"):
+        validate_config(
+            {**config, "wan_hidden_layers": [13, 14, 15, 29]},
+            world=2, allow_two_gpu=True,
+        )
 
 
 def test_native_14b_checkpoint_keys_convert_to_diffusers_names() -> None:

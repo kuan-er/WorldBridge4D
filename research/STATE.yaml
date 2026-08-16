@@ -631,5 +631,23 @@ h025_wan14b_lora_gpu01:
   first_real_gate_result: failed_first_forward_parent_wan_fsdp_wrap
   fix: wrap_normally_invoked_wan_blocks_not_bypassed_parent_transformer
   tests_passed: 87
-  next_step: Repeat the two-update BF16 FSDP capacity gate before any long run.
-updated_at: 2026-08-16T09:15:00Z
+  next_step: Superseded by H026 full-depth final-block-39 correction.
+h026_wan14b_full40_lora_gpu01:
+  status: local_staging_pending
+  task: T-20260816093127-f0bed5
+  physical_gpus: [0, 1]
+  world_size: 2
+  wan_model: Wan2.1-T2V-14B
+  executed_blocks: [0, 39]
+  readout_layers: [13, 14, 15, 39]
+  local_wan_root: /tmp/worldbridge4d-models/Wan2.1-T2V-14B
+  lora_rank: 16
+  image_size: 256
+  targets_per_source: 16
+  microbatch_per_gpu: 2
+  gradient_accumulation: 2
+  effective_clips_per_update: 8
+  pairs_per_update: 128
+  target_steps: 100000
+  next_step: Stage the complete checkpoint to /tmp, merge/push the final-block correction, then run a two-update gate when GPUs 0/1 are both free.
+updated_at: 2026-08-16T09:36:00Z

@@ -1,16 +1,17 @@
-# H025 matched two-rank K=16 trajectory. This changes only the Wan backbone
-# from full 1.3B fine-tuning to rank-16 LoRA on the executed Wan 14B prefix.
+# H026 matched two-rank K=16 trajectory. Wan14B is executed through its true
+# final transformer block 39 and is staged on node-local /tmp before launch.
 image_size: 256
 clip_length: 21
 latent_spatial_size: 32
 coordinate_frame: source
 
-wan_root: /dataset/nas0/yejun/Wan2.1-T2V-14B
-wan_dit_root: /dataset/nas0/yejun/Wan2.1-T2V-14B
-vae_checkpoint: /dataset/nas0/yejun/Wan2.1-T2V-14B/Wan2.1_VAE.pth
-wan_truncate_after_block: 29
+wan_root: /tmp/worldbridge4d-models/Wan2.1-T2V-14B
+wan_dit_root: /tmp/worldbridge4d-models/Wan2.1-T2V-14B
+vae_checkpoint: /tmp/worldbridge4d-models/Wan2.1-T2V-14B/Wan2.1_VAE.pth
+wan_num_layers: 40
+wan_truncate_after_block: 39
 backbone_readout: wan_hidden_structured
-wan_hidden_layers: [13, 14, 15, 29]
+wan_hidden_layers: [13, 14, 15, 39]
 layer_gate_initial_logits: [0.0, 0.0, 0.0, -1.0986122887]
 layer_gate_temperature: 1.0
 layer_gate_top_k: 4
@@ -97,5 +98,5 @@ tracking:
   enabled: true
   project: worldbridge4d
   entity: zhaigong2023-sjtu-hpc-center
-  group: worldbridge4d-256-wan14b-lora-two-gpu-b2-k16-a2-100k
-  tags: [h025, wan14b, lora-r16, 256px, 200m-readout, three-dataset, fsdp, full-shard, two-gpu-experiment, lazy-vae-cache, microbatch2, accumulation2, k16, fresh-100k]
+  group: worldbridge4d-256-wan14b-full40-lora-two-gpu-b2-k16-a2-100k
+  tags: [h026, wan14b, full40, final-block39, lora-r16, 256px, 200m-readout, three-dataset, fsdp, full-shard, two-gpu-experiment, lazy-vae-cache, microbatch2, accumulation2, k16, fresh-100k]
