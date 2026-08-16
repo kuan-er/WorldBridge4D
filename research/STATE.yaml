@@ -633,7 +633,7 @@ h025_wan14b_lora_gpu01:
   tests_passed: 87
   next_step: Superseded by H026 full-depth final-block-39 correction.
 h026_wan14b_full40_lora_gpu01:
-  status: gpu0_b2_a2_oom_b1_a4_retry_pending
+  status: gpu0_b1_a4_gate_passed_two_gpu_gate_pending
   task: T-20260816093127-f0bed5
   physical_gpus: [0, 1]
   world_size: 2
@@ -655,5 +655,9 @@ h026_wan14b_full40_lora_gpu01:
   gpu0_b2_a2_gate: R-20260816094943-66e88a
   gpu0_b2_a2_result: oom_decoder_upsampler_75_52_gib_allocated
   gpu0_retry_mode: {microbatch_per_gpu: 1, gradient_accumulation: 4, effective_clips_per_update: 4, pairs_per_update: 64}
-  next_step: Retry the full-40 single-GPU gate with B1/A4, then retain the two-rank 0/1 gate requirement before the long run.
-updated_at: 2026-08-16T09:55:00Z
+  gpu0_b1_a4_gate: R-20260816100104-b3adce
+  gpu0_b1_a4_result: passed_two_optimizer_updates
+  gpu0_b1_a4_peak_cuda_memory_gib: 75.18812799453735
+  gpu0_b1_a4_losses: [0.9152424335, 0.9299689382]
+  next_step: Run the full-depth two-rank GPU0/1 B2/A2 gate before the long run.
+updated_at: 2026-08-16T10:06:00Z
