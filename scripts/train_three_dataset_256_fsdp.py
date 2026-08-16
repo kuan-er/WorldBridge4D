@@ -124,10 +124,15 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
     if accumulation < 1 or microbatch < 1:
         raise ValueError("gradient_accumulation and microbatch_per_gpu must be positive")
     if arbitrary_world:
-        if (accumulation, microbatch) != (2, 2):
+        allowed_batch_modes = {(2, 2)}
+        if world == 1:
+            # Same four clips/update as B2/A2, but half the live decoder batch
+            # for the replicated full-depth 14B single-card capacity gate.
+            allowed_batch_modes.add((4, 1))
+        if (accumulation, microbatch) not in allowed_batch_modes:
             raise ValueError(
-                "--allow-arbitrary-world requires accumulation=2 and "
-                "microbatch_per_gpu=2 to match the precomputed latents"
+                "--allow-arbitrary-world batch mode must preserve a registered "
+                f"capacity protocol; allowed={sorted(allowed_batch_modes)}"
             )
     elif (accumulation, microbatch) != (2, 1):
         two_gpu_modes = ((1, 2), (2, 2))

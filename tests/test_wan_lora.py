@@ -98,6 +98,14 @@ def test_wan14b_training_config_reads_true_final_block_from_local_stage() -> Non
             world=2, allow_two_gpu=True,
         )
 
+    capacity = yaml.safe_load((
+        root / "configs/worldbridge4d_256_three_dataset_200m_wan14b_lora_gpu0_capacity.yaml"
+    ).read_text())
+    assert capacity["microbatch_per_gpu"] == 1
+    assert capacity["gradient_accumulation"] == 4
+    assert capacity["microbatch_per_gpu"] * capacity["gradient_accumulation"] == 4
+    validate_config(capacity, world=1, allow_two_gpu=False, allow_arbitrary_world=True)
+
 
 def test_native_14b_checkpoint_keys_convert_to_diffusers_names() -> None:
     convert = WanDiTMapping._convert_native_key
