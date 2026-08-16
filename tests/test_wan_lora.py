@@ -115,6 +115,15 @@ def test_wan14b_training_config_reads_true_final_block_from_local_stage() -> Non
     assert long_run["gradient_accumulation"] == 4
     validate_config(long_run, world=1, allow_two_gpu=False, allow_arbitrary_world=True)
 
+    two_gpu_long = yaml.safe_load((
+        root / "configs/worldbridge4d_256_three_dataset_200m_wan14b_lora_gpu01_50k.yaml"
+    ).read_text())
+    assert two_gpu_long["max_steps"] == 50_000
+    assert two_gpu_long["schedule_horizon_steps"] == 50_000
+    assert two_gpu_long["microbatch_per_gpu"] == 2
+    assert two_gpu_long["gradient_accumulation"] == 2
+    validate_config(two_gpu_long, world=2, allow_two_gpu=True)
+
 
 def test_native_14b_checkpoint_keys_convert_to_diffusers_names() -> None:
     convert = WanDiTMapping._convert_native_key

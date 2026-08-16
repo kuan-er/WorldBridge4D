@@ -633,7 +633,7 @@ h025_wan14b_lora_gpu01:
   tests_passed: 87
   next_step: Superseded by H026 full-depth final-block-39 correction.
 h026_wan14b_full40_lora_gpu01:
-  status: gpu0_b1_a4_50k_launch_pending
+  status: gpu01_b2_a2_50k_direct_launch_pending
   task: T-20260816093127-f0bed5
   physical_gpus: [0, 1]
   world_size: 2
@@ -659,7 +659,8 @@ h026_wan14b_full40_lora_gpu01:
   gpu0_b1_a4_result: passed_two_optimizer_updates
   gpu0_b1_a4_peak_cuda_memory_gib: 75.18812799453735
   gpu0_b1_a4_losses: [0.9152424335, 0.9299689382]
-  selected_long_run: {physical_gpu: 0, optimizer_updates: 50000, microbatch_per_gpu: 1, gradient_accumulation: 4, targets_per_source: 16, schedule_horizon_steps: 50000}
-  estimated_runtime_days_at_gate_rate: 20.1
-  next_step: Launch the user-requested GPU0 50k run and monitor its early checkpoint milestones.
-updated_at: 2026-08-16T10:15:00Z
+  superseded_single_gpu_long_run: {physical_gpu: 0, optimizer_updates: 50000, microbatch_per_gpu: 1, gradient_accumulation: 4}
+  selected_long_run: {physical_gpus: [0, 1], optimizer_updates: 50000, microbatch_per_gpu: 2, gradient_accumulation: 2, effective_clips_per_update: 8, pairs_per_update: 128, targets_per_source: 16, schedule_horizon_steps: 50000}
+  two_gpu_capacity_gate_waived_by_user: true
+  next_step: Directly launch the user-requested GPU0/1 50k run and inspect its first updates.
+updated_at: 2026-08-16T10:20:00Z
