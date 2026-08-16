@@ -1,0 +1,42 @@
+# H022: one-step Wan1.3B LoRA 512x512 capacity gate on one A100 80GB.
+data_root: /dataset/yejun/MOVi-F/512x512
+wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
+empty_text_condition: /tmp/worldbridge_dense4d/wan_empty_condition.pt
+clip_length: 21
+image_size: 512
+wan_latent_shape: [16, 6, 64, 64]
+precision: bf16
+backbone_readout: wan_hidden_structured
+wan_hidden_layers: [13, 14, 15]
+# Preserve native Wan token spatial grid 32x32 in the geometry path.
+geometry_dim: 128
+geometry_spatial_size: 32
+geometry_num_heads: 8
+geometry_clean_skip: true
+motion_slots: 8
+structured_local_queries: true
+# Keep the capacity gate decoder compact and decode one target at a time.
+query_grid_size: 32
+query_dim: 256
+embedding_dim: 128
+num_cross_attn_layers: 2
+num_heads: 8
+# 32 -> 64 -> 128 -> 256 -> 512
+upsample_channels: [256, 128, 64, 32, 16]
+trainable_mode: lora
+lora_rank: 16
+lora_alpha: 16
+lora_dropout: 0.0
+lora_targets: [to_q, to_k, to_v, to_out.0, ffn.net.0.proj, ffn.net.2]
+gradient_checkpointing: true
+learning_rate: 0.0003
+geometry_learning_rate: 0.0003
+backbone_learning_rate: 0.0001
+weight_decay: 0.0001
+smooth_l1_beta: 0.05
+seed: 2026
+geometry_seed: 2026
+decoder_seed: 424242
+# Existing train-only MOVi-F source-frame statistics; capacity, not quality, gate.
+coordinate_mean: [-0.0047556454, 1.9840435, -13.474529]
+coordinate_scale: [4.819901, 5.3355007, 11.895373]

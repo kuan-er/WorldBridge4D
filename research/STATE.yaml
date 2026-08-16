@@ -612,7 +612,7 @@ h020_pointodyssey_progressive:
   unexpected_stop_guard_added: true
   status: resume_from_step64_pending
 h025_wan14b_lora_gpu01:
-  status: implementation_verified_capacity_gate_pending
+  status: fsdp_parent_wrap_failure_fixed_retry_pending
   task: T-20260816082914-16f812
   physical_gpus: [0, 1]
   world_size: 2
@@ -627,6 +627,9 @@ h025_wan14b_lora_gpu01:
   pairs_per_update: 128
   target_steps: 100000
   non_wan_parameters: 200955397
-  tests_passed: 86
-  next_step: Run the two-update BF16 FSDP capacity gate on GPUs 0/1; launch the matched 100k trajectory only after it passes.
-updated_at: 2026-08-16T08:45:00Z
+  first_real_gate: R-20260816085033-478f67
+  first_real_gate_result: failed_first_forward_parent_wan_fsdp_wrap
+  fix: wrap_normally_invoked_wan_blocks_not_bypassed_parent_transformer
+  tests_passed: 87
+  next_step: Repeat the two-update BF16 FSDP capacity gate before any long run.
+updated_at: 2026-08-16T09:15:00Z

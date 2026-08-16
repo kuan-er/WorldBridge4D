@@ -6,6 +6,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
+from scripts.train_three_dataset_256_fsdp import wan_block_auto_wrap_policy
 from worldbridge.wan import LoRALinear, WanDiTMapping, inject_wan_lora
 
 
@@ -66,6 +67,16 @@ def test_wan14b_architecture_is_discovered_from_native_config(tmp_path: Path) ->
     assert discovered["num_attention_heads"] == 40
     assert discovered["attention_head_dim"] == 128
     assert discovered["ffn_dim"] == 13824
+
+
+def test_lora_fsdp_policy_wraps_blocks_but_not_bypassed_parent() -> None:
+    WanTransformerBlock = type("WanTransformerBlock", (nn.Module,), {})
+    block = WanTransformerBlock()
+    parent = nn.Module()
+
+    assert wan_block_auto_wrap_policy(parent, recurse=True, nonwrapped_numel=10)
+    assert wan_block_auto_wrap_policy(block, recurse=False, nonwrapped_numel=10)
+    assert not wan_block_auto_wrap_policy(parent, recurse=False, nonwrapped_numel=10)
 
 
 def test_native_14b_checkpoint_keys_convert_to_diffusers_names() -> None:
