@@ -15,7 +15,7 @@ from .dense4d import (
     CleanLatentBackbone, DenseQueryDecoder, DenseQueryWanModel,
     FeedForwardWanBackbone, WanHiddenGeometryBackbone,
 )
-from .wan import WAN_LATENT_SHAPE, WanDiTMapping, WanVAEEncoder
+from .wan import WAN_LATENT_SHAPE, WanDiTMapping, WanVAEEncoder, inject_wan_lora
 
 
 def precision_dtype(name: str) -> torch.dtype:
@@ -96,11 +96,35 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
     if readout in {"wan_velocity", "wan_hidden_structured"}:
         condition_path = config.get("empty_text_condition")
         condition = load_text_condition(condition_path) if condition_path else None
+        wan_root = Path(config["wan_root"])
+        wan_dit_root = Path(config.get("wan_dit_root", wan_root))
+        checkpoint = Path(config.get(
+            "wan_checkpoint", wan_dit_root / "diffusion_pytorch_model.safetensors",
+        ))
+        if not checkpoint.exists():
+            sharded_index = wan_dit_root / "diffusion_pytorch_model.safetensors.index.json"
+            if sharded_index.exists():
+                checkpoint = sharded_index
         mapping = WanDiTMapping(
-            Path(config["wan_root"]) / "diffusion_pytorch_model.safetensors",
+            checkpoint,
             condition=condition, device=device, dtype=dtype,
             expected_latent_shape=wan_latent_shape,
+            truncate_after_block=config.get("wan_truncate_after_block"),
         )
+        mode = str(config.get("trainable_mode", "full"))
+        if mode == "lora":
+            for parameter in mapping.dit.parameters():
+                parameter.requires_grad_(False)
+            mapping.lora_modules = inject_wan_lora(
+                mapping.dit,
+                rank=int(config.get("lora_rank", 16)),
+                alpha=float(config.get("lora_alpha", config.get("lora_rank", 16))),
+                dropout=float(config.get("lora_dropout", 0.0)),
+                targets=tuple(config.get("lora_targets", (
+                    "to_q", "to_k", "to_v", "to_out.0",
+                    "ffn.net.0.proj", "ffn.net.2",
+                ))),
+            )
         if bool(config.get("gradient_checkpointing", True)):
             mapping.dit.enable_gradient_checkpointing()
         if readout == "wan_velocity":
@@ -157,7 +181,24 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
         structured_pair_motion_zero_init=bool(config.get("structured_pair_motion_zero_init", False)) if structured else False,
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
-    model.configure_trainable(str(config.get("trainable_mode", "full")), int(config.get("trainable_blocks", 2)))
+    mode = str(config.get("trainable_mode", "full"))
+    model.configure_trainable(
+        "full" if mode == "lora" else mode,
+        int(config.get("trainable_blocks", 2)),
+    )
+    if mode == "lora":
+        for parameter in model.backbone.mapping.parameters():
+            parameter.requires_grad_(False)
+        for module in model.backbone.mapping.dit.modules():
+            if hasattr(module, "lora_A") and hasattr(module, "lora_B"):
+                for parameter in module.lora_A.parameters():
+                    parameter.requires_grad_(True)
+                for parameter in module.lora_B.parameters():
+                    parameter.requires_grad_(True)
+        for parameter in model.backbone.adapter_parameters:
+            parameter.requires_grad_(True)
+        for parameter in model.decoder.parameters():
+            parameter.requires_grad_(True)
     return model
 
 

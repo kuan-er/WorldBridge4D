@@ -12,8 +12,9 @@ from torch import nn
 
 from worldbridge.dense4d import DenseQueryDecoder, WanHiddenGeometryBackbone, masked_pair_smooth_l1
 from worldbridge.training256 import (
-    CachedExternalDataset, LazyLatentCache, apply_cosine_schedule, dataset_for_step,
-    deterministic_dataset_schedule, deterministic_sample_plan, sample_eligible_targets,
+    CachedExternalDataset, KubricGeometryMmapStore, LazyLatentCache, MOViF256Dataset,
+    apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
+    deterministic_sample_plan, sample_eligible_targets,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
 from worldbridge.text_conditions import load_inference_text_condition
@@ -119,6 +120,55 @@ def test_inference_condition_is_dataset_specific_and_checksum_verified(tmp_path)
         load_inference_text_condition(config, "kubric")
 
 
+def test_resume_planning_uses_status_sidecar_not_full_checkpoint_load():
+    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    planning = source[source.index("# Cache planning needs only"):source.index("planned_start =")]
+    assert '"resume_status_path", resume.parent / "train_status.json"' in planning
+    assert "torch.load" not in planning
+
+
+def test_wandb_resume_can_skip_already_published_steps():
+    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    assert '"--wandb-log-after-step", type=int, default=-1' in source
+    assert "completed > args.wandb_log_after_step" in source
+
+
+def test_checkpoint_publishes_matching_planning_sidecar():
+    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    assert 'atomic_json(checkpoint_dir / "train_status.json", checkpoint_status)' in source
+    assert 'atomic_json(output / "train_status.json", checkpoint_status)' in source
+
+
+def test_staging_is_checksum_verified_reusable_and_wires_runtime_paths(tmp_path):
+    import yaml
+    from scripts.stage_three_dataset_256_inputs import stage_training_inputs
+
+    wan = tmp_path / "wan"; wan.mkdir()
+    dit = wan / "diffusion_pytorch_model.safetensors"; dit.write_bytes(b"dit-weights")
+    vae = wan / "Wan2.1_VAE.pth"; vae.write_bytes(b"vae-weights")
+    output = tmp_path / "output"; output.mkdir()
+    resume = output / "latest.pt"; resume.write_bytes(b"resume-state")
+    (output / "train_status.json").write_text('{"completed_steps":2}\n')
+    source_config = tmp_path / "config.yaml"
+    source_config.write_text(yaml.safe_dump({"wan_root": str(wan)}))
+    staged_config, staged_resume = stage_training_inputs(
+        source_config, tmp_path / "ssd", resume
+    )
+    values = yaml.safe_load(staged_config.read_text())
+    assert Path(values["wan_checkpoint"]).read_bytes() == b"dit-weights"
+    assert Path(values["vae_checkpoint"]).read_bytes() == b"vae-weights"
+    assert Path(staged_resume).read_bytes() == b"resume-state"
+    assert values["resume_status_path"] == str(output / "train_status.json")
+    second_config, second_resume = stage_training_inputs(
+        source_config, tmp_path / "ssd", resume
+    )
+    assert second_config == staged_config
+    assert second_resume == staged_resume
+    # Resume checkpoints already live on /data and are intentionally not copied
+    # into a second object on the same filesystem.
+    assert len(list((tmp_path / "ssd" / "objects").iterdir())) == 2
+
+
 def test_inference_script_encodes_backbone_once_before_target_chunks():
     source = (Path(__file__).resolve().parents[1] / "scripts/infer_three_dataset_256.py").read_text()
     assert "z4d = model.backbone(latent, condition)" in source
@@ -177,7 +227,80 @@ def test_required_latents_respect_true_microbatch_slots():
     assert sum(map(len, batched.values())) == 2
 
 
-def test_k21_is_permitted_only_for_two_gpu_gate():
+def test_pipeline_work_is_global_unique_balanced_and_needed_step_ordered():
+    from scripts.train_three_dataset_256_fsdp import pipeline_work_for_rank
+
+    gathered = [
+        [(9, "kubric", 1), (3, "pointodyssey", 4), (7, "kubric", 1)],
+        [(2, "kubric", 1), (5, "dynamic_replica", 8), (6, "pointodyssey", 4)],
+    ]
+    rank0 = pipeline_work_for_rank(gathered, 0, 2)
+    rank1 = pipeline_work_for_rank(gathered, 1, 2)
+    combined = rank0 + rank1
+    keys = [(name, index) for _step, name, index in combined]
+    assert len(keys) == len(set(keys)) == 3
+    earliest = {(name, index): step for step, name, index in combined}
+    assert earliest[("kubric", 1)] == 2
+    assert earliest[("pointodyssey", 4)] == 3
+    assert earliest[("dynamic_replica", 8)] == 5
+    assert rank0 == sorted(rank0, key=lambda value: (value[0], ("kubric", "pointodyssey", "dynamic_replica").index(value[1]), value[2]))
+    assert rank1 == sorted(rank1, key=lambda value: (value[0], ("kubric", "pointodyssey", "dynamic_replica").index(value[1]), value[2]))
+
+
+def test_offline_lazy_cache_hash_owner_balances_fully_overlapping_plans():
+    from scripts.train_three_dataset_256_fsdp import lazy_latent_owner
+
+    for name in ("kubric", "pointodyssey", "dynamic_replica"):
+        counts = [0, 0]
+        for index in range(10_000):
+            counts[lazy_latent_owner(name, index, world=2)] += 1
+        assert counts == [5_000, 5_000]
+
+
+def test_kubric_mmap_conversion_is_exact_atomic_and_resumable(tmp_path):
+    from scripts.convert_kubric_geometry_to_mmap import convert
+
+    source = tmp_path / "compact"
+    destination = tmp_path / "mmap"
+    source.mkdir()
+    originals = []
+    for index in range(3):
+        depth = np.arange(24, dtype=np.float32).reshape(2, 3, 4) + index
+        depth_valid = (depth % 2 == 0).astype(np.uint8)
+        segmentation = np.arange(24, dtype=np.int32).reshape(2, 3, 4) + 10 * index
+        originals.append((depth, depth_valid, segmentation))
+        np.savez_compressed(
+            source / f"geom_{index:06d}.npz",
+            depth=depth, depth_valid=depth_valid, segmentation=segmentation,
+            camera_positions=np.zeros((2, 3), np.float32),
+            camera_quaternions=np.zeros((2, 4), np.float32),
+            focal_length=np.float32(1), sensor_width=np.float32(1),
+            field_of_view=np.float32(1),
+            instance_positions=np.zeros((1, 2, 3), np.float32),
+            instance_quaternions=np.zeros((1, 2, 4), np.float32),
+            instance_dynamic=np.zeros(1, np.uint8),
+            instance_visibility=np.zeros((1, 2), np.uint16),
+            depth_range=np.array([0, 1], np.float32), clip_start=np.int64(0),
+        )
+    manifest = convert(source, destination, range(3), shard_size=2, min_free_gib=0)
+    assert manifest["complete"] and manifest["count"] == 3 and manifest["shards"] == 2
+    assert not list(destination.glob("*.tmp"))
+    store = KubricGeometryMmapStore(destination, max_open_shards=1)
+    for index, expected in enumerate(originals):
+        for actual, value in zip(store.read(index), expected):
+            assert np.array_equal(actual, value)
+    old = MOViF256Dataset._load_compact_sample(source / "geom_000001.npz")
+    new = MOViF256Dataset._load_compact_sample(
+        source / "geom_000001.npz", store.read(1),
+    )
+    for field in ("depth", "depth_valid", "segmentation"):
+        assert np.array_equal(getattr(old, field), getattr(new, field))
+    mtimes = {path: path.stat().st_mtime_ns for path in destination.glob("*.npy")}
+    convert(source, destination, range(3), shard_size=2, min_free_gib=0)
+    assert mtimes == {path: path.stat().st_mtime_ns for path in destination.glob("*.npy")}
+
+
+def test_experimental_k_modes_require_explicit_world_size_flags():
     import scripts.train_three_dataset_256_fsdp as train
 
     base = {
@@ -192,10 +315,178 @@ def test_k21_is_permitted_only_for_two_gpu_gate():
     train.validate_config(base, world=2, allow_two_gpu=True)
     batched = {**base, "gradient_accumulation": 1, "microbatch_per_gpu": 2}
     train.validate_config(batched, world=2, allow_two_gpu=True)
-    with pytest.raises(ValueError, match="only the two-GPU gate"):
+    matched_k10 = {
+        **base, "targets_per_source": 10,
+        "gradient_accumulation": 2, "microbatch_per_gpu": 2,
+    }
+    train.validate_config(matched_k10, world=2, allow_two_gpu=True)
+    k16_b2_a2 = {**matched_k10, "targets_per_source": 16}
+    train.validate_config(k16_b2_a2, world=2, allow_two_gpu=True)
+    train.validate_config(
+        {**k16_b2_a2, "geometry_prefetch_depth": 4, "geometry_prefetch_workers": 8},
+        world=2, allow_two_gpu=True,
+    )
+    with pytest.raises(ValueError, match="geometry_prefetch_depth"):
+        train.validate_config(
+            {**k16_b2_a2, "geometry_prefetch_depth": 0},
+            world=2, allow_two_gpu=True,
+        )
+    with pytest.raises(ValueError, match="geometry_prefetch_workers"):
+        train.validate_config(
+            {**k16_b2_a2, "geometry_prefetch_workers": 33},
+            world=2, allow_two_gpu=True,
+        )
+    k16_four_gpu = {
+        **k16_b2_a2, "gradient_accumulation": 1,
+    }
+    train.validate_config(
+        k16_four_gpu, world=4, allow_two_gpu=False,
+        allow_four_gpu_experiment=True,
+    )
+    with pytest.raises(ValueError, match="explicit compatible"):
+        train.validate_config(matched_k10, world=4, allow_two_gpu=False)
+    with pytest.raises(ValueError, match="explicit compatible"):
         train.validate_config(batched, world=4, allow_two_gpu=False)
-    with pytest.raises(ValueError, match="gate-only"):
+    with pytest.raises(ValueError, match="one of"):
         train.validate_config(base, world=4, allow_two_gpu=False)
+    with pytest.raises(ValueError, match="one of"):
+        train.validate_config(
+            {**k16_four_gpu, "targets_per_source": 21}, world=4,
+            allow_two_gpu=False, allow_four_gpu_experiment=True,
+        )
+    with pytest.raises(ValueError, match="requires exactly 4 ranks"):
+        train.validate_config(
+            k16_four_gpu, world=2, allow_two_gpu=True,
+            allow_four_gpu_experiment=True,
+        )
+
+
+def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
+    from scripts.train_three_dataset_256_fsdp import prune_periodic_checkpoints
+
+    for step in (1000, 2000, 5000):
+        (tmp_path / f"checkpoint-{step:07d}.pt").write_bytes(b"checkpoint")
+    (tmp_path / "latest.pt").write_bytes(b"latest")
+    removed = prune_periodic_checkpoints(tmp_path, keep_last=2)
+    assert removed == ["checkpoint-0001000.pt"]
+    assert (tmp_path / "latest.pt").read_bytes() == b"latest"
+    assert [path.name for path in sorted(tmp_path.glob("checkpoint-*.pt"))] == [
+        "checkpoint-0002000.pt", "checkpoint-0005000.pt",
+    ]
+
+
+def test_latest_checkpoint_is_atomic_same_inode_link(tmp_path):
+    from scripts.train_three_dataset_256_fsdp import update_latest_checkpoint
+
+    first = tmp_path / "checkpoint-0000050.pt"; first.write_bytes(b"first")
+    second = tmp_path / "checkpoint-0000100.pt"; second.write_bytes(b"second")
+    latest = tmp_path / "latest.pt"
+    update_latest_checkpoint(first, latest)
+    assert latest.read_bytes() == b"first"
+    assert latest.stat().st_ino == first.stat().st_ino
+    update_latest_checkpoint(second, latest)
+    assert latest.read_bytes() == b"second"
+    assert latest.stat().st_ino == second.stat().st_ino
+
+
+def test_checkpoint_replica_is_ordered_atomic_and_supersedes_old_jobs(tmp_path):
+    from scripts.replicate_checkpoint import replicate_checkpoint
+
+    source = tmp_path / "ssd" / "checkpoint-0000100.pt"
+    source.parent.mkdir(); source.write_bytes(b"new-checkpoint")
+    destination = tmp_path / "hdd" / "latest.pt"
+    destination.parent.mkdir(); destination.write_bytes(b"old-checkpoint")
+    assert replicate_checkpoint(
+        source, destination, 100, chunk_bytes=4, throttle_seconds=0,
+    ) == "complete"
+    assert destination.read_bytes() == b"new-checkpoint"
+    older = tmp_path / "ssd" / "checkpoint-0000050.pt"
+    older.write_bytes(b"must-not-downgrade")
+    assert replicate_checkpoint(
+        older, destination, 50, chunk_bytes=4, throttle_seconds=0,
+    ) == "superseded"
+    assert destination.read_bytes() == b"new-checkpoint"
+    status = json.loads((destination.parent / "latest.pt.replica.json").read_text())
+    assert status["requested_step"] == status["completed_step"] == 100
+
+
+def test_train_status_recovery_requires_complete_checkpoint_and_conflict_free_sidecar(
+    tmp_path, monkeypatch,
+):
+    from scripts.recover_three_dataset_256_train_status import recover_status
+
+    checkpoint = tmp_path / "latest.pt"
+    output = tmp_path / "train_status.json"
+    payload = {
+        "format": 3,
+        "config": {"max_steps": 100},
+        "training_state": {
+            "global_step": 50, "world_size": 2,
+            "rng_states": [{"rank": 0}, {"rank": 1}],
+            "clips_seen": {
+                "kubric": 136, "pointodyssey": 120, "dynamic_replica": 144,
+            },
+        },
+    }
+    monkeypatch.setattr(
+        "scripts.recover_three_dataset_256_train_status.torch.load",
+        lambda *_args, **_kwargs: payload,
+    )
+    checkpoint.write_bytes(b"checkpoint")
+    status = recover_status(checkpoint, output)
+    assert status["completed_steps"] == 50
+    assert status["world_size"] == 2
+    assert status["recovered_from_checkpoint"] is True
+    assert json.loads(output.read_text()) == status
+    assert recover_status(checkpoint, output) == status
+
+    output.write_text('{"completed_steps":49}\n')
+    with pytest.raises(RuntimeError, match="conflicting status sidecar"):
+        recover_status(checkpoint, output)
+
+
+def test_launchers_default_staging_and_latents_to_persistent_storage():
+    root = Path(__file__).resolve().parents[1]
+    scripts = (
+        "run_three_dataset_256_fsdp.sh", "run_precompute_latents_5gpu.sh",
+        "run_three_dataset_256_auto_pick.sh", "run_three_dataset_256_2gpu_k16_100k.sh",
+        "run_three_dataset_256_2gpu_k16_100k_precache.sh",
+        "run_three_dataset_256_4gpu_k10_10k.sh",
+    )
+    for name in scripts:
+        source = (root / "scripts" / name).read_text()
+        assert "STAGING_ROOT=\"${STAGING_ROOT:-/data/WorldBridge4D-persistent/" in source
+        assert "STAGING_ROOT=\"${STAGING_ROOT:-/tmp/" not in source
+
+
+def test_two_gpu_k16_100k_launcher_is_fresh_pinned_and_wandb_online():
+    root = Path(__file__).resolve().parents[1]
+    launcher = (root / "scripts/run_three_dataset_256_2gpu_k16_100k.sh").read_text()
+    assert 'GPUS="${GPUS:-4,6}"' in launcher
+    assert 'NPROC=2' in launcher
+    assert 'STEPS="${STEPS:-100000}"' in launcher
+    assert 'FRESH_START=1' in launcher
+    assert 'WANDB_MODE=online' in launcher
+    assert 'LAZY_VAE_PIPELINE=1' in launcher
+    assert 'GPU_FREE_MIN_MIB="${GPU_FREE_MIN_MIB:-76000}"' in launcher
+
+
+def test_four_gpu_k10_launcher_is_fresh_pinned_and_wandb_online():
+    root = Path(__file__).resolve().parents[1]
+    launcher = (root / "scripts/run_three_dataset_256_4gpu_k10_10k.sh").read_text()
+    generic = (root / "scripts/run_three_dataset_256_fsdp.sh").read_text()
+    assert 'GPUS="${GPUS:-2,4,5,6}"' in launcher
+    assert 'NPROC=4' in launcher
+    assert 'STEPS="${STEPS:-10000}"' in launcher
+    assert 'ALLOW_FOUR_GPU_EXPERIMENT=1' in launcher
+    assert 'FRESH_START=1' in launcher
+    assert 'WANDB_MODE=online' in launcher
+    assert 'LAZY_VAE_PIPELINE=1' in launcher
+    assert 'GPU_FREE_MIN_MIB="${GPU_FREE_MIN_MIB:-55000}"' in launcher
+    assert 'FRESH_START=1 refuses existing trajectory artifact' in generic
+    assert 'CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"' in generic
+    assert '--checkpoint-dir "$CHECKPOINT_DIR"' in generic
+    assert '--durable-checkpoint "$DURABLE_CHECKPOINT"' in generic
 
 
 def test_three_dataset_cycle_has_exact_ratio_and_is_resume_pure():
@@ -223,6 +514,84 @@ def test_small_256_index_maps_back_to_geometry_clip_ids(tmp_path, monkeypatch):
     assert len(dataset) == 1
     assert dataset.source_all_targets(0, 7) == (1, 7)
     assert dataset.clean_latent(0) == 0
+
+
+def test_durable_cache_preflight_requires_backup_and_live_target(tmp_path):
+    from scripts.validate_three_dataset_256_cache_roots import validate_cache_roots
+
+    config = {"datasets": {}}
+    for name in ("kubric", "pointodyssey", "dynamic_replica"):
+        cache_root = tmp_path / "persistent" / name
+        config["datasets"][name] = {"cache_root": str(cache_root)}
+        (cache_root / "latents" / "wan2.1_1.3b_fp32_256_lazy_backup").mkdir(
+            parents=True
+        )
+    roots = validate_cache_roots(config, create=True, forbidden_roots=())
+    assert all(Path(path).is_dir() for path in roots.values())
+
+    kubric = Path(roots["kubric"])
+    kubric.rmdir()
+    missing = tmp_path / "missing-hot-cache"
+    kubric.symlink_to(missing, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="symlink target missing"):
+        validate_cache_roots(config, forbidden_roots=())
+
+    kubric.unlink()
+    scratch = tmp_path / "scratch"; scratch.mkdir()
+    kubric.symlink_to(scratch, target_is_directory=True)
+    assert validate_cache_roots(config, forbidden_roots=())["kubric"] == str(kubric)
+
+    backup = (
+        tmp_path / "persistent" / "pointodyssey" / "latents" /
+        "wan2.1_1.3b_fp32_256_lazy_backup"
+    )
+    backup.rmdir()
+    with pytest.raises(RuntimeError, match="durable latent backup missing"):
+        validate_cache_roots(config, forbidden_roots=())
+
+
+def test_durable_cache_count_audit_is_exact(tmp_path):
+    from scripts.validate_three_dataset_256_cache_roots import assert_expected_latent_files
+
+    roots = {}
+    for name, count in (("kubric", 2), ("pointodyssey", 1), ("dynamic_replica", 0)):
+        root = tmp_path / name; root.mkdir()
+        roots[name] = str(root)
+        for index in range(count):
+            (root / f"latent_{index:08d}.safetensors").touch()
+    assert assert_expected_latent_files(roots, 3) == {
+        "kubric": 2, "pointodyssey": 1, "dynamic_replica": 0,
+    }
+    with pytest.raises(RuntimeError, match="count mismatch"):
+        assert_expected_latent_files(roots, 4)
+
+
+def test_kubric_compact_geometry_audit_requires_exact_atomic_outputs(tmp_path):
+    from scripts.compact_kubric_geometry import audit_outputs
+
+    wanted = {2, 7}
+    for index in wanted:
+        (tmp_path / f"geom_{index:06d}.npz").write_bytes(b"npz")
+    assert audit_outputs(wanted, tmp_path) == {
+        "expected": 2, "files": 2, "bytes": 6,
+    }
+
+    (tmp_path / "geom_000007.npz").unlink()
+    with pytest.raises(RuntimeError, match="missing=1"):
+        audit_outputs(wanted, tmp_path)
+
+    (tmp_path / "geom_000007.npz").write_bytes(b"npz")
+    (tmp_path / "geom_000002.2.tmp.npz").touch()
+    with pytest.raises(RuntimeError, match="temporaries=1"):
+        audit_outputs(wanted, tmp_path)
+
+
+def test_tmp_migration_tombstone_fails_closed():
+    script = Path(__file__).resolve().parents[1] / "scripts/migrate_latents_to_tmp.sh"
+    source = script.read_text()
+    assert 'exit 2' in source
+    assert 'rm -rf "$src"' not in source
+    assert 'ln -s "$dst" "$src"' not in source
 
 
 def test_lazy_latent_cache_roundtrip_identity_checksum_and_no_overwrite(tmp_path):

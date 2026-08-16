@@ -154,7 +154,7 @@ class MOViFDataset:
         feature = example.features.feature[key]
         return np.asarray(getattr(feature, kind).value, dtype=dtype)
 
-    def _decode(self, raw: bytes, index: int) -> MOViSample:
+    def _decode(self, raw: bytes, index: int, decode_rgb: bool = True) -> MOViSample:
         tf = self._tf()
         ex = tf.train.Example.FromString(raw)
         f32 = lambda key: self._feature_array(ex, key, "float_list", np.float32)
@@ -190,7 +190,12 @@ class MOViFDataset:
         depth = depth_range[0] + depth_raw.astype(np.float32) / np.float32(65535.0) * (depth_range[1] - depth_range[0])
         depth_valid = np.isfinite(depth) & (depth > 0.0) & (depth_raw > 0)
         segmentation = png_sequence("segmentations", 1, tf.uint8)[..., 0].astype(np.int64)
-        rgb = png_sequence("video", 3, tf.uint8).astype(np.uint8)
+        # Geometry never uses RGB; callers that only need geometry (e.g. the
+        # per-clip compaction) can skip decoding the 21 video PNGs.
+        if decode_rgb:
+            rgb = png_sequence("video", 3, tf.uint8).astype(np.uint8)
+        else:
+            rgb = np.zeros((self.clip_length, 0, 0, 3), np.uint8)
 
         camera_positions = f32("camera/positions").reshape(total_t, 3)[sl]
         camera_quaternions = f32("camera/quaternions").reshape(total_t, 4)[sl]

@@ -5,14 +5,77 @@ reshape is hidden in this module.
 """
 from __future__ import annotations
 
+from collections import defaultdict
+import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import torch
 from torch import nn
 
 WAN_LATENT_SHAPE = (16, 6, 16, 16)
 WAN_LATENT_SHAPE_256 = (16, 6, 32, 32)
+
+
+class LoRALinear(nn.Module):
+    """Zero-initialized LoRA update around a frozen Wan linear layer."""
+
+    def __init__(self, base: nn.Linear, rank: int, alpha: float,
+                 dropout: float = 0.0):
+        super().__init__()
+        if rank <= 0:
+            raise ValueError("LoRA rank must be positive")
+        self.base = base
+        for parameter in self.base.parameters():
+            parameter.requires_grad_(False)
+        self.rank = int(rank)
+        self.scaling = float(alpha) / float(rank)
+        self.dropout = nn.Dropout(float(dropout)) if dropout else nn.Identity()
+        self.lora_A = nn.Linear(
+            base.in_features, self.rank, bias=False,
+            device=base.weight.device, dtype=base.weight.dtype,
+        )
+        self.lora_B = nn.Linear(
+            self.rank, base.out_features, bias=False,
+            device=base.weight.device, dtype=base.weight.dtype,
+        )
+        nn.init.kaiming_uniform_(self.lora_A.weight, a=5 ** 0.5)
+        nn.init.zeros_(self.lora_B.weight)
+
+    def forward(self, value: torch.Tensor) -> torch.Tensor:
+        update = self.lora_B(self.lora_A(self.dropout(value))) * self.scaling
+        return self.base(value) + update
+
+
+def inject_wan_lora(
+    module: nn.Module,
+    rank: int = 16,
+    alpha: float | None = None,
+    dropout: float = 0.0,
+    targets: Sequence[str] = (
+        "to_q", "to_k", "to_v", "to_out.0", "ffn.net.0.proj", "ffn.net.2",
+    ),
+) -> list[str]:
+    """Inject LoRA into selected Wan attention and FFN projections."""
+    alpha = float(rank if alpha is None else alpha)
+    target_suffixes = tuple(str(value) for value in targets)
+    replacements: list[tuple[str, nn.Linear]] = []
+    for name, child in module.named_modules():
+        if isinstance(child, nn.Linear) and any(
+            name.endswith(suffix) for suffix in target_suffixes
+        ):
+            replacements.append((name, child))
+    for name, child in replacements:
+        parent_name, leaf = name.rsplit(".", 1) if "." in name else ("", name)
+        parent = module.get_submodule(parent_name) if parent_name else module
+        replacement = LoRALinear(child, rank, alpha, dropout)
+        if leaf.isdigit() and isinstance(parent, (nn.Sequential, nn.ModuleList)):
+            parent[int(leaf)] = replacement
+        else:
+            setattr(parent, leaf, replacement)
+    if not replacements:
+        raise RuntimeError(f"no Wan linear matched LoRA targets {target_suffixes}")
+    return [name for name, _ in replacements]
 
 
 def freeze_module(module: nn.Module) -> nn.Module:
@@ -116,25 +179,122 @@ class WanVAEEncoder(nn.Module):
 
 
 class WanDiTMapping(nn.Module):
-    """Native Wan 1.3B DiT used as F_theta(Y, tau)."""
+    """Native Wan DiT used as F_theta(Y, tau), optionally prefix-truncated."""
 
     def __init__(self, checkpoint: str | Path, condition: torch.Tensor | None = None,
                  device: torch.device | str = "cpu", dtype: torch.dtype = torch.float32,
                  timestep_scale: float = WAN_TIMESTEP_SCALE,
-                 expected_latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE):
+                 expected_latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE,
+                 truncate_after_block: int | None = None):
         super().__init__()
         self.checkpoint = str(checkpoint)
         self.timestep_scale = float(timestep_scale)
         self.expected_latent_shape = tuple(int(value) for value in expected_latent_shape)
         if len(self.expected_latent_shape) != 4 or self.expected_latent_shape[:2] != (16, 6):
             raise ValueError(f"unsupported Wan latent contract: {self.expected_latent_shape}")
-        self.dit = self._load(self.checkpoint, torch.device(device), dtype)
+        self.truncate_after_block = (
+            None if truncate_after_block is None else int(truncate_after_block)
+        )
+        self.dit = self._load(
+            self.checkpoint, torch.device(device), dtype, self.truncate_after_block,
+        )
         self.register_buffer("empty_condition", torch.empty(0), persistent=False)
         if condition is not None:
             self.set_condition(condition)
 
     @staticmethod
-    def _load(checkpoint: str, device: torch.device, dtype: torch.dtype) -> nn.Module:
+    def _architecture(path: Path) -> dict[str, Any]:
+        config_path = path.parent / "config.json"
+        if not config_path.exists():
+            raise FileNotFoundError(f"WAN architecture config not found: {config_path}")
+        native = json.loads(config_path.read_text())
+        hidden_dim = int(native.get("dim", 0))
+        num_heads = int(native.get("num_heads", 0))
+        num_layers = int(native.get("num_layers", 0))
+        if hidden_dim <= 0 or num_heads <= 0 or hidden_dim % num_heads:
+            raise ValueError(f"invalid native WAN architecture in {config_path}: {native}")
+        return {
+            "patch_size": (1, 2, 2),
+            "num_attention_heads": num_heads,
+            "attention_head_dim": hidden_dim // num_heads,
+            "in_channels": int(native.get("in_dim", 16)),
+            "out_channels": int(native.get("out_dim", 16)),
+            "text_dim": int(native.get("text_dim", 4096)),
+            "freq_dim": int(native.get("freq_dim", 256)),
+            "ffn_dim": int(native.get("ffn_dim", 0)),
+            "num_layers": num_layers,
+            "cross_attn_norm": True,
+            "qk_norm": "rms_norm_across_heads",
+            "eps": float(native.get("eps", 1e-6)),
+            "rope_max_seq_len": 1024,
+        }
+
+    @staticmethod
+    def _convert_native_key(key: str) -> str:
+        if "model.diffusion_model." in key:
+            key = key.replace("model.diffusion_model.", "")
+        replacements = (
+            ("time_embedding.0", "condition_embedder.time_embedder.linear_1"),
+            ("time_embedding.2", "condition_embedder.time_embedder.linear_2"),
+            ("text_embedding.0", "condition_embedder.text_embedder.linear_1"),
+            ("text_embedding.2", "condition_embedder.text_embedder.linear_2"),
+            ("time_projection.1", "condition_embedder.time_proj"),
+            ("cross_attn", "attn2"), ("self_attn", "attn1"),
+            (".o.", ".to_out.0."), (".q.", ".to_q."),
+            (".k.", ".to_k."), (".v.", ".to_v."),
+            ("head.modulation", "scale_shift_table"),
+            ("head.head", "proj_out"), ("modulation", "scale_shift_table"),
+            ("ffn.0", "ffn.net.0.proj"), ("ffn.2", "ffn.net.2"),
+            ("norm2", "norm__placeholder"), ("norm3", "norm2"),
+            ("norm__placeholder", "norm3"),
+        )
+        for old, new in replacements:
+            key = key.replace(old, new)
+        return key
+
+    @classmethod
+    def _load_sharded(cls, model: nn.Module, index_path: Path) -> None:
+        """Load only tensors retained by the possibly truncated model."""
+        try:
+            from safetensors import safe_open
+        except ImportError as exc:
+            raise RuntimeError("sharded WAN loading requires safetensors") from exc
+        index = json.loads(index_path.read_text())
+        weight_map = index.get("weight_map")
+        if not isinstance(weight_map, dict) or not weight_map:
+            raise ValueError(f"invalid WAN shard index: {index_path}")
+        expected = set(model.state_dict())
+        by_file: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        for native_key, filename in weight_map.items():
+            converted_key = cls._convert_native_key(native_key)
+            if converted_key in expected:
+                by_file[str(filename)].append((native_key, converted_key))
+        loaded: set[str] = set()
+        for filename in sorted(by_file):
+            shard_path = index_path.parent / filename
+            if not shard_path.exists():
+                raise FileNotFoundError(f"WAN checkpoint shard not found: {shard_path}")
+            with safe_open(shard_path, framework="pt", device="cpu") as shard:
+                converted = {
+                    converted_key: shard.get_tensor(native_key)
+                    for native_key, converted_key in by_file[filename]
+                }
+            _, unexpected = model.load_state_dict(converted, strict=False)
+            if unexpected:
+                raise RuntimeError(
+                    f"unexpected converted WAN keys in {filename}: {unexpected[:8]}"
+                )
+            loaded.update(converted)
+            del converted
+        missing = sorted(expected - loaded)
+        if missing:
+            raise RuntimeError(
+                f"sharded WAN checkpoint is missing retained keys: {missing[:8]}"
+            )
+
+    @classmethod
+    def _load(cls, checkpoint: str, device: torch.device, dtype: torch.dtype,
+              truncate_after_block: int | None) -> nn.Module:
         try:
             from diffusers import WanTransformer3DModel
         except ImportError as exc:
@@ -142,24 +302,31 @@ class WanDiTMapping(nn.Module):
         path = Path(checkpoint)
         if not path.exists():
             raise FileNotFoundError(f"WAN DiT checkpoint not found: {path}")
-        # Wan2.1's published 1.3B file is an original-format safetensors file.
-        # Explicitly supplying the 1.3B architecture avoids accidentally
-        # constructing the diffusers default 14B (40-layer) transformer.
-        config = {
-            "patch_size": (1, 2, 2), "num_attention_heads": 12,
-            "attention_head_dim": 128, "in_channels": 16, "out_channels": 16,
-            "text_dim": 4096, "freq_dim": 256, "ffn_dim": 8960,
-            "num_layers": 30, "cross_attn_norm": True,
-            "qk_norm": "rms_norm_across_heads", "eps": 1e-6,
-            "rope_max_seq_len": 1024,
-        }
-        from diffusers.loaders.single_file_utils import convert_wan_transformer_to_diffusers, load_single_file_checkpoint
-        checkpoint_state = load_single_file_checkpoint(str(path))
+        config = cls._architecture(path)
+        if truncate_after_block is not None and not (
+            0 <= truncate_after_block < int(config["num_layers"])
+        ):
+            raise ValueError(
+                f"truncate_after_block={truncate_after_block} outside "
+                f"[0,{int(config['num_layers']) - 1}]"
+            )
         model = WanTransformer3DModel(**config)
-        converted = convert_wan_transformer_to_diffusers(checkpoint_state)
-        missing, unexpected = model.load_state_dict(converted, strict=False)
-        if missing or unexpected:
-            raise RuntimeError(f"WAN DiT checkpoint conversion mismatch; missing={missing[:8]}, unexpected={unexpected[:8]}")
+        if truncate_after_block is not None:
+            model.blocks = nn.ModuleList(list(model.blocks[:truncate_after_block + 1]))
+        if path.name.endswith(".safetensors.index.json"):
+            cls._load_sharded(model, path)
+        else:
+            from diffusers.loaders.single_file_utils import (
+                convert_wan_transformer_to_diffusers, load_single_file_checkpoint,
+            )
+            checkpoint_state = load_single_file_checkpoint(str(path))
+            converted = convert_wan_transformer_to_diffusers(checkpoint_state)
+            missing, unexpected = model.load_state_dict(converted, strict=False)
+            if missing or unexpected:
+                raise RuntimeError(
+                    "WAN DiT checkpoint conversion mismatch; "
+                    f"missing={missing[:8]}, unexpected={unexpected[:8]}"
+                )
         model.to(device=device, dtype=dtype)
         return model
 

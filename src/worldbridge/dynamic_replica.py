@@ -26,6 +26,10 @@ _SCALE = W / CROP_SIZE
 # PyTorch3D view coordinates are +X left, +Y up, +Z forward.  The protocol is
 # +X right, +Y up, -Z forward.
 _P3D_TO_PROTOCOL = np.array([-1.0, 1.0, -1.0], dtype=np.float64)
+# Per-stream compact trajectory archives produced by
+# scripts/compact_dynamic_replica_trajectories.py.  When present, _load_stream
+# reads a single .npz instead of ~294 small torch .pth files.
+COMPACT_TRAJECTORY_ROOT = Path("/tmp/worldbridge4d-cache/trajectories")
 
 
 def _spatial_affine(image_size: int = W) -> np.ndarray:
@@ -56,9 +60,18 @@ def _rgb(path: Path, image_size: int = W) -> np.ndarray:
         return np.asarray(im.resize((image_size, image_size), Image.Resampling.LANCZOS), dtype=np.uint8)
 
 
+DEPTH_CACHE_ROOT = Path("/tmp/worldbridge4d-cache/depth/dynamic_replica")
+
+
 def _depth(path: Path, image_size: int = W) -> tuple[np.ndarray, np.ndarray]:
     """Decode Dynamic Replica's uint16-bit-pattern float16 z-depth."""
-    with Image.open(path) as im:
+    p = Path(path)
+    parts = p.parts
+    if "train" in parts:
+        cached = DEPTH_CACHE_ROOT / Path(*parts[parts.index("train") + 1:])
+        if cached.is_file():
+            p = cached
+    with Image.open(p) as im:
         raw = np.asarray(im, dtype=np.uint16)
     if raw.shape != (RAW_H, RAW_W):
         raise ValueError(f"unexpected Dynamic Replica depth size {raw.shape}: {path}")
@@ -181,29 +194,50 @@ class DynamicReplicaDataset:
                 if cached is not None:
                     self._streams.move_to_end(stream)
                     return cached
-            trajectory_dir = self.raw_train_root / stream / "trajectories"
-            paths = sorted(trajectory_dir.glob("*.pth"))
-            if not paths:
-                raise FileNotFoundError(f"no trajectory files for Dynamic Replica stream {stream}: {trajectory_dir}")
-            uv, world, visible, instances = [], [], [], []
-            expected_points: int | None = None
-            for path in paths:
-                value = torch.load(path, map_location="cpu", weights_only=True)
-                n = int(value["traj_3d_world"].shape[0])
-                if expected_points is None:
-                    expected_points = n
-                if n != expected_points or int(value["traj_2d"].shape[0]) != expected_points:
-                    raise ValueError(f"track count changed in stream {stream}: {path}")
-                uv.append(value["traj_2d"][:, :2].numpy())
-                world.append(value["traj_3d_world"].numpy())
-                visible.append(value["verts_inds_vis"].numpy())
-                instances.append(value["instances"].numpy())
-            cache = {
-                "paths": [str(path.relative_to(self.raw_train_root)) for path in paths],
-                "path_to_index": {str(path.relative_to(self.raw_train_root)): i for i, path in enumerate(paths)},
-                "trajs_2d": np.stack(uv), "trajs_3d_world": np.stack(world),
-                "visible": np.stack(visible).astype(bool), "instances": np.stack(instances),
-            }
+            compact_path = COMPACT_TRAJECTORY_ROOT / f"{stream}.npz"
+            if compact_path.is_file():
+                with np.load(compact_path) as z:
+                    trajs_2d = z["traj_2d"]
+                    trajs_3d_world = z["traj_3d_world"]
+                    visible = z["verts_inds_vis"].astype(bool)
+                    instances_1d = z["instances"]
+                    rel_paths = json.loads(str(z["paths"]))
+                num_frames = int(trajs_3d_world.shape[0])
+                instances = np.broadcast_to(
+                    instances_1d, (num_frames, int(instances_1d.shape[0]))
+                ).copy()
+                cache = {
+                    "paths": rel_paths,
+                    "path_to_index": {p: i for i, p in enumerate(rel_paths)},
+                    "trajs_2d": trajs_2d,
+                    "trajs_3d_world": trajs_3d_world,
+                    "visible": visible,
+                    "instances": instances,
+                }
+            else:
+                trajectory_dir = self.raw_train_root / stream / "trajectories"
+                paths = sorted(trajectory_dir.glob("*.pth"))
+                if not paths:
+                    raise FileNotFoundError(f"no trajectory files for Dynamic Replica stream {stream}: {trajectory_dir}")
+                uv, world, visible, instances = [], [], [], []
+                expected_points: int | None = None
+                for path in paths:
+                    value = torch.load(path, map_location="cpu", weights_only=True)
+                    n = int(value["traj_3d_world"].shape[0])
+                    if expected_points is None:
+                        expected_points = n
+                    if n != expected_points or int(value["traj_2d"].shape[0]) != expected_points:
+                        raise ValueError(f"track count changed in stream {stream}: {path}")
+                    uv.append(value["traj_2d"][:, :2].numpy())
+                    world.append(value["traj_3d_world"].numpy())
+                    visible.append(value["verts_inds_vis"].numpy())
+                    instances.append(value["instances"].numpy())
+                cache = {
+                    "paths": [str(path.relative_to(self.raw_train_root)) for path in paths],
+                    "path_to_index": {str(path.relative_to(self.raw_train_root)): i for i, path in enumerate(paths)},
+                    "trajs_2d": np.stack(uv), "trajs_3d_world": np.stack(world),
+                    "visible": np.stack(visible).astype(bool), "instances": np.stack(instances),
+                }
             if not np.all(cache["instances"] == cache["instances"][0:1]):
                 raise ValueError(f"track instance identity changed in stream {stream}")
             for key, value in cache.items():

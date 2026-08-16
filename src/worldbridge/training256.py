@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import re
+import threading
 from typing import Any, Protocol
 
 import numpy as np
@@ -19,6 +20,11 @@ from .geometry import GeometryBuilder
 from .pointodyssey import PointOdysseyDataset
 
 DATASET_NAMES = ("kubric", "pointodyssey", "dynamic_replica")
+# Per-clip compact Kubric geometry archives produced by
+# scripts/compact_kubric_geometry.py; the adapter reads these instead of
+# re-parsing TFRecord PNGs when present.
+KUBRIC_GEOMETRY_CACHE = Path("/tmp/worldbridge4d-cache/kubric_geometry")
+KUBRIC_MMAP_FIELDS = ("depth", "depth_valid", "segmentation")
 MIX_CYCLE = (
     "kubric", "pointodyssey", "dynamic_replica", "kubric", "dynamic_replica",
     "pointodyssey", "kubric", "dynamic_replica", "pointodyssey", "kubric",
@@ -116,10 +122,18 @@ def deterministic_sample_plan(dataset: TrainingDataset, dataset_name: str,
     rng = np.random.default_rng(sequence)
     rows = getattr(dataset, "rows", [])
     if dataset_name != "kubric" and rows and all("parent_id" in row for row in rows):
-        parents: dict[str, list[int]] = {}
-        for index, row in enumerate(rows):
-            parents.setdefault(str(row["parent_id"]), []).append(index)
-        names = sorted(parents)
+        # The parent->members mapping is dataset-static; build it once and
+        # reuse it across the ~400k per-rank plan calls instead of rebuilding
+        # it (and re-scanning every row) on each call.
+        cache = getattr(dataset, "_parent_index_cache", None)
+        if cache is None:
+            parents: dict[str, list[int]] = {}
+            for index, row in enumerate(rows):
+                parents.setdefault(str(row["parent_id"]), []).append(index)
+            names = sorted(parents)
+            cache = (names, parents)
+            dataset._parent_index_cache = cache
+        names, parents = cache
         # All ranks and accumulation microsteps stay in one parent/scene for
         # this update; rank-local RNG chooses different clips inside the block.
         parent_rng = np.random.default_rng(np.random.SeedSequence([
@@ -319,10 +333,58 @@ class CachedExternalDataset:
         )
 
 
+class KubricGeometryMmapStore:
+    """Read fixed-size Kubric arrays from atomically published mmap shards."""
+
+    def __init__(self, root: str | Path, max_open_shards: int = 8) -> None:
+        self.root = Path(root)
+        manifest_path = self.root / "manifest.json"
+        if not manifest_path.is_file():
+            raise FileNotFoundError(f"Kubric mmap manifest is missing: {manifest_path}")
+        self.manifest = json.loads(manifest_path.read_text())
+        if self.manifest.get("format") != "worldbridge4d.kubric_geometry_mmap.v1":
+            raise ValueError(f"unsupported Kubric mmap manifest: {manifest_path}")
+        if not self.manifest.get("complete"):
+            raise ValueError(f"incomplete Kubric mmap cache: {manifest_path}")
+        self.count = int(self.manifest["count"])
+        self.shard_size = int(self.manifest["shard_size"])
+        if self.count < 1 or self.shard_size < 1:
+            raise ValueError(f"invalid Kubric mmap dimensions: {manifest_path}")
+        self.max_open_shards = max(1, int(max_open_shards))
+        self._shards: OrderedDict[int, tuple[np.ndarray, ...]] = OrderedDict()
+        self._lock = threading.RLock()
+
+    def _open_shard(self, shard: int) -> tuple[np.ndarray, ...]:
+        with self._lock:
+            value = self._shards.pop(shard, None)
+            if value is None:
+                prefix = self.root / f"shard_{shard:05d}"
+                value = tuple(
+                    np.load(f"{prefix}_{field}.npy", mmap_mode="r", allow_pickle=False)
+                    for field in KUBRIC_MMAP_FIELDS
+                )
+                expected = min(self.shard_size, self.count - shard * self.shard_size)
+                if any(array.shape[0] != expected for array in value):
+                    raise ValueError(f"Kubric mmap shard {shard} has an invalid leading dimension")
+            self._shards[shard] = value
+            while len(self._shards) > self.max_open_shards:
+                self._shards.popitem(last=False)
+            return value
+
+    def read(self, index: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        index = int(index)
+        if not 0 <= index < self.count:
+            raise IndexError(f"Kubric mmap index {index} outside [0,{self.count})")
+        shard, local = divmod(index, self.shard_size)
+        arrays = self._open_shard(shard)
+        return arrays[0][local], arrays[1][local], arrays[2][local]
+
+
 class MOViF256Dataset:
     """Read-only MOVi-F 512 source -> audited 256 geometry and latent cache."""
     def __init__(self, raw_root: str | Path, cache_root: str | Path,
-                 split: str = "train", allow_missing_latents: bool = False) -> None:
+                 split: str = "train", allow_missing_latents: bool = False,
+                 geometry_mmap_root: str | Path | None = None) -> None:
         cache_root = Path(cache_root)
         self.cache_root = cache_root
         index_path = cache_root / "splits" / f"{split}.jsonl"
@@ -341,17 +403,25 @@ class MOViF256Dataset:
         self.lazy_latents = LazyLatentCache(
             cache_root / "latents" / "wan2.1_1.3b_fp32_256_lazy", "kubric"
         )
+        self.geometry_mmap = (
+            KubricGeometryMmapStore(geometry_mmap_root)
+            if geometry_mmap_root is not None else None
+        )
         self._sample_cache: OrderedDict[int, MOViSample] = OrderedDict()
+        self._sample_cache_lock = threading.RLock()
 
     def __len__(self) -> int:
         return len(self.rows)
 
     @staticmethod
-    def _resize_sample(sample: MOViSample) -> MOViSample:
+    def _resize_sample(sample: MOViSample, skip_rgb: bool = False) -> MOViSample:
         from PIL import Image
         size = 256
-        rgb = np.stack([np.asarray(Image.fromarray(frame).resize(
-            (size, size), Image.Resampling.BICUBIC), np.uint8) for frame in sample.rgb])
+        if skip_rgb:
+            rgb = np.zeros((len(sample.depth), 0, 0, 3), np.uint8)
+        else:
+            rgb = np.stack([np.asarray(Image.fromarray(frame).resize(
+                (size, size), Image.Resampling.BICUBIC), np.uint8) for frame in sample.rgb])
         depth = np.stack([np.asarray(Image.fromarray(frame).resize(
             (size, size), Image.Resampling.NEAREST), np.float32) for frame in sample.depth])
         segmentation = np.stack([np.asarray(Image.fromarray(frame.astype(np.int32)).resize(
@@ -367,13 +437,52 @@ class MOViF256Dataset:
 
     def sample(self, index: int) -> MOViSample:
         raw_index = int(self.rows[index]["raw_index"])
-        value = self._sample_cache.pop(raw_index, None)
+        with self._sample_cache_lock:
+            value = self._sample_cache.pop(raw_index, None)
         if value is None:
-            value = self._resize_sample(self.native[raw_index])
-        self._sample_cache[raw_index] = value
-        while len(self._sample_cache) > 2:
-            self._sample_cache.popitem(last=False)
+            compact = KUBRIC_GEOMETRY_CACHE / f"geom_{raw_index:06d}.npz"
+            if self.geometry_mmap is not None:
+                if not compact.is_file():
+                    raise FileNotFoundError(compact)
+                value = self._load_compact_sample(compact, self.geometry_mmap.read(raw_index))
+            elif compact.is_file():
+                value = self._load_compact_sample(compact)
+            else:
+                value = self._resize_sample(self.native[raw_index])
+        with self._sample_cache_lock:
+            self._sample_cache[raw_index] = value
+            while len(self._sample_cache) > 2:
+                self._sample_cache.popitem(last=False)
         return value
+
+    @staticmethod
+    def _load_compact_sample(
+        path: Path,
+        heavy: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    ) -> MOViSample:
+        """Rebuild a MOViSample from compact metadata and optional mmap arrays."""
+        with np.load(path) as z:
+            depth, depth_valid, segmentation = (
+                heavy if heavy is not None
+                else (z["depth"], z["depth_valid"], z["segmentation"])
+            )
+            return MOViSample(
+                video_name="", rgb=np.zeros((0, 0, 0, 3), np.uint8),
+                depth=depth.astype(np.float32),
+                depth_valid=depth_valid.astype(bool),
+                segmentation=segmentation.astype(np.int64),
+                camera_positions=z["camera_positions"].astype(np.float32),
+                camera_quaternions=z["camera_quaternions"].astype(np.float32),
+                focal_length=float(z["focal_length"]),
+                sensor_width=float(z["sensor_width"]),
+                field_of_view=float(z["field_of_view"]),
+                instance_positions=z["instance_positions"].astype(np.float32),
+                instance_quaternions=z["instance_quaternions"].astype(np.float32),
+                instance_dynamic=z["instance_dynamic"].astype(bool),
+                instance_visibility=z["instance_visibility"].astype(np.uint16),
+                depth_range=z["depth_range"].astype(np.float32),
+                clip_start=int(z["clip_start"]),
+            )
 
     def _geometry(self, index: int, source: int, compute_visibility: bool
                   ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
@@ -469,6 +578,7 @@ def load_training_dataset(config: dict[str, Any], name: str,
         return MOViF256Dataset(
             values["raw_root"], values["cache_root"],
             allow_missing_latents=allow_missing_latents,
+            geometry_mmap_root=values.get("geometry_mmap_root"),
         )
     if name == "pointodyssey":
         geometry = PointOdysseyDataset(

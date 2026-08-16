@@ -14,6 +14,12 @@ T, H, W = 21, 128, 128
 RAW_W, RAW_H, CROP_X, CROP_Y, CROP_SIZE = 960, 540, 210, 0, 540
 D = np.diag([1.0, -1.0, -1.0, 1.0])
 DEPTH_SCALE = np.float32(1000.0 / 65535.0)
+# /tmp SSD hot-cache copies of scene anno.npz (see scripts/copy_anno_to_tmp.py).
+# The authoritative copies remain on NFS; this adapter prefers the SSD copy.
+ANNO_CACHE = Path("/tmp/worldbridge4d-cache/anno")
+# Uncompressed per-scene .npy files (see scripts/convert_anno_to_npy.py).
+# The adapter mmaps these and lazily reads only the frames a clip needs.
+ANNO_NPY_CACHE = Path("/tmp/worldbridge4d-cache/anno_npy")
 
 
 def _rgb(path: Path, image_size: int = W) -> np.ndarray:
@@ -22,8 +28,15 @@ def _rgb(path: Path, image_size: int = W) -> np.ndarray:
         (image_size, image_size), Image.Resampling.BICUBIC), np.uint8)
 
 
+DEPTH_CACHE_ROOT = Path("/tmp/worldbridge4d-cache/depth/pointodyssey")
+
+
 def _depth(path: Path, image_size: int = W) -> tuple[np.ndarray, np.ndarray]:
-    raw = np.asarray(Image.open(path), dtype=np.uint16)[CROP_Y:CROP_Y + CROP_SIZE, CROP_X:CROP_X + CROP_SIZE]
+    p = Path(path)
+    cached = DEPTH_CACHE_ROOT / p.parent.parent.name / "depths" / p.name
+    if cached.is_file():
+        p = cached
+    raw = np.asarray(Image.open(p), dtype=np.uint16)[CROP_Y:CROP_Y + CROP_SIZE, CROP_X:CROP_X + CROP_SIZE]
     raw = np.asarray(Image.fromarray(raw).resize((image_size, image_size), Image.Resampling.NEAREST), dtype=np.uint16)
     depth = raw.astype(np.float32) * DEPTH_SCALE
     return depth, (raw > 0) & np.isfinite(depth) & (depth > 0)
@@ -54,7 +67,7 @@ class PointOdysseyDataset:
         # An annotation can be hundreds of MB.  Keep a small per-consumer LRU;
         # the DDP geometry workers each create their own dataset instance.
         self._anno: OrderedDict[str, dict[str, np.ndarray]] = OrderedDict()
-        self._max_scene_cache = 4
+        self._max_scene_cache = 109
         self._anno_lock = threading.RLock()
 
     def __len__(self) -> int:
@@ -70,8 +83,18 @@ class PointOdysseyDataset:
         # multi-hundred-MiB NPZ when a batch is scene-local.
         with self._anno_lock:
             if scene not in self._anno:
-                with np.load(Path(scene) / "anno.npz") as z:
-                    value = {k: z[k] for k in ("trajs_2d", "trajs_3d", "valids", "visibs", "intrinsics", "extrinsics")}
+                npy_dir = ANNO_NPY_CACHE / Path(scene).name
+                if npy_dir.is_dir() and all((npy_dir / f"{k}.npy").is_file() for k in ("trajs_2d", "trajs_3d", "valids", "visibs", "intrinsics", "extrinsics")):
+                    value = {k: np.load(npy_dir / f"{k}.npy", mmap_mode="r")
+                             for k in ("trajs_2d", "trajs_3d", "valids", "visibs", "intrinsics", "extrinsics")}
+                else:
+                    cached = ANNO_CACHE / f"{Path(scene).name}.npz"
+                    if cached.is_file():
+                        with np.load(cached) as z:
+                            value = {k: z[k] for k in ("trajs_2d", "trajs_3d", "valids", "visibs", "intrinsics", "extrinsics")}
+                    else:
+                        with np.load(Path(scene) / "anno.npz") as z:
+                            value = {k: z[k] for k in ("trajs_2d", "trajs_3d", "valids", "visibs", "intrinsics", "extrinsics")}
                 self._anno[scene] = value
                 self._anno.move_to_end(scene)
                 while len(self._anno) > self._max_scene_cache:
@@ -122,7 +145,13 @@ class PointOdysseyDataset:
         # A source-grid anchor must denote the surface actually observed at
         # that source pixel. Keep target-time occluded-but-valid supervision,
         # but never anchor a trajectory that is already occluded at source.
-        good = valid[source] & vis[source] & finite_uv & np.isfinite(world).all((0, 2))
+        src_vis = vis[source]
+        if not src_vis.any():
+            # Rare fully-occluded clips (~0.34% of PointOdyssey) have no visible
+            # source-frame track.  Fall back to validity so they still yield
+            # supervision instead of raising on an empty anchor set.
+            src_vis = valid[source]
+        good = valid[source] & src_vis & finite_uv & np.isfinite(world).all((0, 2))
         good &= (iu >= 0) & (iu < size) & (iv >= 0) & (iv < size)
         xyz = np.zeros((T, 3, size, size), np.float32); out_valid = np.zeros((T, size, size), bool); out_vis = np.zeros_like(out_valid)
         E = a["extrinsics"][f, :3].astype(np.float64)
