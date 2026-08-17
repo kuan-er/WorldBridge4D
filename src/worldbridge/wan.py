@@ -185,7 +185,8 @@ class WanDiTMapping(nn.Module):
                  device: torch.device | str = "cpu", dtype: torch.dtype = torch.float32,
                  timestep_scale: float = WAN_TIMESTEP_SCALE,
                  expected_latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE,
-                 truncate_after_block: int | None = None):
+                 truncate_after_block: int | None = None,
+                 load_pretrained_weights: bool = True):
         super().__init__()
         self.checkpoint = str(checkpoint)
         self.timestep_scale = float(timestep_scale)
@@ -197,6 +198,7 @@ class WanDiTMapping(nn.Module):
         )
         self.dit = self._load(
             self.checkpoint, torch.device(device), dtype, self.truncate_after_block,
+            load_pretrained_weights=bool(load_pretrained_weights),
         )
         self.register_buffer("empty_condition", torch.empty(0), persistent=False)
         if condition is not None:
@@ -292,15 +294,20 @@ class WanDiTMapping(nn.Module):
                 f"sharded WAN checkpoint is missing retained keys: {missing[:8]}"
             )
 
-    @classmethod
-    def _load(cls, checkpoint: str, device: torch.device, dtype: torch.dtype,
-              truncate_after_block: int | None) -> nn.Module:
+    @staticmethod
+    def _new_model(config: dict[str, Any]) -> nn.Module:
         try:
             from diffusers import WanTransformer3DModel
         except ImportError as exc:
             raise RuntimeError("WAN DiT requires diffusers>=0.36") from exc
+        return WanTransformer3DModel(**config)
+
+    @classmethod
+    def _load(cls, checkpoint: str, device: torch.device, dtype: torch.dtype,
+              truncate_after_block: int | None = None,
+              load_pretrained_weights: bool = True) -> nn.Module:
         path = Path(checkpoint)
-        if not path.exists():
+        if load_pretrained_weights and not path.exists():
             raise FileNotFoundError(f"WAN DiT checkpoint not found: {path}")
         config = cls._architecture(path)
         if truncate_after_block is not None and not (
@@ -310,23 +317,24 @@ class WanDiTMapping(nn.Module):
                 f"truncate_after_block={truncate_after_block} outside "
                 f"[0,{int(config['num_layers']) - 1}]"
             )
-        model = WanTransformer3DModel(**config)
+        model = cls._new_model(config)
         if truncate_after_block is not None:
             model.blocks = nn.ModuleList(list(model.blocks[:truncate_after_block + 1]))
-        if path.name.endswith(".safetensors.index.json"):
-            cls._load_sharded(model, path)
-        else:
-            from diffusers.loaders.single_file_utils import (
-                convert_wan_transformer_to_diffusers, load_single_file_checkpoint,
-            )
-            checkpoint_state = load_single_file_checkpoint(str(path))
-            converted = convert_wan_transformer_to_diffusers(checkpoint_state)
-            missing, unexpected = model.load_state_dict(converted, strict=False)
-            if missing or unexpected:
-                raise RuntimeError(
-                    "WAN DiT checkpoint conversion mismatch; "
-                    f"missing={missing[:8]}, unexpected={unexpected[:8]}"
+        if load_pretrained_weights:
+            if path.name.endswith(".safetensors.index.json"):
+                cls._load_sharded(model, path)
+            else:
+                from diffusers.loaders.single_file_utils import (
+                    convert_wan_transformer_to_diffusers, load_single_file_checkpoint,
                 )
+                checkpoint_state = load_single_file_checkpoint(str(path))
+                converted = convert_wan_transformer_to_diffusers(checkpoint_state)
+                missing, unexpected = model.load_state_dict(converted, strict=False)
+                if missing or unexpected:
+                    raise RuntimeError(
+                        "WAN DiT checkpoint conversion mismatch; "
+                        f"missing={missing[:8]}, unexpected={unexpected[:8]}"
+                    )
         model.to(device=device, dtype=dtype)
         return model
 

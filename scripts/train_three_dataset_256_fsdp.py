@@ -701,7 +701,19 @@ def main() -> None:
     if rank == 0 and not args.lazy_vae_pipeline:
         print(json.dumps({"event": "three_dataset_cache_ready", "clips": {k: len(v) for k, v in datasets.items()}}), flush=True)
 
-    model = build_real_model(config, device)
+    # A resume checkpoint is a strict full-model state dict. Construct the Wan
+    # architecture without reading the original pretrained tensor file, then
+    # let load_checkpoint overwrite every model parameter and optimizer state.
+    # Fresh runs still require and load the native Wan checkpoint.
+    load_wan_pretrained = not resume.is_file()
+    if rank == 0 and not load_wan_pretrained:
+        print(json.dumps({
+            "event": "wan_pretrained_load_skipped_for_full_resume",
+            "resume": str(resume),
+        }), flush=True)
+    model = build_real_model(
+        config, device, load_wan_pretrained=load_wan_pretrained,
+    )
     layer_weights = model.backbone.layer_weights().detach().float().cpu().numpy()
     # build_real_model intentionally materializes the BF16 training model before
     # this audit. Compare against the configured logits after the same dtype
@@ -766,10 +778,27 @@ def main() -> None:
     try:
         slots_per_rank = accumulation * microbatch_per_gpu
 
-        def timed_geometry(step_dataset, index: int, permutation: np.ndarray):
+        def timed_geometry(step_dataset, index: int, permutation: np.ndarray,
+                           required_targets: int, fallback_seed: int):
             task_started = time.perf_counter()
-            value = source_with_eligible_targets(step_dataset, index, permutation)
-            return value, time.perf_counter() - task_started
+            candidates = [int(index)]
+            fallback_rng = np.random.default_rng(int(fallback_seed))
+            fallback_order = fallback_rng.permutation(len(step_dataset))
+            candidates.extend(int(value) for value in fallback_order if int(value) != int(index))
+            last_error = None
+            for candidate_number, candidate in enumerate(candidates):
+                candidate_sources = permutation if candidate_number == 0 else fallback_rng.permutation(21)
+                try:
+                    source, xyz, valid = source_with_eligible_targets(
+                        step_dataset, candidate, candidate_sources,
+                        min_targets=required_targets,
+                    )
+                    return (candidate, source, xyz, valid), time.perf_counter() - task_started
+                except ValueError as error:
+                    last_error = error
+            raise ValueError(
+                f"dataset has no clip/source with K={required_targets} eligible targets"
+            ) from last_error
 
         def plan_step(step: int):
             """Plan one update and submit its deterministic geometry futures."""
@@ -780,7 +809,9 @@ def main() -> None:
             ) for slot in range(slots_per_rank)]
             step_futures = [pool.submit(
                 timed_geometry, step_dataset, index,
-                np.random.default_rng(np.random.SeedSequence([seed, step, slot, rank, 771])).permutation(21)
+                np.random.default_rng(np.random.SeedSequence([seed, step, slot, rank, 771])).permutation(21),
+                k,
+                int(np.random.SeedSequence([seed, step, slot, rank, 772]).generate_state(1)[0]),
             ) for slot, (index, _source, _rng) in enumerate(step_plans)]
             return step_name, step_dataset, step_plans, step_futures
 
@@ -825,9 +856,9 @@ def main() -> None:
                 ))
                 batch_values = []
                 target_counts = []
-                for (index, _source, rng), future in group:
+                for (_planned_index, _source, rng), future in group:
                     wait_started = time.perf_counter()
-                    (source, xyz_all, valid_all), task_seconds = future.result()
+                    (index, source, xyz_all, valid_all), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
                     targets = sample_eligible_targets(valid_all, k, rng)

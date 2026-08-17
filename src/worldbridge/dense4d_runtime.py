@@ -110,6 +110,7 @@ def build_real_model(config: dict[str, Any], device: torch.device | str) -> Dens
             condition=condition, device=device, dtype=dtype,
             expected_latent_shape=wan_latent_shape,
             truncate_after_block=config.get("wan_truncate_after_block"),
+            load_pretrained_weights=load_wan_pretrained,
         )
         mode = str(config.get("trainable_mode", "full"))
         if mode == "lora":
