@@ -150,6 +150,23 @@ def test_full_resume_skips_redundant_native_wan_weights(monkeypatch, tmp_path):
     assert "load_wan_pretrained=load_wan_pretrained" in source
 
 
+def test_full_resume_loads_rank0_model_before_fsdp_sync():
+    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    helper = source[
+        source.index("def load_unwrapped_model_checkpoint"):
+        source.index("def load_optimizer_checkpoint")
+    ]
+    assert 'model.load_state_dict(payload["model"], strict=True)' in helper
+    assert "fsdp_state_context" not in helper
+
+    main = source[source.index("def main()") :]
+    model_load = main.index("load_unwrapped_model_checkpoint(")
+    fsdp_wrap = main.index("fsdp = FSDP(")
+    optimizer_load = main.index("load_optimizer_checkpoint(")
+    assert model_load < fsdp_wrap < optimizer_load
+    assert "sync_module_states=True" in main[fsdp_wrap:optimizer_load]
+
+
 def test_wandb_resume_can_skip_already_published_steps():
     source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
     assert '"--wandb-log-after-step", type=int, default=-1' in source
