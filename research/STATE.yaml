@@ -698,7 +698,7 @@ h026_wan14b_full40_lora_gpu01:
   next_step: Directly launch the user-requested GPU0/1 50k run and inspect its
     first updates.
 h023_gpu14_optimized_150k_handoff:
-  status: strict_restore_complete_first_update_pending
+  status: optimized_150k_training_stable
   task: T-20260817160306-ca12e3
   physical_gpus: [1, 4]
   world_size: 2
@@ -732,4 +732,4 @@ h023_gpu14_optimized_150k_handoff:
   sustained_hot_window: {start_step: 56550, end_step: 56575, updates: 25, elapsed_seconds: 120.49118614988402, average_seconds_per_update: 4.819647445995361, recent_geometry_wait_seconds_max: 0.0000734, both_gpu_utilization_percent: 97_to_100, geometry_page_cache_resident_gib: 59.562, geometry_page_cache_resident_percent: 26.69}
   resource_intrusion_event: false_positive_nvml_pid_namespace_ghost_contexts
   current_training_modified: source_stopped_new_run_strict_restore_complete
-updated_at: 2026-08-18T18:08:28Z
+updated_at: 2026-08-18T18:42:38Z
