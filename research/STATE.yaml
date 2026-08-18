@@ -676,5 +676,6 @@ h023_gpu14_optimized_150k_handoff:
   acquisition: {min_free_mib: 76000, max_util_percent: 5, stable_seconds: 90, compute_pids: none}
   safety: requires_immutable_sha256_handoff_marker_and_final_recheck
   hard_reservation: unavailable_without_external_scheduler
+  verification: {run: R-20260818173644-94e964, tests_passed: 96, compileall: passed, shell_syntax: passed}
   current_training_modified: false
 updated_at: 2026-08-18T17:34:52Z
