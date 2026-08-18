@@ -33,7 +33,7 @@ RGB [B,21,3,128,128]
 
 ## 从零运行
 
-环境安装与 CUDA/PyTorch 选择见 `docs/ENVIRONMENT.md`。`requirements.txt` 覆盖运行、训练、W&B、分析、数据协议校验和测试的直接 Python 依赖，`constraints-known-good-cu126.txt` 记录当前已验证环境。安装后先运行 `PYTHONPATH=src python scripts/check_environment.py --require-cuda`。所有研究运行应由 PRL Task 启动；下面的 `<TASK>` 是 `prl task start` 返回的 Task ID。数据审计命令本身不会写数据目录：
+环境安装与 CUDA/PyTorch 选择见 `docs/ENVIRONMENT.md`。256 三数据集 FSDP 实现见 `docs/WORLDBRIDGE4D_256_THREE_DATASET_IMPLEMENTATION.md`，长训练中验证的 geometry cache 与有界 prefetch 经验见 `docs/THREE_DATASET_GEOMETRY_CACHE_PREFETCH_LESSONS.md`。`requirements.txt` 覆盖运行、训练、W&B、分析、数据协议校验和测试的直接 Python 依赖，`constraints-known-good-cu126.txt` 记录当前已验证环境。安装后先运行 `PYTHONPATH=src python scripts/check_environment.py --require-cuda`。所有研究运行应由 PRL Task 启动；下面的 `<TASK>` 是 `prl task start` 返回的 Task ID。数据审计命令本身不会写数据目录：
 
 ```bash
 prl context

@@ -4,6 +4,8 @@
 
 训练采用 4 rank `FSDP FULL_SHARD`（不是参数复制式 DDP）。两卡仅用于启动 gate，正式配置仍要求四卡。
 
+K19 长训练中验证的 geometry mmap、进程 LRU、有界并发、depth-2 prefetch、page-cache 诊断及稳定吞吐经验见 [`THREE_DATASET_GEOMETRY_CACHE_PREFETCH_LESSONS.md`](THREE_DATASET_GEOMETRY_CACHE_PREFETCH_LESSONS.md)。
+
 ## 1. 先生成三个固定 UMT5 condition
 
 ```bash
