@@ -690,8 +690,9 @@ h023_gpu14_optimized_150k_handoff:
   signature_fix_verification: {run: R-20260818180541-1e9c65, tests_passed: 97, compileall: passed, shell_syntax: passed}
   optimized_run: R-20260818180553-c5f105
   strict_restore: {step: 56503, world_size: 2, optimizer: restored, rng_states: 2, completed_at: 2026-08-18T18:08:28Z}
-  post_resume_checksum: started_low_priority
-  first_update: pending
+  post_resume_checksum: {state: complete, sha256: 4fa0dac9c430ea4fa8096d6684b33c9e3b82f0f1907926e892f3fa7a75249541}
+  first_update: {global_step: 56504, dataset: pointodyssey, loss: 0.013353999704122543, raw_epe_m: 0.15952254766892612, lr_factor: 0.40532763843756303, step_seconds: 251.2366376556456, geometry_wait_seconds: 17.965477074030787, finite: true}
+  second_update: {global_step: 56505, dataset: kubric, loss: 0.17363791540265083, raw_epe_m: 0.7572442481392309, lr_factor: 0.40532763809434363, step_seconds: 65.5942565491423, geometry_wait_seconds: 0.00014229211956262589, finite: true}
   resource_intrusion_event: false_positive_nvml_pid_namespace_ghost_contexts
   current_training_modified: source_stopped_new_run_strict_restore_complete
 updated_at: 2026-08-18T18:08:28Z
