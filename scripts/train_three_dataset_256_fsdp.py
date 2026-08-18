@@ -40,6 +40,7 @@ from worldbridge.training256 import (
     DATASET_NAMES, apply_cosine_schedule, dataset_for_step,
     deterministic_sample_plan, load_training_datasets, prepare_training_indexes,
     sample_eligible_targets, source_with_eligible_targets,
+    training_diagnostic_due,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanVAEEncoder
 from worldbridge.text_conditions import load_dataset_text_conditions
@@ -173,6 +174,24 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
     max_open_shards = kubric.get("geometry_mmap_max_open_shards")
     if max_open_shards is not None and not 1 <= int(max_open_shards) <= 4096:
         raise ValueError("geometry_mmap_max_open_shards must be in [1,4096]")
+    diagnostic_every = int(config.get("diagnostic_every_steps", 20))
+    if diagnostic_every < 1:
+        raise ValueError("diagnostic_every_steps must be positive")
+    extension_start = config.get("schedule_extension_start_step")
+    extension_horizon = config.get("schedule_extension_horizon_steps")
+    if (extension_start is None) != (extension_horizon is None):
+        raise ValueError("both cosine schedule extension fields must be configured")
+    if extension_start is not None:
+        warmup = int(config["warmup_steps"])
+        original_horizon = int(config["schedule_horizon_steps"])
+        extension_start = int(extension_start)
+        extension_horizon = int(extension_horizon)
+        if not warmup < extension_start < original_horizon < extension_horizon:
+            raise ValueError(
+                "schedule extension must satisfy warmup < start < original horizon < extended horizon"
+            )
+        if int(config.get("max_steps", extension_horizon)) != extension_horizon:
+            raise ValueError("extended schedule horizon must equal max_steps")
 
 
 def wan_block_auto_wrap_policy(
@@ -793,6 +812,12 @@ def main() -> None:
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
+    ensure_dataset_diagnostics = bool(
+        config.get("diagnostic_ensure_dataset_coverage", False)
+    )
+    last_diagnostic_cycle: dict[str, int] = {}
+    extension_start = config.get("schedule_extension_start_step")
+    extension_horizon = config.get("schedule_extension_horizon_steps")
     checkpoint_steps = {int(value) for value in config.get("checkpoint_steps", [])}
     checkpoint_every = int(config.get("checkpoint_every_after", 5000))
     graceful_seconds = float(config.get("graceful_stop_hours", 68)) * 3600
@@ -944,15 +969,30 @@ def main() -> None:
             if not torch.isfinite(gradient_norm):
                 raise FloatingPointError(f"non-finite gradient norm at step={step + 1}")
             lr_factor = apply_cosine_schedule(
-                optimizer, step + 1, int(config["warmup_steps"]), int(config["schedule_horizon_steps"])
+                optimizer,
+                step + 1,
+                int(config["warmup_steps"]),
+                int(config["schedule_horizon_steps"]),
+                None if extension_start is None else int(extension_start),
+                None if extension_horizon is None else int(extension_horizon),
             )
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
             completed = step + 1
             clips_seen[name] += world * accumulation * microbatch_per_gpu
             elapsed = time.perf_counter() - started
             peak = torch.cuda.max_memory_allocated(device) / 2**30
-            diagnostic = completed == start_step + 1 or completed % diagnostic_every == 0 or completed == target_steps
+            diagnostic = training_diagnostic_due(
+                completed,
+                start_step,
+                target_steps,
+                name,
+                step,
+                diagnostic_every,
+                ensure_dataset_diagnostics,
+                last_diagnostic_cycle,
+            )
             if diagnostic:
+                last_diagnostic_cycle[name] = step // 20
                 scalars = torch.tensor(
                     [update_loss, update_epe, valid_points, pair_count], device=device, dtype=torch.float64
                 )
@@ -980,6 +1020,7 @@ def main() -> None:
                     "system/latent_load_seconds_max_rank": float(timing_max[2]),
                     "system/geometry_prefetch_depth": prefetch_depth,
                     "system/geometry_prefetch_workers": prefetch_workers,
+                    "system/diagnostic_dataset_coverage": int(ensure_dataset_diagnostics),
                     "system/elapsed_seconds": elapsed, "train/lr_factor": lr_factor,
                     "train/gradient_norm": float(gradient_norm),
                     **{f"sampling/source_{index}": int(value) for index, value in enumerate(source_hist.tolist())},

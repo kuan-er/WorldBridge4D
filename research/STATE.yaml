@@ -663,4 +663,18 @@ h026_wan14b_full40_lora_gpu01:
   selected_long_run: {physical_gpus: [0, 1], optimizer_updates: 50000, microbatch_per_gpu: 2, gradient_accumulation: 2, effective_clips_per_update: 8, pairs_per_update: 128, targets_per_source: 16, schedule_horizon_steps: 50000}
   two_gpu_capacity_gate_waived_by_user: true
   next_step: Directly launch the user-requested GPU0/1 50k run and inspect its first updates.
-updated_at: 2026-08-16T10:20:00Z
+h023_gpu14_optimized_150k_handoff:
+  status: code_prepared_not_armed_or_launched
+  task: T-20260817160306-ca12e3
+  physical_gpus: [1, 4]
+  world_size: 2
+  protocol: {targets_per_source: 19, microbatch_per_gpu: 2, gradient_accumulation: 2}
+  target_steps: 150000
+  prefetch: {workers: 4, depth: 2, kubric_sample_cache: 16, mmap_open_shards: 90}
+  diagnostics: at_least_one_log_per_dataset_per_20_step_cycle
+  lr_extension: continuous_from_audited_handoff_factor_to_zero_at_150k
+  acquisition: {min_free_mib: 76000, max_util_percent: 5, stable_seconds: 90, compute_pids: none}
+  safety: requires_immutable_sha256_handoff_marker_and_final_recheck
+  hard_reservation: unavailable_without_external_scheduler
+  current_training_modified: false
+updated_at: 2026-08-18T17:34:52Z

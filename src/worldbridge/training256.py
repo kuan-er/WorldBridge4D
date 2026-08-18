@@ -73,13 +73,95 @@ def cosine_learning_rate_factor(update_number: int, warmup_steps: int,
     return 0.5 * (1.0 + math.cos(math.pi * progress))
 
 
-def apply_cosine_schedule(optimizer: torch.optim.Optimizer, update_number: int,
-                          warmup_steps: int, horizon_steps: int) -> float:
-    factor = cosine_learning_rate_factor(update_number, warmup_steps, horizon_steps)
+def extended_cosine_learning_rate_factor(
+    update_number: int,
+    warmup_steps: int,
+    original_horizon_steps: int,
+    extension_start_step: int | None = None,
+    extension_horizon_steps: int | None = None,
+) -> float:
+    """Extend a running cosine schedule without an LR jump at the handoff.
+
+    Replacing a 100k horizon with 150k at resume would increase the learning
+    rate immediately.  Instead, retain the original factor through the handoff
+    and cosine-decay that factor to zero over the added interval.
+    """
+    if extension_start_step is None and extension_horizon_steps is None:
+        return cosine_learning_rate_factor(
+            update_number, warmup_steps, original_horizon_steps,
+        )
+    if extension_start_step is None or extension_horizon_steps is None:
+        raise ValueError("both cosine extension steps must be configured")
+    extension_start_step = int(extension_start_step)
+    extension_horizon_steps = int(extension_horizon_steps)
+    if not warmup_steps < extension_start_step < extension_horizon_steps:
+        raise ValueError("invalid cosine extension interval")
+    if extension_start_step >= original_horizon_steps:
+        raise ValueError("cosine extension must start before the original horizon")
+    if update_number <= extension_start_step:
+        return cosine_learning_rate_factor(
+            update_number, warmup_steps, original_horizon_steps,
+        )
+    start_factor = cosine_learning_rate_factor(
+        extension_start_step, warmup_steps, original_horizon_steps,
+    )
+    progress = min(
+        1.0,
+        (int(update_number) - extension_start_step)
+        / (extension_horizon_steps - extension_start_step),
+    )
+    return start_factor * 0.5 * (1.0 + math.cos(math.pi * progress))
+
+
+def apply_cosine_schedule(
+    optimizer: torch.optim.Optimizer,
+    update_number: int,
+    warmup_steps: int,
+    horizon_steps: int,
+    extension_start_step: int | None = None,
+    extension_horizon_steps: int | None = None,
+) -> float:
+    factor = extended_cosine_learning_rate_factor(
+        update_number, warmup_steps, horizon_steps,
+        extension_start_step, extension_horizon_steps,
+    )
     for group in optimizer.param_groups:
         base_lr = float(group.setdefault("_base_lr", group["lr"]))
         group["lr"] = base_lr * factor
     return factor
+
+
+def training_diagnostic_due(
+    completed_step: int,
+    start_step: int,
+    target_steps: int,
+    dataset_name: str,
+    schedule_step: int,
+    diagnostic_every: int,
+    ensure_dataset_coverage: bool,
+    last_logged_cycle: dict[str, int],
+) -> bool:
+    """Return whether to aggregate/log this update.
+
+    A cadence of five aliases the fixed 20-step mixture cycle and previously
+    omitted Dynamic Replica almost completely.  Coverage mode logs at least one
+    update from every dataset in every mixture cycle, independent of cadence.
+    """
+    if dataset_name not in DATASET_NAMES:
+        raise ValueError(f"unknown diagnostic dataset: {dataset_name}")
+    if diagnostic_every < 1:
+        raise ValueError("diagnostic_every must be positive")
+    regular = (
+        completed_step == start_step + 1
+        or completed_step % diagnostic_every == 0
+        or completed_step == target_steps
+    )
+    cycle = int(schedule_step) // len(MIX_CYCLE)
+    coverage = (
+        ensure_dataset_coverage
+        and last_logged_cycle.get(dataset_name) != cycle
+    )
+    return regular or coverage
 
 
 def source_with_eligible_targets(dataset: TrainingDataset, index: int,
