@@ -2,7 +2,6 @@ current_task: T-20260817160306-ca12e3
 active_hypotheses:
   - H023
   - H026
-  - H024
   - H022
   - H020
   - H009
@@ -697,4 +696,4 @@ h026_wan14b_full40_lora_gpu01:
   two_gpu_capacity_gate_waived_by_user: true
   next_step: Directly launch the user-requested GPU0/1 50k run and inspect its
     first updates.
-updated_at: 2026-08-17T16:04:05.104Z
+updated_at: 2026-08-18T10:21:41.390Z

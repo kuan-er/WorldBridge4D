@@ -22,3 +22,6 @@ artifacts/
 outputs/
 __pycache__/
 .pytest_cache/
+# pi-research-loop v2 runtime
+.pi-research/notifications/
+.pi-research/snapshots/
