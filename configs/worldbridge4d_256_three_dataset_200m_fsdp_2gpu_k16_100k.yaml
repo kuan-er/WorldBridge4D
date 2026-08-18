@@ -34,8 +34,10 @@ fsdp_min_num_params: 5000000
 microbatch_per_gpu: 2
 gradient_accumulation: 2
 targets_per_source: 16
-geometry_prefetch_depth: 4
-geometry_prefetch_workers: 8
+# Matched GPU0 real-cache benchmark R-20260818100323-232501: four
+# workers/eight in-flight clips avoided the 8-worker geometry stalls.
+geometry_prefetch_depth: 2
+geometry_prefetch_workers: 4
 
 learning_rate: 0.0003
 geometry_learning_rate: 0.0003
@@ -77,6 +79,8 @@ datasets:
     raw_root: /dataset/nas0/yejun/MOVi-F/512x512
     cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/kubric
     geometry_mmap_root: /tmp/worldbridge4d-cache-v2/kubric_geometry_mmap
+    geometry_sample_cache_size: 16
+    geometry_mmap_max_open_shards: 90
   pointodyssey:
     raw_root: /dataset/nas0/PointOdyssey
     geometry_cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1

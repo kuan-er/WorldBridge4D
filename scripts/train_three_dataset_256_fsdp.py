@@ -160,14 +160,14 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
         )
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
     prefetch_workers = int(config.get(
-        "geometry_prefetch_workers", accumulation * microbatch * 2,
+        "geometry_prefetch_workers", min(4, accumulation * microbatch * 2),
     ))
     if not 1 <= prefetch_depth <= 16:
         raise ValueError("geometry_prefetch_depth must be in [1,16]")
     if not 1 <= prefetch_workers <= 32:
         raise ValueError("geometry_prefetch_workers must be in [1,32]")
     kubric = config.get("datasets", {}).get("kubric", {})
-    sample_cache_size = int(kubric.get("geometry_sample_cache_size", 32))
+    sample_cache_size = int(kubric.get("geometry_sample_cache_size", 16))
     if not 1 <= sample_cache_size <= 256:
         raise ValueError("geometry_sample_cache_size must be in [1,256]")
     max_open_shards = kubric.get("geometry_mmap_max_open_shards")
@@ -800,7 +800,7 @@ def main() -> None:
     completed = start_step
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
     prefetch_workers = int(config.get(
-        "geometry_prefetch_workers", accumulation * microbatch_per_gpu * 2,
+        "geometry_prefetch_workers", min(4, accumulation * microbatch_per_gpu * 2),
     ))
     pool = ThreadPoolExecutor(
         max_workers=prefetch_workers,

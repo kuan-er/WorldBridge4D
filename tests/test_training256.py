@@ -10,7 +10,6 @@ import pytest
 import torch
 from torch import nn
 
-from worldbridge.data import MOViSample
 from worldbridge.dense4d import DenseQueryDecoder, WanHiddenGeometryBackbone, masked_pair_smooth_l1
 from worldbridge.training256 import (
     CachedExternalDataset, KubricGeometryMmapStore, LazyLatentCache, MOViF256Dataset,
@@ -740,63 +739,6 @@ def test_source_selection_requires_exact_target_capacity():
         source_with_eligible_targets(
             Dataset(), 0, np.array([0, 1]), min_targets=7,
         )
-
-
-def test_kubric_fast_source_selection_matches_validity_and_materializes_once():
-    frames, height, width = 3, 2, 2
-    depth = np.ones((frames, height, width), np.float32)
-    depth_valid = np.zeros((frames, height, width), bool)
-    depth_valid[0, 0, 0] = True  # Background remains valid at every target.
-    depth_valid[1, 0, 0] = True  # Object state is invalid only at target 2.
-    segmentation = np.zeros((frames, height, width), np.int64)
-    segmentation[1] = 1
-    positions = np.zeros((1, frames, 3), np.float32)
-    positions[0, 2] = np.nan
-    quaternions = np.zeros((1, frames, 4), np.float32)
-    quaternions[..., 0] = 1
-    camera_quaternions = np.zeros((frames, 4), np.float32)
-    camera_quaternions[:, 0] = 1
-    sample = MOViSample(
-        "", np.zeros((0, 0, 0, 3), np.uint8), depth, depth_valid,
-        segmentation, np.zeros((frames, 3), np.float32), camera_quaternions,
-        1.0, 1.0, 1.0, positions, quaternions, np.ones(1, bool),
-        np.zeros((1, frames), np.uint16), np.array([0, 1], np.float32), 0,
-    )
-    masks = MOViF256Dataset._eligible_targets_for_sample(
-        sample, np.array([0, 1, 2]),
-    )
-    np.testing.assert_array_equal(masks[0], [True, True, True])
-    np.testing.assert_array_equal(masks[1], [True, True, False])
-    np.testing.assert_array_equal(masks[2], [False, False, False])
-    for source in range(frames):
-        _xyz, actual, _visible = MOViF256Dataset._geometry_from_sample(
-            sample, source, False,
-        )
-        np.testing.assert_array_equal(
-            actual.reshape(frames, -1).any(1), masks[source],
-        )
-
-    class Dataset(MOViF256Dataset):
-        def __init__(self, value):
-            self.value = value
-            self.geometry_calls = 0
-        def sample(self, index):
-            return self.value
-        def _geometry_from_sample(self, value, source, compute_visibility):
-            self.geometry_calls += 1
-            eligible = self._eligible_targets_for_sample(value, np.array([source]))[0]
-            xyz = np.zeros((frames, 3, height, width), np.float32)
-            valid = np.zeros((frames, height, width), bool)
-            valid[eligible, 0, 0] = True
-            return xyz, valid, None
-
-    dataset = Dataset(sample)
-    source, _xyz, valid = source_with_eligible_targets(
-        dataset, 0, np.array([2, 1, 0]), min_targets=2,
-    )
-    assert source == 1
-    assert dataset.geometry_calls == 1
-    np.testing.assert_array_equal(valid.reshape(frames, -1).any(1), masks[1])
 
 
 def test_pair_loss_ignores_empty_pair_instead_of_treating_it_as_zero():

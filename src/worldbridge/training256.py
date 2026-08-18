@@ -85,19 +85,11 @@ def apply_cosine_schedule(optimizer: torch.optim.Optimizer, update_number: int,
 def source_with_eligible_targets(dataset: TrainingDataset, index: int,
                                  sources: np.ndarray, min_targets: int = 1
                                  ) -> tuple[int, np.ndarray, np.ndarray]:
-    """Return the first source with at least ``min_targets`` supervised pairs.
-
-    Dataset adapters may provide ``select_source_with_eligible_targets`` to
-    perform a metadata-only capacity check before materializing dense XYZ.  The
-    generic fallback preserves the original protocol for external adapters.
-    """
+    """Return the first source with at least ``min_targets`` supervised pairs."""
     min_targets = int(min_targets)
     if min_targets < 1:
         raise ValueError("min_targets must be positive")
     sources = np.asarray(sources, dtype=np.int64).reshape(-1)
-    selector = getattr(dataset, "select_source_with_eligible_targets", None)
-    if callable(selector):
-        return selector(int(index), sources, min_targets)
     for source in sources:
         xyz, valid = dataset.source_all_targets(int(index), int(source))
         eligible = np.asarray(valid, dtype=bool).reshape(21, -1).any(axis=1)
@@ -412,7 +404,7 @@ class MOViF256Dataset:
     def __init__(self, raw_root: str | Path, cache_root: str | Path,
                  split: str = "train", allow_missing_latents: bool = False,
                  geometry_mmap_root: str | Path | None = None,
-                 geometry_sample_cache_size: int = 32,
+                 geometry_sample_cache_size: int = 16,
                  geometry_mmap_max_open_shards: int | None = None) -> None:
         cache_root = Path(cache_root)
         self.cache_root = cache_root
@@ -531,42 +523,6 @@ class MOViF256Dataset:
             )
 
     @staticmethod
-    def _eligible_targets_for_sample(
-        sample: MOViSample, sources: np.ndarray,
-    ) -> np.ndarray:
-        """Return exact target-capacity masks without constructing dense XYZ.
-
-        Kubric validity is source-depth validity intersected with each rigid
-        instance's finite target state; visibility is deliberately not part of
-        the training-validity contract.  Background and out-of-range segment
-        ids retain source validity at every target, matching GeometryBuilder.
-        """
-        sources = np.asarray(sources, dtype=np.int64).reshape(-1)
-        if np.any((sources < 0) | (sources >= sample.num_frames)):
-            raise ValueError("source index outside sample frame range")
-        builder = GeometryBuilder(sample)
-        state_valid = (
-            np.isfinite(sample.instance_positions).all(axis=-1)
-            & np.isfinite(builder._object_rot).all(axis=(2, 3))
-        )
-        result = np.zeros((len(sources), sample.num_frames), dtype=bool)
-        for row, source in enumerate(sources):
-            source_valid = np.asarray(sample.depth_valid[source], dtype=bool)
-            instance = np.asarray(sample.segmentation[source])
-            static = source_valid & (
-                (instance <= 0) | (instance > sample.num_instances)
-            )
-            if np.any(static):
-                result[row] = True
-                continue
-            present = np.unique(instance[source_valid])
-            for value in present:
-                object_index = int(value) - 1
-                if 0 <= object_index < sample.num_instances:
-                    result[row] |= state_valid[object_index]
-        return result
-
-    @staticmethod
     def _geometry_from_sample(
         sample: MOViSample, source: int, compute_visibility: bool,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
@@ -581,27 +537,6 @@ class MOViF256Dataset:
             if visible is not None else None
         )
         return xyz, valid, visible_out
-
-    def select_source_with_eligible_targets(
-        self, index: int, sources: np.ndarray, min_targets: int,
-    ) -> tuple[int, np.ndarray, np.ndarray]:
-        """Select by metadata and materialize dense geometry exactly once."""
-        sources = np.asarray(sources, dtype=np.int64).reshape(-1)
-        sample = self.sample(int(index))
-        capacity = self._eligible_targets_for_sample(sample, sources)
-        for row, source in enumerate(sources):
-            if int(capacity[row].sum()) < int(min_targets):
-                continue
-            xyz, valid, _ = self._geometry_from_sample(sample, int(source), False)
-            actual = valid.reshape(valid.shape[0], -1).any(axis=1)
-            if not np.array_equal(actual, capacity[row]):
-                raise RuntimeError(
-                    f"Kubric eligibility audit failed for clip={index}, source={int(source)}"
-                )
-            return int(source), xyz, valid
-        raise ValueError(
-            f"clip index {index} has no source with {min_targets} eligible targets"
-        )
 
     def _geometry(self, index: int, source: int, compute_visibility: bool
                   ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
@@ -693,7 +628,7 @@ def load_training_dataset(config: dict[str, Any], name: str,
             allow_missing_latents=allow_missing_latents,
             geometry_mmap_root=values.get("geometry_mmap_root"),
             geometry_sample_cache_size=int(
-                values.get("geometry_sample_cache_size", 32)
+                values.get("geometry_sample_cache_size", 16)
             ),
             geometry_mmap_max_open_shards=(
                 None if max_open_shards is None else int(max_open_shards)
