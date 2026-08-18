@@ -14,7 +14,7 @@ from worldbridge.dense4d import DenseQueryDecoder, WanHiddenGeometryBackbone, ma
 from worldbridge.training256 import (
     CachedExternalDataset, KubricGeometryMmapStore, LazyLatentCache, MOViF256Dataset,
     apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
-    deterministic_sample_plan, sample_eligible_targets,
+    deterministic_sample_plan, sample_eligible_targets, source_with_eligible_targets,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
 from worldbridge.text_conditions import load_inference_text_condition
@@ -125,6 +125,46 @@ def test_resume_planning_uses_status_sidecar_not_full_checkpoint_load():
     planning = source[source.index("# Cache planning needs only"):source.index("planned_start =")]
     assert '"resume_status_path", resume.parent / "train_status.json"' in planning
     assert "torch.load" not in planning
+
+
+def test_full_resume_skips_redundant_native_wan_weights(monkeypatch, tmp_path):
+    tiny = nn.Linear(2, 2)
+    monkeypatch.setattr(
+        WanDiTMapping, "_architecture", staticmethod(lambda _path: {"num_layers": 1}),
+    )
+    monkeypatch.setattr(WanDiTMapping, "_new_model", staticmethod(lambda _config: tiny))
+    missing = tmp_path / "native_wan_weights_are_not_needed.safetensors"
+    loaded = WanDiTMapping._load(
+        str(missing), torch.device("cpu"), torch.float32,
+        load_pretrained_weights=False,
+    )
+    assert loaded is tiny
+    with pytest.raises(FileNotFoundError, match="WAN DiT checkpoint not found"):
+        WanDiTMapping._load(
+            str(missing), torch.device("cpu"), torch.float32,
+            load_pretrained_weights=True,
+        )
+
+    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    assert "load_wan_pretrained = not resume.is_file()" in source
+    assert "load_wan_pretrained=load_wan_pretrained" in source
+
+
+def test_full_resume_loads_rank0_model_before_fsdp_sync():
+    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    helper = source[
+        source.index("def load_unwrapped_model_checkpoint"):
+        source.index("def load_optimizer_checkpoint")
+    ]
+    assert 'model.load_state_dict(payload["model"], strict=True)' in helper
+    assert "fsdp_state_context" not in helper
+
+    main = source[source.index("def main()") :]
+    model_load = main.index("load_unwrapped_model_checkpoint(")
+    fsdp_wrap = main.index("fsdp = FSDP(")
+    optimizer_load = main.index("load_optimizer_checkpoint(")
+    assert model_load < fsdp_wrap < optimizer_load
+    assert "sync_module_states=True" in main[fsdp_wrap:optimizer_load]
 
 
 def test_wandb_resume_can_skip_already_published_steps():
@@ -651,8 +691,27 @@ def test_eligible_k_sampling_excludes_empty_pairs_and_is_deterministic():
     np.testing.assert_array_equal(first, second)
     assert len(set(first.tolist())) == 4
     assert set(first).issubset({0, 3, 9, 12, 20})
-    all_targets = sample_eligible_targets(valid, 6, np.random.default_rng(8))
-    assert set(all_targets) == {0, 3, 9, 12, 20}
+    with pytest.raises(ValueError, match="fewer than K=6"):
+        sample_eligible_targets(valid, 6, np.random.default_rng(8))
+
+
+def test_source_selection_requires_exact_target_capacity():
+    class Dataset:
+        def source_all_targets(self, index, source):
+            xyz = np.zeros((21, 3, 1, 1), np.float32)
+            valid = np.zeros((21, 1, 1), bool)
+            valid[: (3 if source == 0 else 6)] = True
+            return xyz, valid
+
+    source, _xyz, valid = source_with_eligible_targets(
+        Dataset(), 0, np.array([0, 1]), min_targets=4,
+    )
+    assert source == 1
+    assert valid.reshape(21, -1).any(axis=1).sum() == 6
+    with pytest.raises(ValueError, match="no source with 7 eligible targets"):
+        source_with_eligible_targets(
+            Dataset(), 0, np.array([0, 1]), min_targets=7,
+        )
 
 
 def test_pair_loss_ignores_empty_pair_instead_of_treating_it_as_zero():

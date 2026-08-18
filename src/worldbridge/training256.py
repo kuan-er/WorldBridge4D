@@ -83,14 +83,20 @@ def apply_cosine_schedule(optimizer: torch.optim.Optimizer, update_number: int,
 
 
 def source_with_eligible_targets(dataset: TrainingDataset, index: int,
-                                 sources: np.ndarray
+                                 sources: np.ndarray, min_targets: int = 1
                                  ) -> tuple[int, np.ndarray, np.ndarray]:
-    """Try a deterministic source order and return the first supervised one."""
+    """Return the first source with at least ``min_targets`` supervised pairs."""
+    min_targets = int(min_targets)
+    if min_targets < 1:
+        raise ValueError("min_targets must be positive")
     for source in np.asarray(sources, dtype=np.int64).reshape(-1):
         xyz, valid = dataset.source_all_targets(int(index), int(source))
-        if np.asarray(valid, dtype=bool).reshape(21, -1).any():
+        eligible = np.asarray(valid, dtype=bool).reshape(21, -1).any(axis=1)
+        if int(eligible.sum()) >= min_targets:
             return int(source), xyz, valid
-    raise ValueError(f"clip index {index} has no eligible source/target pair")
+    raise ValueError(
+        f"clip index {index} has no source with {min_targets} eligible targets"
+    )
 
 
 def sample_eligible_targets(valid: np.ndarray, k: int,
@@ -100,12 +106,14 @@ def sample_eligible_targets(valid: np.ndarray, k: int,
     if valid.ndim != 3:
         raise ValueError("valid must be [T,H,W]")
     eligible = np.flatnonzero(valid.reshape(valid.shape[0], -1).any(axis=1))
-    if not len(eligible):
-        raise ValueError("selected source has no eligible target")
-    count = min(int(k), len(eligible))
-    if count < 1:
+    k = int(k)
+    if k < 1:
         raise ValueError("K must be positive")
-    return np.asarray(rng.choice(eligible, size=count, replace=False), dtype=np.int64)
+    if len(eligible) < k:
+        raise ValueError(
+            f"selected source has {len(eligible)} eligible targets, fewer than K={k}"
+        )
+    return np.asarray(rng.choice(eligible, size=k, replace=False), dtype=np.int64)
 
 
 def deterministic_sample_plan(dataset: TrainingDataset, dataset_name: str,
