@@ -16,7 +16,6 @@ MAX_UTIL="${MAX_UTIL:-5}"
 POLL_SECONDS="${POLL_SECONDS:-5}"
 STABLE_SECONDS="${STABLE_SECONDS:-90}"
 TARGET_STEPS="${TARGET_STEPS:-150000}"
-STAGING_ROOT="${STAGING_ROOT:-/data/WorldBridge4D-persistent/worldbridge4d_staging/checkpoints}"
 WANDB_NAME="${WANDB_NAME:-worldbridge4d-k19-gpu14-optimized-150k}"
 LAUNCH_MARKER="$HANDOFF_DIR/LAUNCH_STARTED.json"
 
@@ -43,10 +42,11 @@ while [[ ! -s "$MARKER" ]]; do
   sleep 30
 done
 
-# Full SHA-256 verification is intentionally completed before waiting for GPUs,
-# so no accelerator is left idle while a 9+ GiB checkpoint is audited/staged.
+# Before launch, verify only immutable identity and exact-resume metadata. The
+# trainer strictly restores every model/optimizer tensor before its first update,
+# then starts a low-priority SHA-256 pass in the background.
 python "$ROOT/scripts/prepare_three_dataset_256_gpu14_handoff.py" \
-  --verify-marker "$MARKER" >/dev/null
+  --verify-marker "$MARKER" --skip-checksum >/dev/null
 mapfile -t HANDOFF < <(python - "$MARKER" "$TARGET_STEPS" <<'PY'
 import json, pathlib, sys
 marker = json.loads(pathlib.Path(sys.argv[1]).read_text())
@@ -54,16 +54,15 @@ if marker["physical_gpus"] != [1, 4] or marker["world_size"] != 2:
     raise SystemExit("marker is not pinned to physical GPUs 1,4")
 if marker["target_steps"] != int(sys.argv[2]):
     raise SystemExit("marker target-step mismatch")
-for key in ("checkpoint", "config", "checkpoint_dir", "completed_step", "checkpoint_sha256"):
+for key in ("checkpoint", "config", "checkpoint_dir", "completed_step"):
     print(marker[key])
 PY
 )
-[[ "${#HANDOFF[@]}" -eq 5 ]] || { echo "invalid handoff marker response" >&2; exit 2; }
+[[ "${#HANDOFF[@]}" -eq 4 ]] || { echo "invalid handoff marker response" >&2; exit 2; }
 RESUME_CHECKPOINT="${HANDOFF[0]}"
 CONFIG="${HANDOFF[1]}"
 CHECKPOINT_DIR="${HANDOFF[2]}"
 RESUME_STEP="${HANDOFF[3]}"
-CHECKPOINT_SHA256="${HANDOFF[4]}"
 CHECKPOINT_IDENTITY="$(stat -Lc '%d:%i:%s:%Y' "$RESUME_CHECKPOINT")"
 
 [[ -f /root/.netrc || -n "${WANDB_API_KEY:-}" ]] || {
@@ -87,16 +86,6 @@ if missing:
     raise SystemExit("missing raw dataset mounts: " + ", ".join(missing))
 PY
 python "$ROOT/scripts/validate_three_dataset_256_cache_roots.py" --config "$CONFIG" --create
-
-# Stage the config/model inputs and immutable resume checkpoint now, while the
-# current owner still occupies GPU1/4. The final launcher therefore performs no
-# multi-gigabyte staging inside the GPU acquisition race window.
-mapfile -t STAGED < <(python "$ROOT/scripts/stage_three_dataset_256_inputs.py" \
-  --config "$CONFIG" --resume "$RESUME_CHECKPOINT" --staging-root "$STAGING_ROOT")
-[[ "${#STAGED[@]}" -eq 2 ]] || { echo "staging helper returned an invalid response" >&2; exit 2; }
-STAGED_CONFIG="${STAGED[0]}"
-STAGED_RESUME="${STAGED[1]}"
-[[ -f "$STAGED_CONFIG" && -f "$STAGED_RESUME" ]] || { echo "staged inputs disappeared" >&2; exit 2; }
 
 gpu_ready() {
   local gpu index free util
@@ -140,14 +129,14 @@ python "$ROOT/scripts/prepare_three_dataset_256_gpu14_handoff.py" \
 }
 gpu_ready || { echo "[watch] GPU1/4 changed ownership during final preflight" >&2; exit 75; }
 
-python - "$LAUNCH_MARKER" "$RESUME_STEP" "$CHECKPOINT_SHA256" "$CONFIG" <<'PY'
+python - "$LAUNCH_MARKER" "$RESUME_STEP" "$CONFIG" <<'PY'
 from datetime import datetime, timezone
 import json, os, pathlib, socket, sys
-path, step, checksum, config = sys.argv[1:]
+path, step, config = sys.argv[1:]
 value = {
     "created_at_utc": datetime.now(timezone.utc).isoformat(),
     "host": socket.gethostname(), "physical_gpus": [1, 4], "world_size": 2,
-    "resume_step": int(step), "checkpoint_sha256": checksum,
+    "resume_step": int(step), "checkpoint_checksum": "deferred_until_strict_restore",
     "target_steps": 150000, "config": str(pathlib.Path(config).resolve()),
 }
 p = pathlib.Path(path); tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
@@ -158,17 +147,18 @@ PY
 echo "[watch] exclusive window passed; launching exact K19 resume step=$RESUME_STEP to 150000"
 echo "[watch] advisory flock prevents duplicate project launchers; unmanaged jobs can only be excluded by a scheduler"
 exec env \
-  CONFIG="$STAGED_CONFIG" \
+  CONFIG="$CONFIG" \
   OUTPUT="$OUTPUT" \
   CHECKPOINT_DIR="$CHECKPOINT_DIR" \
   DURABLE_CHECKPOINT="$SOURCE_OUTPUT/latest.pt" \
-  RESUME_CHECKPOINT="$STAGED_RESUME" \
+  RESUME_CHECKPOINT="$RESUME_CHECKPOINT" \
   GPUS=1,4 \
   NPROC=2 \
   STEPS=150000 \
   FRESH_START=0 \
   LAZY_VAE_CACHE=1 \
   STAGE_INPUTS=0 \
+  POST_RESUME_CHECKSUM_MARKER="$MARKER" \
   WANDB_LOG_AFTER_STEP="$RESUME_STEP" \
   WANDB_MODE=online \
   WANDB_NAME="$WANDB_NAME" \

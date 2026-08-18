@@ -479,7 +479,9 @@ def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_con
 
 
 def test_gpu14_handoff_preparer_freezes_and_verifies_complete_checkpoint(tmp_path):
-    from scripts.prepare_three_dataset_256_gpu14_handoff import prepare, verify_marker
+    from scripts.prepare_three_dataset_256_gpu14_handoff import (
+        finalize_checksum_marker, prepare, verify_marker,
+    )
 
     source = tmp_path / "latest.pt"
     status = tmp_path / "train_status.json"
@@ -505,6 +507,19 @@ def test_gpu14_handoff_preparer_freezes_and_verifies_complete_checkpoint(tmp_pat
     assert Path(marker["checkpoint"]).stat().st_ino == source.stat().st_ino
     assert Path(marker["config"]).is_file()
     assert json.loads(Path(marker["resume_status"]).read_text())["completed_steps"] == 56435
+
+    deferred = prepare(
+        source, status, tmp_path / "deferred-handoff",
+        tmp_path / "deferred-fast-checkpoints", 150000, defer_checksum=True,
+    )
+    deferred_marker = Path(deferred["marker"])
+    assert verify_marker(deferred_marker, verify_checksum=False)["checksum_state"] == "deferred"
+    with pytest.raises(ValueError, match="not complete"):
+        verify_marker(deferred_marker)
+    completed = finalize_checksum_marker(deferred_marker)
+    assert completed["checksum_state"] == "complete"
+    assert len(completed["checkpoint_sha256"]) == 64
+    assert verify_marker(deferred_marker)["checkpoint_sha256"] == completed["checkpoint_sha256"]
 
 
 def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
@@ -647,8 +662,21 @@ def test_gpu14_150k_watcher_is_pinned_audited_stable_and_resume_only():
     assert 'MIN_FREE_MIB="${MIN_FREE_MIB:-76000}"' in watcher
     assert 'query-compute-apps=pid' in watcher
     assert 'STAGE_INPUTS=0' in watcher
+    assert 'POST_RESUME_CHECKSUM_MARKER="$MARKER"' in watcher
+    assert "stage_three_dataset_256_inputs.py" not in watcher
+    assert '--verify-marker "$MARKER" --skip-checksum' in watcher
     assert 'WANDB_LOG_AFTER_STEP="$RESUME_STEP"' in watcher
     assert " kill " not in watcher and "pkill" not in watcher
+
+
+def test_post_resume_checksum_starts_only_after_strict_optimizer_restore():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    restore = source.index("load_optimizer_checkpoint(", source.index("def main()"))
+    loaded = source.index('"event": "resume_state_loaded"', restore)
+    checksum = source.index("launch_post_resume_checksum(", loaded)
+    loop = source.index("for step in range(start_step, target_steps):", checksum)
+    assert restore < loaded < checksum < loop
 
 
 def test_three_dataset_cycle_has_exact_ratio_and_is_resume_pure():

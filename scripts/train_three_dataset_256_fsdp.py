@@ -553,6 +553,32 @@ def launch_durable_checkpoint_replica(source: Path, destination: Path,
         return False
 
 
+def launch_post_resume_checksum(marker: Path, resume: Path, step: int) -> None:
+    """Hash an already strictly restored immutable checkpoint in the background."""
+    marker = marker.resolve()
+    value = json.loads(marker.read_text())
+    marked_checkpoint = Path(value["checkpoint"]).resolve()
+    if marked_checkpoint != resume.resolve():
+        raise ValueError(
+            f"post-resume checksum marker checkpoint mismatch: {marked_checkpoint} != {resume.resolve()}"
+        )
+    log_path = marker.parent / "post_resume_checksum.log"
+    command = [
+        "ionice", "-c", "3", "nice", "-n", "19", sys.executable,
+        str(ROOT / "scripts" / "prepare_three_dataset_256_gpu14_handoff.py"),
+        "--finalize-checksum-marker", str(marker),
+    ]
+    with log_path.open("ab", buffering=0) as stream:
+        process = subprocess.Popen(
+            command, stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT,
+            close_fds=True, start_new_session=True,
+        )
+    print(json.dumps({
+        "event": "post_resume_checksum_started", "step": int(step),
+        "pid": process.pid, "marker": str(marker), "log": str(log_path),
+    }), flush=True)
+
+
 def prune_periodic_checkpoints(output: Path, keep_last: int) -> list[str]:
     """Bound disk use while retaining latest.pt and the newest named milestones."""
     paths = sorted(output.glob("checkpoint-*.pt"))
@@ -625,6 +651,10 @@ def main() -> None:
         help="initialize/resume W&B normally, but upload metrics only after this global step",
     )
     parser.add_argument("--checkpoint-at-end", action="store_true")
+    parser.add_argument(
+        "--post-resume-checksum-marker",
+        help="after strict model/optimizer restore, hash the immutable resume checkpoint in background",
+    )
     parser.add_argument(
         "--no-checkpoint", action="store_true",
         help="capacity-gate only: skip periodic/final checkpoint materialization",
@@ -805,6 +835,15 @@ def main() -> None:
         start_step = int(resume_state["global_step"])
         clips_seen.update({key: int(value) for key, value in resume_state["clips_seen"].items()})
         del resume_payload
+        if rank == 0:
+            print(json.dumps({
+                "event": "resume_state_loaded", "step": start_step,
+                "world_size": world, "optimizer": "restored", "rng_states": len(resume_rng_states),
+            }), flush=True)
+            if args.post_resume_checksum_marker:
+                launch_post_resume_checksum(
+                    Path(args.post_resume_checksum_marker), resume, start_step,
+                )
     if start_step >= target_steps:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
     run = init_wandb(config, output, rank, args.disable_wandb)

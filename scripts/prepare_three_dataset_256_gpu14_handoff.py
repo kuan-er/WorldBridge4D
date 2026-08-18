@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import fcntl
 import hashlib
 import json
 import os
@@ -122,6 +123,7 @@ def prepare(
     handoff_dir: Path,
     checkpoint_dir: Path,
     target_steps: int,
+    defer_checksum: bool = False,
 ) -> dict[str, Any]:
     checkpoint = checkpoint.resolve()
     status_path = status_path.resolve()
@@ -146,7 +148,7 @@ def prepare(
 
     immutable = handoff_dir.resolve() / f"checkpoint-{step:07d}.pt"
     freeze_checkpoint(checkpoint, immutable)
-    digest = sha256(immutable)
+    digest = None if defer_checksum else sha256(immutable)
     immutable_status = checkpoint_dir.resolve() / "train_status.json"
     atomic_text(immutable_status, json.dumps({
         "completed_steps": step,
@@ -165,6 +167,7 @@ def prepare(
         "checkpoint": str(immutable),
         "checkpoint_bytes": immutable.stat().st_size,
         "checkpoint_sha256": digest,
+        "checksum_state": "deferred" if defer_checksum else "complete",
         "completed_step": step,
         "world_size": 2,
         "targets_per_source": 19,
@@ -194,9 +197,43 @@ def verify_marker(marker_path: Path, verify_checksum: bool = True) -> dict[str, 
         raise FileNotFoundError("handoff artifact disappeared")
     if checkpoint.stat().st_size != int(marker["checkpoint_bytes"]):
         raise ValueError("handoff checkpoint size changed")
-    if verify_checksum and sha256(checkpoint) != marker["checkpoint_sha256"]:
-        raise ValueError("handoff checkpoint checksum changed")
+    if verify_checksum:
+        if marker.get("checksum_state") != "complete" or not marker.get("checkpoint_sha256"):
+            raise ValueError("handoff checkpoint checksum is not complete")
+        if sha256(checkpoint) != marker["checkpoint_sha256"]:
+            raise ValueError("handoff checkpoint checksum changed")
     return marker
+
+
+def finalize_checksum_marker(marker_path: Path) -> dict[str, Any]:
+    """Hash the immutable resume checkpoint after strict trainer restore."""
+    marker_path = marker_path.resolve()
+    lock_path = marker_path.with_suffix(marker_path.suffix + ".checksum.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        marker = verify_marker(marker_path, verify_checksum=False)
+        if marker.get("checksum_state") == "complete" and marker.get("checkpoint_sha256"):
+            return marker
+        checkpoint = Path(marker["checkpoint"])
+        before = checkpoint.stat()
+        identity = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+        try:
+            digest = sha256(checkpoint)
+            after = checkpoint.stat()
+            if identity != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
+                raise RuntimeError("immutable checkpoint identity changed during checksum")
+            marker["checkpoint_sha256"] = digest
+            marker["checksum_state"] = "complete"
+            marker["checksum_completed_at_utc"] = datetime.now(timezone.utc).isoformat()
+            atomic_text(marker_path, json.dumps(marker, indent=2) + "\n")
+            return marker
+        except Exception as error:
+            marker["checksum_state"] = "failed"
+            marker["checksum_error"] = repr(error)
+            marker["checksum_failed_at_utc"] = datetime.now(timezone.utc).isoformat()
+            atomic_text(marker_path, json.dumps(marker, indent=2) + "\n")
+            raise
 
 
 def main() -> None:
@@ -207,17 +244,22 @@ def main() -> None:
     parser.add_argument("--checkpoint-dir", type=Path)
     parser.add_argument("--target-steps", type=int, default=150000)
     parser.add_argument("--verify-marker", type=Path)
+    parser.add_argument("--finalize-checksum-marker", type=Path)
     parser.add_argument("--skip-checksum", action="store_true")
+    parser.add_argument("--defer-checksum", action="store_true")
     args = parser.parse_args()
     if args.verify_marker is not None:
         print(json.dumps(verify_marker(args.verify_marker, not args.skip_checksum), indent=2))
+        return
+    if args.finalize_checksum_marker is not None:
+        print(json.dumps(finalize_checksum_marker(args.finalize_checksum_marker), indent=2))
         return
     required = (args.checkpoint, args.status, args.handoff_dir, args.checkpoint_dir)
     if any(value is None for value in required):
         parser.error("prepare mode requires checkpoint, status, handoff-dir, and checkpoint-dir")
     print(json.dumps(prepare(
         args.checkpoint, args.status, args.handoff_dir,
-        args.checkpoint_dir, args.target_steps,
+        args.checkpoint_dir, args.target_steps, args.defer_checksum,
     ), indent=2))
 
 
