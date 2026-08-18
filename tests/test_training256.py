@@ -445,10 +445,8 @@ def test_experimental_k_modes_require_explicit_world_size_flags():
         )
 
 
-def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_controls(tmp_path):
-    from scripts.prepare_three_dataset_256_gpu14_handoff import build_extended_config
-
-    original = {
+def _handoff_original_config():
+    return {
         "targets_per_source": 19,
         "microbatch_per_gpu": 2,
         "gradient_accumulation": 2,
@@ -459,7 +457,14 @@ def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_con
         "datasets": {"kubric": {}, "pointodyssey": {}, "dynamic_replica": {}},
         "tracking": {"tags": ["k19"]},
     }
-    config = build_extended_config(original, 56435, 150000, tmp_path / "train_status.json")
+
+
+def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_controls(tmp_path):
+    from scripts.prepare_three_dataset_256_gpu14_handoff import build_extended_config
+
+    config = build_extended_config(
+        _handoff_original_config(), 56435, 150000, tmp_path / "train_status.json",
+    )
     assert config["targets_per_source"] == 19
     assert config["microbatch_per_gpu"] == config["gradient_accumulation"] == 2
     assert config["schedule_horizon_steps"] == 100000
@@ -471,6 +476,35 @@ def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_con
     assert config["datasets"]["kubric"]["geometry_sample_cache_size"] == 16
     assert config["datasets"]["kubric"]["geometry_mmap_max_open_shards"] == 90
     assert config["checkpoint_steps"] == [60000, 100000, 150000]
+
+
+def test_gpu14_handoff_preparer_freezes_and_verifies_complete_checkpoint(tmp_path):
+    from scripts.prepare_three_dataset_256_gpu14_handoff import prepare, verify_marker
+
+    source = tmp_path / "latest.pt"
+    status = tmp_path / "train_status.json"
+    clips = {"kubric": 10, "pointodyssey": 20, "dynamic_replica": 30}
+    torch.save({
+        "format": 3,
+        "model": {"weight": torch.ones(1)},
+        "optimizer": {"state": {0: {"step": torch.tensor(1)}}},
+        "config": _handoff_original_config(),
+        "training_state": {
+            "global_step": 56435, "world_size": 2,
+            "rng_states": [{"rank": 0}, {"rank": 1}], "clips_seen": clips,
+        },
+    }, source)
+    status.write_text(json.dumps({
+        "completed_steps": 56435, "world_size": 2, "clips_seen": clips,
+    }))
+    value = prepare(
+        source, status, tmp_path / "handoff", tmp_path / "fast-checkpoints", 150000,
+    )
+    marker = verify_marker(Path(value["marker"]))
+    assert marker["completed_step"] == 56435
+    assert Path(marker["checkpoint"]).stat().st_ino == source.stat().st_ino
+    assert Path(marker["config"]).is_file()
+    assert json.loads(Path(marker["resume_status"]).read_text())["completed_steps"] == 56435
 
 
 def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
