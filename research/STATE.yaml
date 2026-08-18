@@ -676,8 +676,10 @@ h023_gpu14_optimized_150k_handoff:
   acquisition: {min_free_mib: 76000, max_util_percent: 5, stable_seconds: 90, compute_pids: none}
   safety: requires_immutable_sha256_handoff_marker_and_final_recheck
   hard_reservation: unavailable_without_external_scheduler
-  verification: {run: R-20260818173644-94e964, tests_passed: 96, compileall: passed, shell_syntax: passed}
-  watcher_run: R-20260818174532-3ceda7
+  verification: {run: R-20260818175409-12a560, tests_passed: 97, compileall: passed, shell_syntax: passed}
+  superseded_watcher_run: R-20260818174532-3ceda7
+  watcher_run: R-20260818175501-5725ef
+  checksum_policy: metadata_and_strict_restore_before_updates_sha256_low_priority_after_restore
   marker_at_watcher_start: absent
   current_training_modified: false
 updated_at: 2026-08-18T17:34:52Z
