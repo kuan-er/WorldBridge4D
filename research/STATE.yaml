@@ -664,7 +664,7 @@ h026_wan14b_full40_lora_gpu01:
   two_gpu_capacity_gate_waived_by_user: true
   next_step: Directly launch the user-requested GPU0/1 50k run and inspect its first updates.
 h023_gpu14_optimized_150k_handoff:
-  status: optimized_150k_run_strict_restore_starting
+  status: strict_restore_complete_first_update_pending
   task: T-20260817160306-ca12e3
   physical_gpus: [1, 4]
   world_size: 2
@@ -673,8 +673,8 @@ h023_gpu14_optimized_150k_handoff:
   prefetch: {workers: 4, depth: 2, kubric_sample_cache: 16, mmap_open_shards: 90}
   diagnostics: at_least_one_log_per_dataset_per_20_step_cycle
   lr_extension: continuous_from_audited_handoff_factor_to_zero_at_150k
-  acquisition: {min_free_mib: 76000, max_util_percent: 5, stable_seconds: 90, compute_pids: none}
-  safety: requires_immutable_sha256_handoff_marker_and_final_recheck
+  acquisition: {min_free_mib: 76000, max_util_percent: 5, stable_seconds: 1, compute_pids: none, user_requested_immediate_launch: true}
+  safety: requires_immutable_metadata_handoff_marker_final_recheck_and_strict_restore_before_update
   hard_reservation: unavailable_without_external_scheduler
   verification: {run: R-20260818175409-12a560, tests_passed: 97, compileall: passed, shell_syntax: passed}
   superseded_watcher_run: R-20260818174532-3ceda7
@@ -685,7 +685,13 @@ h023_gpu14_optimized_150k_handoff:
   stop_signal: {signal: SIGUSR1, sent_at: 2026-08-18T17:58:01Z, ranks: 2}
   source_stop_step: 56503
   superseded_metadata_prepare_run: R-20260818175829-a64cf2
-  optimized_run: R-20260818180139-a1797e
+  failed_launch_run: R-20260818180139-a1797e
+  failed_launch_reason: build_real_model_signature_missing_load_wan_pretrained_keyword
+  signature_fix_verification: {run: R-20260818180541-1e9c65, tests_passed: 97, compileall: passed, shell_syntax: passed}
+  optimized_run: R-20260818180553-c5f105
+  strict_restore: {step: 56503, world_size: 2, optimizer: restored, rng_states: 2, completed_at: 2026-08-18T18:08:28Z}
+  post_resume_checksum: started_low_priority
+  first_update: pending
   resource_intrusion_event: false_positive_nvml_pid_namespace_ghost_contexts
-  current_training_modified: source_stopped_new_run_started
-updated_at: 2026-08-18T17:34:52Z
+  current_training_modified: source_stopped_new_run_strict_restore_complete
+updated_at: 2026-08-18T18:08:28Z
