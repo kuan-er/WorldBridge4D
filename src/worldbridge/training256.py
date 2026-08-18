@@ -5,7 +5,6 @@ from collections import OrderedDict
 import fcntl
 import json
 import math
-import mmap
 import os
 from pathlib import Path
 import re
@@ -391,15 +390,6 @@ class KubricGeometryMmapStore:
                     np.load(f"{prefix}_{field}.npy", mmap_mode="r", allow_pickle=False)
                     for field in KUBRIC_MMAP_FIELDS
                 )
-                for array in value:
-                    mapping = getattr(array, "_mmap", None)
-                    try:
-                        if mapping is not None and hasattr(mapping, "madvise"):
-                            mapping.madvise(mmap.MADV_RANDOM)
-                    except (AttributeError, OSError, ValueError):
-                        # MADV_RANDOM is an optional Linux optimization; the
-                        # cache contract must remain portable and read-only.
-                        pass
                 expected = min(self.shard_size, self.count - shard * self.shard_size)
                 if any(array.shape[0] != expected for array in value):
                     raise ValueError(f"Kubric mmap shard {shard} has an invalid leading dimension")
