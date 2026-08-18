@@ -5,6 +5,7 @@ from collections import OrderedDict
 import fcntl
 import json
 import math
+import mmap
 import os
 from pathlib import Path
 import re
@@ -85,11 +86,20 @@ def apply_cosine_schedule(optimizer: torch.optim.Optimizer, update_number: int,
 def source_with_eligible_targets(dataset: TrainingDataset, index: int,
                                  sources: np.ndarray, min_targets: int = 1
                                  ) -> tuple[int, np.ndarray, np.ndarray]:
-    """Return the first source with at least ``min_targets`` supervised pairs."""
+    """Return the first source with at least ``min_targets`` supervised pairs.
+
+    Dataset adapters may provide ``select_source_with_eligible_targets`` to
+    perform a metadata-only capacity check before materializing dense XYZ.  The
+    generic fallback preserves the original protocol for external adapters.
+    """
     min_targets = int(min_targets)
     if min_targets < 1:
         raise ValueError("min_targets must be positive")
-    for source in np.asarray(sources, dtype=np.int64).reshape(-1):
+    sources = np.asarray(sources, dtype=np.int64).reshape(-1)
+    selector = getattr(dataset, "select_source_with_eligible_targets", None)
+    if callable(selector):
+        return selector(int(index), sources, min_targets)
+    for source in sources:
         xyz, valid = dataset.source_all_targets(int(index), int(source))
         eligible = np.asarray(valid, dtype=bool).reshape(21, -1).any(axis=1)
         if int(eligible.sum()) >= min_targets:
@@ -342,9 +352,15 @@ class CachedExternalDataset:
 
 
 class KubricGeometryMmapStore:
-    """Read fixed-size Kubric arrays from atomically published mmap shards."""
+    """Read fixed-size Kubric arrays from atomically published mmap shards.
 
-    def __init__(self, root: str | Path, max_open_shards: int = 8) -> None:
+    Shard mappings are cheap virtual-address reservations.  Keeping all shards
+    mapped avoids mmap-lock churn when geometry workers sample random clips;
+    physical pages remain demand-paged by the kernel.
+    """
+
+    def __init__(self, root: str | Path,
+                 max_open_shards: int | None = None) -> None:
         self.root = Path(root)
         manifest_path = self.root / "manifest.json"
         if not manifest_path.is_file():
@@ -358,7 +374,11 @@ class KubricGeometryMmapStore:
         self.shard_size = int(self.manifest["shard_size"])
         if self.count < 1 or self.shard_size < 1:
             raise ValueError(f"invalid Kubric mmap dimensions: {manifest_path}")
-        self.max_open_shards = max(1, int(max_open_shards))
+        self.shard_count = math.ceil(self.count / self.shard_size)
+        self.max_open_shards = (
+            self.shard_count if max_open_shards is None
+            else max(1, int(max_open_shards))
+        )
         self._shards: OrderedDict[int, tuple[np.ndarray, ...]] = OrderedDict()
         self._lock = threading.RLock()
 
@@ -371,6 +391,15 @@ class KubricGeometryMmapStore:
                     np.load(f"{prefix}_{field}.npy", mmap_mode="r", allow_pickle=False)
                     for field in KUBRIC_MMAP_FIELDS
                 )
+                for array in value:
+                    mapping = getattr(array, "_mmap", None)
+                    try:
+                        if mapping is not None and hasattr(mapping, "madvise"):
+                            mapping.madvise(mmap.MADV_RANDOM)
+                    except (AttributeError, OSError, ValueError):
+                        # MADV_RANDOM is an optional Linux optimization; the
+                        # cache contract must remain portable and read-only.
+                        pass
                 expected = min(self.shard_size, self.count - shard * self.shard_size)
                 if any(array.shape[0] != expected for array in value):
                     raise ValueError(f"Kubric mmap shard {shard} has an invalid leading dimension")
@@ -392,7 +421,9 @@ class MOViF256Dataset:
     """Read-only MOVi-F 512 source -> audited 256 geometry and latent cache."""
     def __init__(self, raw_root: str | Path, cache_root: str | Path,
                  split: str = "train", allow_missing_latents: bool = False,
-                 geometry_mmap_root: str | Path | None = None) -> None:
+                 geometry_mmap_root: str | Path | None = None,
+                 geometry_sample_cache_size: int = 32,
+                 geometry_mmap_max_open_shards: int | None = None) -> None:
         cache_root = Path(cache_root)
         self.cache_root = cache_root
         index_path = cache_root / "splits" / f"{split}.jsonl"
@@ -412,11 +443,16 @@ class MOViF256Dataset:
             cache_root / "latents" / "wan2.1_1.3b_fp32_256_lazy", "kubric"
         )
         self.geometry_mmap = (
-            KubricGeometryMmapStore(geometry_mmap_root)
+            KubricGeometryMmapStore(
+                geometry_mmap_root,
+                max_open_shards=geometry_mmap_max_open_shards,
+            )
             if geometry_mmap_root is not None else None
         )
+        self._sample_cache_size = max(1, int(geometry_sample_cache_size))
         self._sample_cache: OrderedDict[int, MOViSample] = OrderedDict()
         self._sample_cache_lock = threading.RLock()
+        self._sample_load_locks: dict[int, threading.Lock] = {}
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -446,8 +482,19 @@ class MOViF256Dataset:
     def sample(self, index: int) -> MOViSample:
         raw_index = int(self.rows[index]["raw_index"])
         with self._sample_cache_lock:
-            value = self._sample_cache.pop(raw_index, None)
-        if value is None:
+            value = self._sample_cache.get(raw_index)
+            if value is not None:
+                self._sample_cache.move_to_end(raw_index)
+                return value
+            load_lock = self._sample_load_locks.setdefault(raw_index, threading.Lock())
+        # Coalesce duplicate fallback/source requests without serializing loads
+        # for unrelated clips.  Recheck after acquiring the per-clip lock.
+        with load_lock:
+            with self._sample_cache_lock:
+                value = self._sample_cache.get(raw_index)
+                if value is not None:
+                    self._sample_cache.move_to_end(raw_index)
+                    return value
             compact = KUBRIC_GEOMETRY_CACHE / f"geom_{raw_index:06d}.npz"
             if self.geometry_mmap is not None:
                 if not compact.is_file():
@@ -457,11 +504,12 @@ class MOViF256Dataset:
                 value = self._load_compact_sample(compact)
             else:
                 value = self._resize_sample(self.native[raw_index])
-        with self._sample_cache_lock:
-            self._sample_cache[raw_index] = value
-            while len(self._sample_cache) > 2:
-                self._sample_cache.popitem(last=False)
-        return value
+            with self._sample_cache_lock:
+                self._sample_cache[raw_index] = value
+                self._sample_cache.move_to_end(raw_index)
+                while len(self._sample_cache) > self._sample_cache_size:
+                    self._sample_cache.popitem(last=False)
+            return value
 
     @staticmethod
     def _load_compact_sample(
@@ -492,18 +540,84 @@ class MOViF256Dataset:
                 clip_start=int(z["clip_start"]),
             )
 
-    def _geometry(self, index: int, source: int, compute_visibility: bool
-                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
-        xyz, visible, valid, _ = GeometryBuilder(self.sample(index)).trajectory_block(
+    @staticmethod
+    def _eligible_targets_for_sample(
+        sample: MOViSample, sources: np.ndarray,
+    ) -> np.ndarray:
+        """Return exact target-capacity masks without constructing dense XYZ.
+
+        Kubric validity is source-depth validity intersected with each rigid
+        instance's finite target state; visibility is deliberately not part of
+        the training-validity contract.  Background and out-of-range segment
+        ids retain source validity at every target, matching GeometryBuilder.
+        """
+        sources = np.asarray(sources, dtype=np.int64).reshape(-1)
+        if np.any((sources < 0) | (sources >= sample.num_frames)):
+            raise ValueError("source index outside sample frame range")
+        builder = GeometryBuilder(sample)
+        state_valid = (
+            np.isfinite(sample.instance_positions).all(axis=-1)
+            & np.isfinite(builder._object_rot).all(axis=(2, 3))
+        )
+        result = np.zeros((len(sources), sample.num_frames), dtype=bool)
+        for row, source in enumerate(sources):
+            source_valid = np.asarray(sample.depth_valid[source], dtype=bool)
+            instance = np.asarray(sample.segmentation[source])
+            static = source_valid & (
+                (instance <= 0) | (instance > sample.num_instances)
+            )
+            if np.any(static):
+                result[row] = True
+                continue
+            present = np.unique(instance[source_valid])
+            for value in present:
+                object_index = int(value) - 1
+                if 0 <= object_index < sample.num_instances:
+                    result[row] |= state_valid[object_index]
+        return result
+
+    @staticmethod
+    def _geometry_from_sample(
+        sample: MOViSample, source: int, compute_visibility: bool,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        xyz, visible, valid, _ = GeometryBuilder(sample).trajectory_block(
             int(source), coordinate_frame="source", compute_visibility=compute_visibility
         )
-        xyz = xyz.reshape(256, 256, 21, 3).transpose(2, 3, 0, 1).astype(np.float32)
-        valid = valid.reshape(256, 256, 21).transpose(2, 0, 1).astype(bool)
+        height, width, frames = sample.height, sample.width, sample.num_frames
+        xyz = xyz.reshape(height, width, frames, 3).transpose(2, 3, 0, 1).astype(np.float32)
+        valid = valid.reshape(height, width, frames).transpose(2, 0, 1).astype(bool)
         visible_out = (
-            visible.reshape(256, 256, 21).transpose(2, 0, 1).astype(bool)
+            visible.reshape(height, width, frames).transpose(2, 0, 1).astype(bool)
             if visible is not None else None
         )
         return xyz, valid, visible_out
+
+    def select_source_with_eligible_targets(
+        self, index: int, sources: np.ndarray, min_targets: int,
+    ) -> tuple[int, np.ndarray, np.ndarray]:
+        """Select by metadata and materialize dense geometry exactly once."""
+        sources = np.asarray(sources, dtype=np.int64).reshape(-1)
+        sample = self.sample(int(index))
+        capacity = self._eligible_targets_for_sample(sample, sources)
+        for row, source in enumerate(sources):
+            if int(capacity[row].sum()) < int(min_targets):
+                continue
+            xyz, valid, _ = self._geometry_from_sample(sample, int(source), False)
+            actual = valid.reshape(valid.shape[0], -1).any(axis=1)
+            if not np.array_equal(actual, capacity[row]):
+                raise RuntimeError(
+                    f"Kubric eligibility audit failed for clip={index}, source={int(source)}"
+                )
+            return int(source), xyz, valid
+        raise ValueError(
+            f"clip index {index} has no source with {min_targets} eligible targets"
+        )
+
+    def _geometry(self, index: int, source: int, compute_visibility: bool
+                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        return self._geometry_from_sample(
+            self.sample(index), int(source), compute_visibility,
+        )
 
     def source_all_targets(self, index: int, source: int) -> tuple[np.ndarray, np.ndarray]:
         xyz, valid, _ = self._geometry(index, source, False)
@@ -583,10 +697,17 @@ def load_training_dataset(config: dict[str, Any], name: str,
         raise ValueError(f"dataset must be one of {DATASET_NAMES}, got {name!r}")
     values = roots[name]
     if name == "kubric":
+        max_open_shards = values.get("geometry_mmap_max_open_shards")
         return MOViF256Dataset(
             values["raw_root"], values["cache_root"],
             allow_missing_latents=allow_missing_latents,
             geometry_mmap_root=values.get("geometry_mmap_root"),
+            geometry_sample_cache_size=int(
+                values.get("geometry_sample_cache_size", 32)
+            ),
+            geometry_mmap_max_open_shards=(
+                None if max_open_shards is None else int(max_open_shards)
+            ),
         )
     if name == "pointodyssey":
         geometry = PointOdysseyDataset(

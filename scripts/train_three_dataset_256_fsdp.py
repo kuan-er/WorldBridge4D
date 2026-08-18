@@ -149,7 +149,7 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
     if arbitrary_world:
         allowed_k = (8, 16)
     elif two_gpu_experiment:
-        allowed_k = (4, 6, 10, 16, 21)
+        allowed_k = (4, 6, 10, 16, 19, 21)
     elif four_gpu_experiment:
         allowed_k = (4, 6, 10, 16)
     else:
@@ -166,6 +166,13 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
         raise ValueError("geometry_prefetch_depth must be in [1,16]")
     if not 1 <= prefetch_workers <= 32:
         raise ValueError("geometry_prefetch_workers must be in [1,32]")
+    kubric = config.get("datasets", {}).get("kubric", {})
+    sample_cache_size = int(kubric.get("geometry_sample_cache_size", 32))
+    if not 1 <= sample_cache_size <= 256:
+        raise ValueError("geometry_sample_cache_size must be in [1,256]")
+    max_open_shards = kubric.get("geometry_mmap_max_open_shards")
+    if max_open_shards is not None and not 1 <= int(max_open_shards) <= 4096:
+        raise ValueError("geometry_mmap_max_open_shards must be in [1,4096]")
 
 
 def wan_block_auto_wrap_policy(
