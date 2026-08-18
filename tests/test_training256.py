@@ -670,6 +670,12 @@ def test_gpu14_150k_watcher_is_pinned_audited_stable_and_resume_only():
 
 
 def test_post_resume_checksum_starts_only_after_strict_optimizer_restore():
+    import inspect
+    from worldbridge.dense4d_runtime import build_real_model
+
+    parameter = inspect.signature(build_real_model).parameters["load_wan_pretrained"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is True
     root = Path(__file__).resolve().parents[1]
     source = (root / "scripts/train_three_dataset_256_fsdp.py").read_text()
     restore = source.index("load_optimizer_checkpoint(", source.index("def main()"))
