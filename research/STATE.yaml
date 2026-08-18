@@ -696,4 +696,4 @@ h026_wan14b_full40_lora_gpu01:
   two_gpu_capacity_gate_waived_by_user: true
   next_step: Directly launch the user-requested GPU0/1 50k run and inspect its
     first updates.
-updated_at: 2026-08-18T10:21:41.390Z
+updated_at: 2026-08-18T14:08:22.743Z
