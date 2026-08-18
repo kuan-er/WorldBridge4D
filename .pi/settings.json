@@ -1,3 +1,5 @@
 {
-  "packages": []
+  "packages": [
+    "npm:pi-research-loop@0.6.0"
+  ]
 }
