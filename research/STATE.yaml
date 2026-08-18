@@ -664,7 +664,7 @@ h026_wan14b_full40_lora_gpu01:
   two_gpu_capacity_gate_waived_by_user: true
   next_step: Directly launch the user-requested GPU0/1 50k run and inspect its first updates.
 h023_gpu14_optimized_150k_handoff:
-  status: code_prepared_not_armed_or_launched
+  status: watcher_running_waiting_for_audited_marker
   task: T-20260817160306-ca12e3
   physical_gpus: [1, 4]
   world_size: 2
@@ -677,5 +677,7 @@ h023_gpu14_optimized_150k_handoff:
   safety: requires_immutable_sha256_handoff_marker_and_final_recheck
   hard_reservation: unavailable_without_external_scheduler
   verification: {run: R-20260818173644-94e964, tests_passed: 96, compileall: passed, shell_syntax: passed}
+  watcher_run: R-20260818174532-3ceda7
+  marker_at_watcher_start: absent
   current_training_modified: false
 updated_at: 2026-08-18T17:34:52Z
