@@ -1,4 +1,4 @@
-current_task: T-20260819131604-bada87
+current_task: T-20260818155010-5db0bb
 active_hypotheses:
   - H024
   - H023
@@ -794,4 +794,4 @@ h023_gpu14_optimized_150k_handoff:
     geometry_page_cache_resident_percent: 26.69
   resource_intrusion_event: false_positive_nvml_pid_namespace_ghost_contexts
   current_training_modified: source_stopped_new_run_strict_restore_complete
-updated_at: 2026-08-19T13:19:16.861Z
+updated_at: 2026-08-19T14:43:26.626Z
