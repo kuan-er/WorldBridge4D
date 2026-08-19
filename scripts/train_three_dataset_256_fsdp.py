@@ -40,6 +40,7 @@ from worldbridge.training256 import (
     DATASET_NAMES, apply_cosine_schedule, dataset_for_step,
     deterministic_sample_plan, load_training_datasets, prepare_training_indexes,
     sample_eligible_targets, source_with_eligible_targets,
+    training_diagnostic_due,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanVAEEncoder
 from worldbridge.text_conditions import load_dataset_text_conditions
@@ -149,7 +150,7 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
     if arbitrary_world:
         allowed_k = (8, 16)
     elif two_gpu_experiment:
-        allowed_k = (4, 6, 10, 16, 21)
+        allowed_k = (4, 6, 10, 16, 19, 21)
     elif four_gpu_experiment:
         allowed_k = (4, 6, 10, 16)
     else:
@@ -160,12 +161,37 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
         )
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
     prefetch_workers = int(config.get(
-        "geometry_prefetch_workers", accumulation * microbatch * 2,
+        "geometry_prefetch_workers", min(4, accumulation * microbatch * 2),
     ))
     if not 1 <= prefetch_depth <= 16:
         raise ValueError("geometry_prefetch_depth must be in [1,16]")
     if not 1 <= prefetch_workers <= 32:
         raise ValueError("geometry_prefetch_workers must be in [1,32]")
+    kubric = config.get("datasets", {}).get("kubric", {})
+    sample_cache_size = int(kubric.get("geometry_sample_cache_size", 16))
+    if not 1 <= sample_cache_size <= 256:
+        raise ValueError("geometry_sample_cache_size must be in [1,256]")
+    max_open_shards = kubric.get("geometry_mmap_max_open_shards")
+    if max_open_shards is not None and not 1 <= int(max_open_shards) <= 4096:
+        raise ValueError("geometry_mmap_max_open_shards must be in [1,4096]")
+    diagnostic_every = int(config.get("diagnostic_every_steps", 20))
+    if diagnostic_every < 1:
+        raise ValueError("diagnostic_every_steps must be positive")
+    extension_start = config.get("schedule_extension_start_step")
+    extension_horizon = config.get("schedule_extension_horizon_steps")
+    if (extension_start is None) != (extension_horizon is None):
+        raise ValueError("both cosine schedule extension fields must be configured")
+    if extension_start is not None:
+        warmup = int(config["warmup_steps"])
+        original_horizon = int(config["schedule_horizon_steps"])
+        extension_start = int(extension_start)
+        extension_horizon = int(extension_horizon)
+        if not warmup < extension_start < original_horizon < extension_horizon:
+            raise ValueError(
+                "schedule extension must satisfy warmup < start < original horizon < extended horizon"
+            )
+        if int(config.get("max_steps", extension_horizon)) != extension_horizon:
+            raise ValueError("extended schedule horizon must equal max_steps")
 
 
 def wan_block_auto_wrap_policy(
@@ -527,6 +553,32 @@ def launch_durable_checkpoint_replica(source: Path, destination: Path,
         return False
 
 
+def launch_post_resume_checksum(marker: Path, resume: Path, step: int) -> None:
+    """Hash an already strictly restored immutable checkpoint in the background."""
+    marker = marker.resolve()
+    value = json.loads(marker.read_text())
+    marked_checkpoint = Path(value["checkpoint"]).resolve()
+    if marked_checkpoint != resume.resolve():
+        raise ValueError(
+            f"post-resume checksum marker checkpoint mismatch: {marked_checkpoint} != {resume.resolve()}"
+        )
+    log_path = marker.parent / "post_resume_checksum.log"
+    command = [
+        "ionice", "-c", "3", "nice", "-n", "19", sys.executable,
+        str(ROOT / "scripts" / "prepare_three_dataset_256_gpu14_handoff.py"),
+        "--finalize-checksum-marker", str(marker),
+    ]
+    with log_path.open("ab", buffering=0) as stream:
+        process = subprocess.Popen(
+            command, stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT,
+            close_fds=True, start_new_session=True,
+        )
+    print(json.dumps({
+        "event": "post_resume_checksum_started", "step": int(step),
+        "pid": process.pid, "marker": str(marker), "log": str(log_path),
+    }), flush=True)
+
+
 def prune_periodic_checkpoints(output: Path, keep_last: int) -> list[str]:
     """Bound disk use while retaining latest.pt and the newest named milestones."""
     paths = sorted(output.glob("checkpoint-*.pt"))
@@ -599,6 +651,10 @@ def main() -> None:
         help="initialize/resume W&B normally, but upload metrics only after this global step",
     )
     parser.add_argument("--checkpoint-at-end", action="store_true")
+    parser.add_argument(
+        "--post-resume-checksum-marker",
+        help="after strict model/optimizer restore, hash the immutable resume checkpoint in background",
+    )
     parser.add_argument(
         "--no-checkpoint", action="store_true",
         help="capacity-gate only: skip periodic/final checkpoint materialization",
@@ -779,6 +835,15 @@ def main() -> None:
         start_step = int(resume_state["global_step"])
         clips_seen.update({key: int(value) for key, value in resume_state["clips_seen"].items()})
         del resume_payload
+        if rank == 0:
+            print(json.dumps({
+                "event": "resume_state_loaded", "step": start_step,
+                "world_size": world, "optimizer": "restored", "rng_states": len(resume_rng_states),
+            }), flush=True)
+            if args.post_resume_checksum_marker:
+                launch_post_resume_checksum(
+                    Path(args.post_resume_checksum_marker), resume, start_step,
+                )
     if start_step >= target_steps:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
     run = init_wandb(config, output, rank, args.disable_wandb)
@@ -786,6 +851,12 @@ def main() -> None:
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
+    ensure_dataset_diagnostics = bool(
+        config.get("diagnostic_ensure_dataset_coverage", False)
+    )
+    last_diagnostic_cycle: dict[str, int] = {}
+    extension_start = config.get("schedule_extension_start_step")
+    extension_horizon = config.get("schedule_extension_horizon_steps")
     checkpoint_steps = {int(value) for value in config.get("checkpoint_steps", [])}
     checkpoint_every = int(config.get("checkpoint_every_after", 5000))
     graceful_seconds = float(config.get("graceful_stop_hours", 68)) * 3600
@@ -793,7 +864,7 @@ def main() -> None:
     completed = start_step
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
     prefetch_workers = int(config.get(
-        "geometry_prefetch_workers", accumulation * microbatch_per_gpu * 2,
+        "geometry_prefetch_workers", min(4, accumulation * microbatch_per_gpu * 2),
     ))
     pool = ThreadPoolExecutor(
         max_workers=prefetch_workers,
@@ -937,15 +1008,30 @@ def main() -> None:
             if not torch.isfinite(gradient_norm):
                 raise FloatingPointError(f"non-finite gradient norm at step={step + 1}")
             lr_factor = apply_cosine_schedule(
-                optimizer, step + 1, int(config["warmup_steps"]), int(config["schedule_horizon_steps"])
+                optimizer,
+                step + 1,
+                int(config["warmup_steps"]),
+                int(config["schedule_horizon_steps"]),
+                None if extension_start is None else int(extension_start),
+                None if extension_horizon is None else int(extension_horizon),
             )
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
             completed = step + 1
             clips_seen[name] += world * accumulation * microbatch_per_gpu
             elapsed = time.perf_counter() - started
             peak = torch.cuda.max_memory_allocated(device) / 2**30
-            diagnostic = completed == start_step + 1 or completed % diagnostic_every == 0 or completed == target_steps
+            diagnostic = training_diagnostic_due(
+                completed,
+                start_step,
+                target_steps,
+                name,
+                step,
+                diagnostic_every,
+                ensure_dataset_diagnostics,
+                last_diagnostic_cycle,
+            )
             if diagnostic:
+                last_diagnostic_cycle[name] = step // 20
                 scalars = torch.tensor(
                     [update_loss, update_epe, valid_points, pair_count], device=device, dtype=torch.float64
                 )
@@ -973,6 +1059,7 @@ def main() -> None:
                     "system/latent_load_seconds_max_rank": float(timing_max[2]),
                     "system/geometry_prefetch_depth": prefetch_depth,
                     "system/geometry_prefetch_workers": prefetch_workers,
+                    "system/diagnostic_dataset_coverage": int(ensure_dataset_diagnostics),
                     "system/elapsed_seconds": elapsed, "train/lr_factor": lr_factor,
                     "train/gradient_norm": float(gradient_norm),
                     **{f"sampling/source_{index}": int(value) for index, value in enumerate(source_hist.tolist())},

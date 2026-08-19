@@ -86,7 +86,10 @@ def encode_clean_video_latents(samples: Sequence[MOViSample], wan_root: str | Pa
     return latents
 
 
-def build_real_model(config: dict[str, Any], device: torch.device | str) -> DenseQueryWanModel:
+def build_real_model(
+    config: dict[str, Any], device: torch.device | str,
+    *, load_wan_pretrained: bool = True,
+) -> DenseQueryWanModel:
     device = torch.device(device)
     dtype = precision_dtype(config["precision"])
     readout = str(config.get("backbone_readout", "wan_velocity"))

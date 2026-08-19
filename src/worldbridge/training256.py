@@ -73,13 +73,95 @@ def cosine_learning_rate_factor(update_number: int, warmup_steps: int,
     return 0.5 * (1.0 + math.cos(math.pi * progress))
 
 
-def apply_cosine_schedule(optimizer: torch.optim.Optimizer, update_number: int,
-                          warmup_steps: int, horizon_steps: int) -> float:
-    factor = cosine_learning_rate_factor(update_number, warmup_steps, horizon_steps)
+def extended_cosine_learning_rate_factor(
+    update_number: int,
+    warmup_steps: int,
+    original_horizon_steps: int,
+    extension_start_step: int | None = None,
+    extension_horizon_steps: int | None = None,
+) -> float:
+    """Extend a running cosine schedule without an LR jump at the handoff.
+
+    Replacing a 100k horizon with 150k at resume would increase the learning
+    rate immediately.  Instead, retain the original factor through the handoff
+    and cosine-decay that factor to zero over the added interval.
+    """
+    if extension_start_step is None and extension_horizon_steps is None:
+        return cosine_learning_rate_factor(
+            update_number, warmup_steps, original_horizon_steps,
+        )
+    if extension_start_step is None or extension_horizon_steps is None:
+        raise ValueError("both cosine extension steps must be configured")
+    extension_start_step = int(extension_start_step)
+    extension_horizon_steps = int(extension_horizon_steps)
+    if not warmup_steps < extension_start_step < extension_horizon_steps:
+        raise ValueError("invalid cosine extension interval")
+    if extension_start_step >= original_horizon_steps:
+        raise ValueError("cosine extension must start before the original horizon")
+    if update_number <= extension_start_step:
+        return cosine_learning_rate_factor(
+            update_number, warmup_steps, original_horizon_steps,
+        )
+    start_factor = cosine_learning_rate_factor(
+        extension_start_step, warmup_steps, original_horizon_steps,
+    )
+    progress = min(
+        1.0,
+        (int(update_number) - extension_start_step)
+        / (extension_horizon_steps - extension_start_step),
+    )
+    return start_factor * 0.5 * (1.0 + math.cos(math.pi * progress))
+
+
+def apply_cosine_schedule(
+    optimizer: torch.optim.Optimizer,
+    update_number: int,
+    warmup_steps: int,
+    horizon_steps: int,
+    extension_start_step: int | None = None,
+    extension_horizon_steps: int | None = None,
+) -> float:
+    factor = extended_cosine_learning_rate_factor(
+        update_number, warmup_steps, horizon_steps,
+        extension_start_step, extension_horizon_steps,
+    )
     for group in optimizer.param_groups:
         base_lr = float(group.setdefault("_base_lr", group["lr"]))
         group["lr"] = base_lr * factor
     return factor
+
+
+def training_diagnostic_due(
+    completed_step: int,
+    start_step: int,
+    target_steps: int,
+    dataset_name: str,
+    schedule_step: int,
+    diagnostic_every: int,
+    ensure_dataset_coverage: bool,
+    last_logged_cycle: dict[str, int],
+) -> bool:
+    """Return whether to aggregate/log this update.
+
+    A cadence of five aliases the fixed 20-step mixture cycle and previously
+    omitted Dynamic Replica almost completely.  Coverage mode logs at least one
+    update from every dataset in every mixture cycle, independent of cadence.
+    """
+    if dataset_name not in DATASET_NAMES:
+        raise ValueError(f"unknown diagnostic dataset: {dataset_name}")
+    if diagnostic_every < 1:
+        raise ValueError("diagnostic_every must be positive")
+    regular = (
+        completed_step == start_step + 1
+        or completed_step % diagnostic_every == 0
+        or completed_step == target_steps
+    )
+    cycle = int(schedule_step) // len(MIX_CYCLE)
+    coverage = (
+        ensure_dataset_coverage
+        and last_logged_cycle.get(dataset_name) != cycle
+    )
+    return regular or coverage
 
 
 def source_with_eligible_targets(dataset: TrainingDataset, index: int,
@@ -89,7 +171,8 @@ def source_with_eligible_targets(dataset: TrainingDataset, index: int,
     min_targets = int(min_targets)
     if min_targets < 1:
         raise ValueError("min_targets must be positive")
-    for source in np.asarray(sources, dtype=np.int64).reshape(-1):
+    sources = np.asarray(sources, dtype=np.int64).reshape(-1)
+    for source in sources:
         xyz, valid = dataset.source_all_targets(int(index), int(source))
         eligible = np.asarray(valid, dtype=bool).reshape(21, -1).any(axis=1)
         if int(eligible.sum()) >= min_targets:
@@ -342,9 +425,15 @@ class CachedExternalDataset:
 
 
 class KubricGeometryMmapStore:
-    """Read fixed-size Kubric arrays from atomically published mmap shards."""
+    """Read fixed-size Kubric arrays from atomically published mmap shards.
 
-    def __init__(self, root: str | Path, max_open_shards: int = 8) -> None:
+    Shard mappings are cheap virtual-address reservations.  Keeping all shards
+    mapped avoids mmap-lock churn when geometry workers sample random clips;
+    physical pages remain demand-paged by the kernel.
+    """
+
+    def __init__(self, root: str | Path,
+                 max_open_shards: int | None = None) -> None:
         self.root = Path(root)
         manifest_path = self.root / "manifest.json"
         if not manifest_path.is_file():
@@ -358,7 +447,11 @@ class KubricGeometryMmapStore:
         self.shard_size = int(self.manifest["shard_size"])
         if self.count < 1 or self.shard_size < 1:
             raise ValueError(f"invalid Kubric mmap dimensions: {manifest_path}")
-        self.max_open_shards = max(1, int(max_open_shards))
+        self.shard_count = math.ceil(self.count / self.shard_size)
+        self.max_open_shards = (
+            self.shard_count if max_open_shards is None
+            else max(1, int(max_open_shards))
+        )
         self._shards: OrderedDict[int, tuple[np.ndarray, ...]] = OrderedDict()
         self._lock = threading.RLock()
 
@@ -392,7 +485,9 @@ class MOViF256Dataset:
     """Read-only MOVi-F 512 source -> audited 256 geometry and latent cache."""
     def __init__(self, raw_root: str | Path, cache_root: str | Path,
                  split: str = "train", allow_missing_latents: bool = False,
-                 geometry_mmap_root: str | Path | None = None) -> None:
+                 geometry_mmap_root: str | Path | None = None,
+                 geometry_sample_cache_size: int = 16,
+                 geometry_mmap_max_open_shards: int | None = None) -> None:
         cache_root = Path(cache_root)
         self.cache_root = cache_root
         index_path = cache_root / "splits" / f"{split}.jsonl"
@@ -412,11 +507,16 @@ class MOViF256Dataset:
             cache_root / "latents" / "wan2.1_1.3b_fp32_256_lazy", "kubric"
         )
         self.geometry_mmap = (
-            KubricGeometryMmapStore(geometry_mmap_root)
+            KubricGeometryMmapStore(
+                geometry_mmap_root,
+                max_open_shards=geometry_mmap_max_open_shards,
+            )
             if geometry_mmap_root is not None else None
         )
+        self._sample_cache_size = max(1, int(geometry_sample_cache_size))
         self._sample_cache: OrderedDict[int, MOViSample] = OrderedDict()
         self._sample_cache_lock = threading.RLock()
+        self._sample_load_locks: dict[int, threading.Lock] = {}
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -446,8 +546,19 @@ class MOViF256Dataset:
     def sample(self, index: int) -> MOViSample:
         raw_index = int(self.rows[index]["raw_index"])
         with self._sample_cache_lock:
-            value = self._sample_cache.pop(raw_index, None)
-        if value is None:
+            value = self._sample_cache.get(raw_index)
+            if value is not None:
+                self._sample_cache.move_to_end(raw_index)
+                return value
+            load_lock = self._sample_load_locks.setdefault(raw_index, threading.Lock())
+        # Coalesce duplicate fallback/source requests without serializing loads
+        # for unrelated clips.  Recheck after acquiring the per-clip lock.
+        with load_lock:
+            with self._sample_cache_lock:
+                value = self._sample_cache.get(raw_index)
+                if value is not None:
+                    self._sample_cache.move_to_end(raw_index)
+                    return value
             compact = KUBRIC_GEOMETRY_CACHE / f"geom_{raw_index:06d}.npz"
             if self.geometry_mmap is not None:
                 if not compact.is_file():
@@ -457,11 +568,12 @@ class MOViF256Dataset:
                 value = self._load_compact_sample(compact)
             else:
                 value = self._resize_sample(self.native[raw_index])
-        with self._sample_cache_lock:
-            self._sample_cache[raw_index] = value
-            while len(self._sample_cache) > 2:
-                self._sample_cache.popitem(last=False)
-        return value
+            with self._sample_cache_lock:
+                self._sample_cache[raw_index] = value
+                self._sample_cache.move_to_end(raw_index)
+                while len(self._sample_cache) > self._sample_cache_size:
+                    self._sample_cache.popitem(last=False)
+            return value
 
     @staticmethod
     def _load_compact_sample(
@@ -492,18 +604,27 @@ class MOViF256Dataset:
                 clip_start=int(z["clip_start"]),
             )
 
-    def _geometry(self, index: int, source: int, compute_visibility: bool
-                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
-        xyz, visible, valid, _ = GeometryBuilder(self.sample(index)).trajectory_block(
+    @staticmethod
+    def _geometry_from_sample(
+        sample: MOViSample, source: int, compute_visibility: bool,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        xyz, visible, valid, _ = GeometryBuilder(sample).trajectory_block(
             int(source), coordinate_frame="source", compute_visibility=compute_visibility
         )
-        xyz = xyz.reshape(256, 256, 21, 3).transpose(2, 3, 0, 1).astype(np.float32)
-        valid = valid.reshape(256, 256, 21).transpose(2, 0, 1).astype(bool)
+        height, width, frames = sample.height, sample.width, sample.num_frames
+        xyz = xyz.reshape(height, width, frames, 3).transpose(2, 3, 0, 1).astype(np.float32)
+        valid = valid.reshape(height, width, frames).transpose(2, 0, 1).astype(bool)
         visible_out = (
-            visible.reshape(256, 256, 21).transpose(2, 0, 1).astype(bool)
+            visible.reshape(height, width, frames).transpose(2, 0, 1).astype(bool)
             if visible is not None else None
         )
         return xyz, valid, visible_out
+
+    def _geometry(self, index: int, source: int, compute_visibility: bool
+                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        return self._geometry_from_sample(
+            self.sample(index), int(source), compute_visibility,
+        )
 
     def source_all_targets(self, index: int, source: int) -> tuple[np.ndarray, np.ndarray]:
         xyz, valid, _ = self._geometry(index, source, False)
@@ -583,10 +704,17 @@ def load_training_dataset(config: dict[str, Any], name: str,
         raise ValueError(f"dataset must be one of {DATASET_NAMES}, got {name!r}")
     values = roots[name]
     if name == "kubric":
+        max_open_shards = values.get("geometry_mmap_max_open_shards")
         return MOViF256Dataset(
             values["raw_root"], values["cache_root"],
             allow_missing_latents=allow_missing_latents,
             geometry_mmap_root=values.get("geometry_mmap_root"),
+            geometry_sample_cache_size=int(
+                values.get("geometry_sample_cache_size", 16)
+            ),
+            geometry_mmap_max_open_shards=(
+                None if max_open_shards is None else int(max_open_shards)
+            ),
         )
     if name == "pointodyssey":
         geometry = PointOdysseyDataset(

@@ -14,7 +14,8 @@ from worldbridge.dense4d import DenseQueryDecoder, WanHiddenGeometryBackbone, ma
 from worldbridge.training256 import (
     CachedExternalDataset, KubricGeometryMmapStore, LazyLatentCache, MOViF256Dataset,
     apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
-    deterministic_sample_plan, sample_eligible_targets, source_with_eligible_targets,
+    deterministic_sample_plan, extended_cosine_learning_rate_factor,
+    sample_eligible_targets, source_with_eligible_targets, training_diagnostic_due,
 )
 from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
 from worldbridge.text_conditions import load_inference_text_condition
@@ -329,6 +330,11 @@ def test_kubric_mmap_conversion_is_exact_atomic_and_resumable(tmp_path):
     for index, expected in enumerate(originals):
         for actual, value in zip(store.read(index), expected):
             assert np.array_equal(actual, value)
+    assert len(store._shards) == 1
+    all_shards = KubricGeometryMmapStore(destination)
+    all_shards.read(0); all_shards.read(2)
+    assert all_shards.max_open_shards == 2
+    assert len(all_shards._shards) == 2
     old = MOViF256Dataset._load_compact_sample(source / "geom_000001.npz")
     new = MOViF256Dataset._load_compact_sample(
         source / "geom_000001.npz", store.read(1),
@@ -363,7 +369,19 @@ def test_experimental_k_modes_require_explicit_world_size_flags():
     k16_b2_a2 = {**matched_k10, "targets_per_source": 16}
     train.validate_config(k16_b2_a2, world=2, allow_two_gpu=True)
     train.validate_config(
-        {**k16_b2_a2, "geometry_prefetch_depth": 4, "geometry_prefetch_workers": 8},
+        {**k16_b2_a2, "targets_per_source": 19},
+        world=2, allow_two_gpu=True,
+    )
+    train.validate_config(
+        {
+            **k16_b2_a2,
+            "geometry_prefetch_depth": 4,
+            "geometry_prefetch_workers": 8,
+            "datasets": {"kubric": {
+                "geometry_sample_cache_size": 32,
+                "geometry_mmap_max_open_shards": 90,
+            }},
+        },
         world=2, allow_two_gpu=True,
     )
     with pytest.raises(ValueError, match="geometry_prefetch_depth"):
@@ -374,6 +392,16 @@ def test_experimental_k_modes_require_explicit_world_size_flags():
     with pytest.raises(ValueError, match="geometry_prefetch_workers"):
         train.validate_config(
             {**k16_b2_a2, "geometry_prefetch_workers": 33},
+            world=2, allow_two_gpu=True,
+        )
+    with pytest.raises(ValueError, match="geometry_sample_cache_size"):
+        train.validate_config(
+            {**k16_b2_a2, "datasets": {"kubric": {"geometry_sample_cache_size": 0}}},
+            world=2, allow_two_gpu=True,
+        )
+    with pytest.raises(ValueError, match="geometry_mmap_max_open_shards"):
+        train.validate_config(
+            {**k16_b2_a2, "datasets": {"kubric": {"geometry_mmap_max_open_shards": 0}}},
             world=2, allow_two_gpu=True,
         )
     k16_four_gpu = {
@@ -399,6 +427,99 @@ def test_experimental_k_modes_require_explicit_world_size_flags():
             k16_four_gpu, world=2, allow_two_gpu=True,
             allow_four_gpu_experiment=True,
         )
+    extended = {
+        **k16_b2_a2,
+        "targets_per_source": 19,
+        "warmup_steps": 1000,
+        "schedule_horizon_steps": 100000,
+        "schedule_extension_start_step": 56000,
+        "schedule_extension_horizon_steps": 150000,
+        "max_steps": 150000,
+        "diagnostic_ensure_dataset_coverage": True,
+    }
+    train.validate_config(extended, world=2, allow_two_gpu=True)
+    with pytest.raises(ValueError, match="extension"):
+        train.validate_config(
+            {**extended, "schedule_extension_horizon_steps": 90000},
+            world=2, allow_two_gpu=True,
+        )
+
+
+def _handoff_original_config():
+    return {
+        "targets_per_source": 19,
+        "microbatch_per_gpu": 2,
+        "gradient_accumulation": 2,
+        "warmup_steps": 1000,
+        "schedule_horizon_steps": 100000,
+        "max_steps": 100000,
+        "checkpoint_steps": [55000, 60000, 100000],
+        "datasets": {"kubric": {}, "pointodyssey": {}, "dynamic_replica": {}},
+        "tracking": {"tags": ["k19"]},
+    }
+
+
+def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_controls(tmp_path):
+    from scripts.prepare_three_dataset_256_gpu14_handoff import build_extended_config
+
+    config = build_extended_config(
+        _handoff_original_config(), 56435, 150000, tmp_path / "train_status.json",
+    )
+    assert config["targets_per_source"] == 19
+    assert config["microbatch_per_gpu"] == config["gradient_accumulation"] == 2
+    assert config["schedule_horizon_steps"] == 100000
+    assert config["schedule_extension_start_step"] == 56435
+    assert config["schedule_extension_horizon_steps"] == config["max_steps"] == 150000
+    assert config["geometry_prefetch_workers"] == 4
+    assert config["geometry_prefetch_depth"] == 2
+    assert config["diagnostic_ensure_dataset_coverage"] is True
+    assert config["datasets"]["kubric"]["geometry_sample_cache_size"] == 16
+    assert config["datasets"]["kubric"]["geometry_mmap_max_open_shards"] == 90
+    assert config["checkpoint_steps"] == [60000, 100000, 150000]
+
+
+def test_gpu14_handoff_preparer_freezes_and_verifies_complete_checkpoint(tmp_path):
+    from scripts.prepare_three_dataset_256_gpu14_handoff import (
+        finalize_checksum_marker, prepare, verify_marker,
+    )
+
+    source = tmp_path / "latest.pt"
+    status = tmp_path / "train_status.json"
+    clips = {"kubric": 10, "pointodyssey": 20, "dynamic_replica": 30}
+    torch.save({
+        "format": 3,
+        "model": {"weight": torch.ones(1)},
+        "optimizer": {"state": {0: {"step": torch.tensor(1)}}},
+        "config": _handoff_original_config(),
+        "training_state": {
+            "global_step": 56435, "world_size": 2,
+            "rng_states": [{"rank": 0}, {"rank": 1}], "clips_seen": clips,
+        },
+    }, source)
+    status.write_text(json.dumps({
+        "completed_steps": 56435, "world_size": 2, "clips_seen": clips,
+    }))
+    value = prepare(
+        source, status, tmp_path / "handoff", tmp_path / "fast-checkpoints", 150000,
+    )
+    marker = verify_marker(Path(value["marker"]))
+    assert marker["completed_step"] == 56435
+    assert Path(marker["checkpoint"]).stat().st_ino == source.stat().st_ino
+    assert Path(marker["config"]).is_file()
+    assert json.loads(Path(marker["resume_status"]).read_text())["completed_steps"] == 56435
+
+    deferred = prepare(
+        source, status, tmp_path / "deferred-handoff",
+        tmp_path / "deferred-fast-checkpoints", 150000, defer_checksum=True,
+    )
+    deferred_marker = Path(deferred["marker"])
+    assert verify_marker(deferred_marker, verify_checksum=False)["checksum_state"] == "deferred"
+    with pytest.raises(ValueError, match="not complete"):
+        verify_marker(deferred_marker)
+    completed = finalize_checksum_marker(deferred_marker)
+    assert completed["checksum_state"] == "complete"
+    assert len(completed["checkpoint_sha256"]) == 64
+    assert verify_marker(deferred_marker)["checkpoint_sha256"] == completed["checkpoint_sha256"]
 
 
 def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
@@ -527,6 +648,41 @@ def test_four_gpu_k10_launcher_is_fresh_pinned_and_wandb_online():
     assert 'CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"' in generic
     assert '--checkpoint-dir "$CHECKPOINT_DIR"' in generic
     assert '--durable-checkpoint "$DURABLE_CHECKPOINT"' in generic
+
+
+def test_gpu14_150k_watcher_is_pinned_audited_stable_and_resume_only():
+    root = Path(__file__).resolve().parents[1]
+    watcher = (root / "scripts/wait_resume_three_dataset_256_gpu14_150k.sh").read_text()
+    assert "--verify-marker" in watcher
+    assert 'GPUS=1,4' in watcher
+    assert 'NPROC=2' in watcher
+    assert 'STEPS=150000' in watcher
+    assert 'FRESH_START=0' in watcher
+    assert 'STABLE_SECONDS="${STABLE_SECONDS:-90}"' in watcher
+    assert 'MIN_FREE_MIB="${MIN_FREE_MIB:-76000}"' in watcher
+    assert 'query-compute-apps=pid' in watcher
+    assert 'STAGE_INPUTS=0' in watcher
+    assert 'POST_RESUME_CHECKSUM_MARKER="$MARKER"' in watcher
+    assert "stage_three_dataset_256_inputs.py" not in watcher
+    assert '--verify-marker "$MARKER" --skip-checksum' in watcher
+    assert 'WANDB_LOG_AFTER_STEP="$RESUME_STEP"' in watcher
+    assert " kill " not in watcher and "pkill" not in watcher
+
+
+def test_post_resume_checksum_starts_only_after_strict_optimizer_restore():
+    import inspect
+    from worldbridge.dense4d_runtime import build_real_model
+
+    parameter = inspect.signature(build_real_model).parameters["load_wan_pretrained"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is True
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    restore = source.index("load_optimizer_checkpoint(", source.index("def main()"))
+    loaded = source.index('"event": "resume_state_loaded"', restore)
+    checksum = source.index("launch_post_resume_checksum(", loaded)
+    loop = source.index("for step in range(start_step, target_steps):", checksum)
+    assert restore < loaded < checksum < loop
 
 
 def test_three_dataset_cycle_has_exact_ratio_and_is_resume_pure():
@@ -738,3 +894,29 @@ def test_cosine_schedule_preserves_group_lr_ratios():
     factor = apply_cosine_schedule(optimizer, 1000, 1000, 100000)
     assert factor == 1.0
     np.testing.assert_allclose([group["lr"] for group in optimizer.param_groups], [5e-5, 3e-4])
+
+
+def test_cosine_extension_is_continuous_and_reaches_zero_at_150k():
+    start = 56435
+    before = extended_cosine_learning_rate_factor(start, 1000, 100000, start, 150000)
+    original = extended_cosine_learning_rate_factor(start, 1000, 100000)
+    assert before == original
+    after = extended_cosine_learning_rate_factor(start + 1, 1000, 100000, start, 150000)
+    assert 0 < after <= before
+    assert extended_cosine_learning_rate_factor(150000, 1000, 100000, start, 150000) == 0
+
+
+def test_dataset_coverage_diagnostics_cannot_alias_the_20_step_cycle():
+    last_cycle = {}
+    logged = {cycle: set() for cycle in range(4)}
+    for schedule_step in range(80):
+        completed = schedule_step + 1
+        name = dataset_for_step(schedule_step, 20260812)
+        due = training_diagnostic_due(
+            completed, 0, 80, name, schedule_step, 5, True, last_cycle,
+        )
+        if due:
+            cycle = schedule_step // 20
+            last_cycle[name] = cycle
+            logged[cycle].add(name)
+    assert all(values == {"kubric", "pointodyssey", "dynamic_replica"} for values in logged.values())

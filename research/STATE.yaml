@@ -2,6 +2,7 @@ current_task: T-20260817160306-ca12e3
 active_hypotheses:
   - H023
   - H026
+  - H024
   - H022
   - H020
   - H009
@@ -696,4 +697,39 @@ h026_wan14b_full40_lora_gpu01:
   two_gpu_capacity_gate_waived_by_user: true
   next_step: Directly launch the user-requested GPU0/1 50k run and inspect its
     first updates.
-updated_at: 2026-08-18T14:08:22.743Z
+h023_gpu14_optimized_150k_handoff:
+  status: optimized_150k_training_stable
+  task: T-20260817160306-ca12e3
+  physical_gpus: [1, 4]
+  world_size: 2
+  protocol: {targets_per_source: 19, microbatch_per_gpu: 2, gradient_accumulation: 2}
+  target_steps: 150000
+  prefetch: {workers: 4, depth: 2, kubric_sample_cache: 16, mmap_open_shards: 90}
+  diagnostics: at_least_one_log_per_dataset_per_20_step_cycle
+  lr_extension: continuous_from_audited_handoff_factor_to_zero_at_150k
+  acquisition: {min_free_mib: 76000, max_util_percent: 5, stable_seconds: 1, compute_pids: none, user_requested_immediate_launch: true}
+  safety: requires_immutable_metadata_handoff_marker_final_recheck_and_strict_restore_before_update
+  hard_reservation: unavailable_without_external_scheduler
+  verification: {run: R-20260818175409-12a560, tests_passed: 97, compileall: passed, shell_syntax: passed}
+  superseded_watcher_run: R-20260818174532-3ceda7
+  watcher_run: R-20260818175501-5725ef
+  checksum_policy: metadata_and_strict_restore_before_updates_sha256_low_priority_after_restore
+  marker_at_watcher_start: absent
+  source_run: R-20260817165208-812f60
+  stop_signal: {signal: SIGUSR1, sent_at: 2026-08-18T17:58:01Z, ranks: 2}
+  source_stop_step: 56503
+  superseded_metadata_prepare_run: R-20260818175829-a64cf2
+  failed_launch_run: R-20260818180139-a1797e
+  failed_launch_reason: build_real_model_signature_missing_load_wan_pretrained_keyword
+  signature_fix_verification: {run: R-20260818180541-1e9c65, tests_passed: 97, compileall: passed, shell_syntax: passed}
+  optimized_run: R-20260818180553-c5f105
+  strict_restore: {step: 56503, world_size: 2, optimizer: restored, rng_states: 2, completed_at: 2026-08-18T18:08:28Z}
+  post_resume_checksum: {state: complete, sha256: 4fa0dac9c430ea4fa8096d6684b33c9e3b82f0f1907926e892f3fa7a75249541}
+  first_update: {global_step: 56504, dataset: pointodyssey, loss: 0.013353999704122543, raw_epe_m: 0.15952254766892612, lr_factor: 0.40532763843756303, step_seconds: 251.2366376556456, geometry_wait_seconds: 17.965477074030787, finite: true}
+  second_update: {global_step: 56505, dataset: kubric, loss: 0.17363791540265083, raw_epe_m: 0.7572442481392309, lr_factor: 0.40532763809434363, step_seconds: 65.5942565491423, geometry_wait_seconds: 0.00014229211956262589, finite: true}
+  warm_steps: {step_56515_seconds: 4.669776598922908, step_56520_seconds: 30.613145125098526, step_56521_seconds: 4.628897916059941, step_56522_seconds: 4.654843296855688, step_56525_seconds: 69.08653756184503}
+  remaining_bottleneck: occasional_rank_asymmetric_mmap_page_fault_tails_cause_other_rank_gpu_wait
+  sustained_hot_window: {start_step: 56550, end_step: 56575, updates: 25, elapsed_seconds: 120.49118614988402, average_seconds_per_update: 4.819647445995361, recent_geometry_wait_seconds_max: 0.0000734, both_gpu_utilization_percent: 97_to_100, geometry_page_cache_resident_gib: 59.562, geometry_page_cache_resident_percent: 26.69}
+  resource_intrusion_event: false_positive_nvml_pid_namespace_ghost_contexts
+  current_training_modified: source_stopped_new_run_strict_restore_complete
+updated_at: 2026-08-18T18:42:38Z

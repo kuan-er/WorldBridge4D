@@ -8,6 +8,7 @@ CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"
 DURABLE_CHECKPOINT="${DURABLE_CHECKPOINT:-}"
 RESUME_CHECKPOINT="${RESUME_CHECKPOINT:-}"
 WANDB_LOG_AFTER_STEP="${WANDB_LOG_AFTER_STEP:--1}"
+POST_RESUME_CHECKSUM_MARKER="${POST_RESUME_CHECKSUM_MARKER:-}"
 GPUS="${GPUS:-0,1,2,3}"
 NPROC="${NPROC:-4}"
 STEPS="${STEPS:-}"
@@ -119,6 +120,10 @@ if [[ -n "$RESUME" ]]; then
 fi
 EXTRA+=(--checkpoint-dir "$CHECKPOINT_DIR")
 EXTRA+=(--wandb-log-after-step "$WANDB_LOG_AFTER_STEP")
+if [[ -n "$POST_RESUME_CHECKSUM_MARKER" ]]; then
+  [[ -n "$RESUME" ]] || { echo "post-resume checksum requires a resume checkpoint" >&2; exit 2; }
+  EXTRA+=(--post-resume-checksum-marker "$POST_RESUME_CHECKSUM_MARKER")
+fi
 if [[ -n "$DURABLE_CHECKPOINT" ]]; then
   EXTRA+=(--durable-checkpoint "$DURABLE_CHECKPOINT")
 fi
