@@ -794,4 +794,21 @@ h023_gpu14_optimized_150k_handoff:
     geometry_page_cache_resident_percent: 26.69
   resource_intrusion_event: false_positive_nvml_pid_namespace_ghost_contexts
   current_training_modified: source_stopped_new_run_strict_restore_complete
-updated_at: 2026-08-19T14:43:26.626Z
+h023_current_route_cleanup:
+  task: T-20260819161226-510cf8
+  status: validated_in_isolated_worktree_not_merged
+  scope: gpu1_gpu4_k19_b2_a2_150k_three_dataset_route
+  exact_config: configs/worldbridge4d_gpu14_k19_150k.yaml
+  retained_counts:
+    scripts: 26
+    configs: 1
+    src_worldbridge: 10
+    tests: 5
+  removed: historical_128px_baselines_ablations_single_dataset_ddp_rejected_capacity_and_wan14b_tools
+  validation_run: R-20260819162110-8646ac
+  tests_passed: 51
+  compileall: passed
+  shell_syntax: passed
+  diff_check: passed
+  live_training_modified: false
+updated_at: 2026-08-19T16:22:00.000Z
