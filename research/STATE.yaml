@@ -1,14 +1,6 @@
-current_task: T-20260818155010-5db0bb
+current_task: T-20260817160306-ca12e3
 active_hypotheses:
-  - H024
   - H023
-  - H026
-  - H022
-  - H020
-  - H009
-  - H004
-  - H002
-  - H001
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -796,7 +788,7 @@ h023_gpu14_optimized_150k_handoff:
   current_training_modified: source_stopped_new_run_strict_restore_complete
 h023_current_route_cleanup:
   task: T-20260819161226-510cf8
-  status: validated_in_isolated_worktree_not_merged
+  status: merged_to_main
   scope: gpu1_gpu4_k19_b2_a2_150k_three_dataset_route
   exact_config: configs/worldbridge4d_gpu14_k19_150k.yaml
   retained_counts:
@@ -811,4 +803,4 @@ h023_current_route_cleanup:
   shell_syntax: passed
   diff_check: passed
   live_training_modified: false
-updated_at: 2026-08-19T16:22:00.000Z
+updated_at: 2026-08-19T17:58:15.547Z
