@@ -24,7 +24,7 @@ PACKAGES = (
     ("numpy", "numpy", ">=1.26,<2.0"),
     ("PyYAML", "yaml", ">=6.0,<7"),
     ("torch", "torch", ">=2.4,<2.11"),
-    ("tensorflow-cpu", "tensorflow", ">=2.15,<2.16"),
+    ("tensorflow-cpu", "tensorflow", ">=2.16,<2.17"),
     ("diffusers", "diffusers", "==0.36.0"),
     ("safetensors", "safetensors", ">=0.7,<0.8"),
     ("transformers", "transformers", ">=4.41,<5"),
@@ -32,9 +32,7 @@ PACKAGES = (
     ("sentencepiece", "sentencepiece", ">=0.2,<0.3"),
     ("ftfy", "ftfy", ">=6.1,<7"),
     ("wandb", "wandb", ">=0.19,<1"),
-    ("matplotlib", "matplotlib", ">=3.8,<4"),
-    ("scikit-learn", "sklearn", ">=1.4,<1.8"),
-    ("nvidia-ml-py", "pynvml", ">=12,<13"),
+    ("Pillow", "PIL", ">=10,<12"),
     ("jsonschema", "jsonschema", ">=4.19,<5"),
     ("packaging", "packaging", ">=23,<26"),
     ("pytest", "pytest", ">=8,<10"),
@@ -44,7 +42,7 @@ PACKAGES = (
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--require-cuda", action="store_true",
-                        help="also require a CUDA GPU with BF16 and working NVML")
+                        help="also require a CUDA GPU with BF16 support")
     args = parser.parse_args()
 
     result: dict[str, Any] = {
@@ -117,8 +115,9 @@ def main() -> None:
 
     project_modules = (
         "worldbridge.data", "worldbridge.geometry", "worldbridge.dense4d",
-        "worldbridge.dense4d_data", "worldbridge.dense4d_prefetch",
-        "worldbridge.dense4d_runtime", "worldbridge.wan",
+        "worldbridge.dense4d_runtime", "worldbridge.dynamic_replica",
+        "worldbridge.pointodyssey", "worldbridge.text_conditions",
+        "worldbridge.training256", "worldbridge.wan",
     )
     imported = []
     for module_name in project_modules:
@@ -148,13 +147,6 @@ def main() -> None:
                 errors.append("CUDA is required but torch.cuda.is_available() is false")
             elif not torch.cuda.is_bf16_supported():
                 errors.append("CUDA device does not support BF16")
-            try:
-                pynvml = loaded.get("pynvml") or importlib.import_module("pynvml")
-                pynvml.nvmlInit()
-                result["cuda"]["nvml_driver"] = pynvml.nvmlSystemGetDriverVersion()
-                pynvml.nvmlShutdown()
-            except Exception as exc:
-                errors.append(f"NVML check failed: {type(exc).__name__}: {exc}")
 
     result["ok"] = not errors
     print(json.dumps(result, indent=2, sort_keys=True))

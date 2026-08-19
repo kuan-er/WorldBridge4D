@@ -86,11 +86,8 @@ def test_three_dataset_prompts_match_training_plan_and_yaml_exactly():
     assert all(prompt.startswith(TASK_INSTRUCTION) for prompt in PROMPTS.values())
     assert all(prompt.count(TASK_INSTRUCTION) == 1 for prompt in PROMPTS.values())
     root = Path(__file__).resolve().parents[1]
-    config = yaml.safe_load((root / "configs/worldbridge4d_256_three_dataset_200m_fsdp.yaml").read_text())
+    config = yaml.safe_load((root / "configs/worldbridge4d_gpu14_k19_150k.yaml").read_text())
     assert config["prompts"] == PROMPTS
-    plan = (root / "docs/WORLDBRIDGE4D_256_THREE_DATASET_TRAINING_PLAN.md").read_text()
-    documented = re.findall(r"```text\n(Estimate dense three-dimensional point trajectories[^\n]+)\n```", plan)
-    assert documented == [PROMPTS[name] for name in ("kubric", "pointodyssey", "dynamic_replica")]
 
 
 def test_inference_condition_is_dataset_specific_and_checksum_verified(tmp_path):
@@ -606,47 +603,17 @@ def test_train_status_recovery_requires_complete_checkpoint_and_conflict_free_si
         recover_status(checkpoint, output)
 
 
-def test_launchers_default_staging_and_latents_to_persistent_storage():
+def test_retained_launchers_use_current_config_and_persistent_staging():
     root = Path(__file__).resolve().parents[1]
-    scripts = (
-        "run_three_dataset_256_fsdp.sh", "run_precompute_latents_5gpu.sh",
-        "run_three_dataset_256_auto_pick.sh", "run_three_dataset_256_2gpu_k16_100k.sh",
-        "run_three_dataset_256_2gpu_k16_100k_precache.sh",
-        "run_three_dataset_256_4gpu_k10_10k.sh",
-    )
-    for name in scripts:
-        source = (root / "scripts" / name).read_text()
+    generic = (root / "scripts/run_three_dataset_256_fsdp.sh").read_text()
+    precompute = (root / "scripts/run_precompute_latents_5gpu.sh").read_text()
+    for source in (generic, precompute):
+        assert "configs/worldbridge4d_gpu14_k19_150k.yaml" in source
         assert "STAGING_ROOT=\"${STAGING_ROOT:-/data/WorldBridge4D-persistent/" in source
         assert "STAGING_ROOT=\"${STAGING_ROOT:-/tmp/" not in source
-
-
-def test_two_gpu_k16_100k_launcher_is_fresh_pinned_and_wandb_online():
-    root = Path(__file__).resolve().parents[1]
-    launcher = (root / "scripts/run_three_dataset_256_2gpu_k16_100k.sh").read_text()
-    assert 'GPUS="${GPUS:-4,6}"' in launcher
-    assert 'NPROC=2' in launcher
-    assert 'STEPS="${STEPS:-100000}"' in launcher
-    assert 'FRESH_START=1' in launcher
-    assert 'WANDB_MODE=online' in launcher
-    assert 'LAZY_VAE_PIPELINE=1' in launcher
-    assert 'GPU_FREE_MIN_MIB="${GPU_FREE_MIN_MIB:-76000}"' in launcher
-
-
-def test_four_gpu_k10_launcher_is_fresh_pinned_and_wandb_online():
-    root = Path(__file__).resolve().parents[1]
-    launcher = (root / "scripts/run_three_dataset_256_4gpu_k10_10k.sh").read_text()
-    generic = (root / "scripts/run_three_dataset_256_fsdp.sh").read_text()
-    assert 'GPUS="${GPUS:-2,4,5,6}"' in launcher
-    assert 'NPROC=4' in launcher
-    assert 'STEPS="${STEPS:-10000}"' in launcher
-    assert 'ALLOW_FOUR_GPU_EXPERIMENT=1' in launcher
-    assert 'FRESH_START=1' in launcher
-    assert 'WANDB_MODE=online' in launcher
-    assert 'LAZY_VAE_PIPELINE=1' in launcher
-    assert 'GPU_FREE_MIN_MIB="${GPU_FREE_MIN_MIB:-55000}"' in launcher
-    assert 'FRESH_START=1 refuses existing trajectory artifact' in generic
+    assert 'GPUS="${GPUS:-1,4}"' in generic
+    assert 'NPROC="${NPROC:-2}"' in generic
     assert 'CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"' in generic
-    assert '--checkpoint-dir "$CHECKPOINT_DIR"' in generic
     assert '--durable-checkpoint "$DURABLE_CHECKPOINT"' in generic
 
 
@@ -780,14 +747,6 @@ def test_kubric_compact_geometry_audit_requires_exact_atomic_outputs(tmp_path):
     (tmp_path / "geom_000002.2.tmp.npz").touch()
     with pytest.raises(RuntimeError, match="temporaries=1"):
         audit_outputs(wanted, tmp_path)
-
-
-def test_tmp_migration_tombstone_fails_closed():
-    script = Path(__file__).resolve().parents[1] / "scripts/migrate_latents_to_tmp.sh"
-    source = script.read_text()
-    assert 'exit 2' in source
-    assert 'rm -rf "$src"' not in source
-    assert 'ln -s "$dst" "$src"' not in source
 
 
 def test_lazy_latent_cache_roundtrip_identity_checksum_and_no_overwrite(tmp_path):

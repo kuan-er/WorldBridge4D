@@ -1,218 +1,56 @@
-# WorldBridge4D Dataset Preprocessing Protocol v1
+# WorldBridge4D 256px 三数据集预处理合同
 
-Status: normative handoff specification for external datasets.
+## 固定样本接口
 
-## 1. Scope and non-negotiable model contract
-
-A training-ready dataset must let the consumer return, for one clip index `i` and one source frame `s`:
+当前训练 consumer 对每个 clip/source 需要：
 
 ```text
-clean_latent:   float32 [16,6,16,16]
-source:         int64   [21]       # all entries equal s
-target:         int64   [21]       # exactly 0..20
-xyz_normalized: float32 [21,3,128,128]
-valid:          bool    [21,128,128]
+clean_latent: float32 [16,6,32,32]
+xyz:          float32 [21,3,256,256]
+valid:        bool    [21,256,256]
+rgb:          uint8   [21,256,256,3]  # 仅 VAE 编码时需要
 ```
 
-`xyz[s,t,v,u]` is the 3D position at target time `t` of the physical surface observed at source pixel `(u,v)` at time `s`. XYZ is expressed in the camera coordinate system of frame `s`, held fixed for every target. It is not expressed in the target camera frame.
+`xyz[t,:,v,u]` 表示 source 帧像素 `(u,v)` 所见物理点在 target `t` 时刻的位置，所有 target 均表达在固定的 source-camera 坐标系。`valid` 与 visibility 分离；target 时刻被遮挡但对应关系有效的点仍参与 loss。
 
-`valid` means that source depth, correspondence and target state are valid. It is not visibility. A valid point remains supervised when occluded at the target. Visibility may be stored separately for evaluation, but the canonical XYZ loss must not mask occluded-valid points.
+## 通用约定
 
-The current route is intentionally fixed to 21 consecutive frames and 128x128. Temporal padding, temporal interpolation, silent frame duplication and hidden spatial resizing in the model loader are forbidden.
+- 每段恰好 21 帧，不 padding、不插帧。
+- 坐标单位为米；相机局部 `+X` 向右、`+Y` 向上、`-Z` 向前。
+- 先按 parent scene/video 划分 split，再提取 clip；clip ID 和顺序必须稳定。
+- RGB、depth、轨迹和 intrinsics 必须使用同一个 crop/resize 到 256×256。
+- 原始数据只读，所有 index/cache/stats 写入独立 persistent root。
+- Wan latent 必须使用配置指定的 VAE posterior mean，FP32，禁止从旧 16×16 latent 插值。
 
-## 2. Dataset split and clip extraction
+## 三个 adapter
 
-1. Split by parent video/scene before extracting clips. Parent IDs must be disjoint across train, validation and test.
-2. Assign every clip a stable UTF-8 `clip_id`, plus `parent_id`, original start frame, frame stride, source FPS and timestamps.
-3. Extract exactly 21 ordered frames. Record the temporal stride; do not interpolate missing frames.
-4. Apply one shared spatial crop/resize to RGB, depth, segmentation and other pixel-aligned annotations. Update intrinsics exactly.
-5. Preserve a deterministic lexicographic clip order in every artifact. All caches use this order.
+- Kubric MOVi-F：TFRecord depth/segmentation、相机和实例刚体状态；dense source-grid supervision。
+- PointOdyssey：persistent sparse tracks rasterize 到 source grid；同像素冲突采用确定性最近轨迹。
+- Dynamic Replica：persistent mesh trajectories rasterize 到 source grid；source diagonal 由 depth backprojection 覆盖。
 
-Required hot RGB representation before VAE encoding:
+对应代码：`src/worldbridge/{training256,data,geometry,pointodyssey,dynamic_replica}.py`。
 
-```text
-rgb: uint8 [21,128,128,3], sRGB, values 0..255
-```
-
-Float RGB is allowed only in `[0,1]`. Do not apply ImageNet normalization. The Wan adapter performs `[0,1] -> [-1,1]` itself.
-
-## 3. Camera and geometry conventions
-
-The canonical interchange representation is:
-
-```text
-intrinsics:       float64 [21,3,3]
-camera_to_world:  float64 [21,4,4]
-depth:            float32 [21,128,128], metres
-depth_valid:      bool    [21,128,128]
-```
-
-Conventions:
-
-- camera optical axis is local `-Z`;
-- local `+X` projects right and local `+Y` projects up;
-- image `u` grows right and `v` grows down;
-- integer `(u,v)` denotes the pixel centre;
-- `camera_to_world` maps camera coordinates to metric world coordinates;
-- manifest `depth_convention` must be exactly `radial_meters` or `z_meters`;
-- depth conversion to the canonical backprojection must be explicit and tested;
-- NaN, infinity, non-positive depth and missing transforms set validity false.
-
-An adapter targeting the current `MOViSample` implementation must either provide centred principal point with `fx=fy`, or extend `CameraModel` to consume the full intrinsic matrix. Silently approximating general intrinsics with scalar focal length is forbidden.
-
-## 4. Off-diagonal supervision modes
-
-The manifest declares one of two modes.
-
-### 4.1 `rigid_instances`
-
-Required annotations:
-
-```text
-segmentation:          integer [21,128,128], 0=background, object IDs 1..N
-instance_to_world:     float64 [N,21,4,4]
-instance_state_valid:  bool    [N,21]
-```
-
-For a source object pixel, convert its source world point to object-local coordinates with the source instance pose, transform it with each target instance pose, then express the result in the source camera basis. Background remains fixed in world coordinates unless the dataset explicitly provides a moving-background model.
-
-### 4.2 `dense_xyz`
-
-When rigid instance poses do not exist, the producer directly supplies source-grid trajectories and validity under the contract in section 1. Optical flow alone is insufficient unless it is accompanied by target 3D position/depth and identity-valid correspondence through occlusion.
-
-A dataset containing only RGB, camera and per-frame depth can supervise diagonal pointmaps but cannot claim arbitrary-source 4D tracking. The preprocessor must fail instead of inventing off-diagonal labels.
-
-## 5. Required cache tiers
-
-The cache root is immutable after validation:
+## 必需产物
 
 ```text
 CACHE_ROOT/
-  manifest.json
-  splits/
-    train.jsonl
-    validation.jsonl
-    test.jsonl                 # optional
-  samples/                     # geometry metadata, sharded
-  latents/
-    wan2.1_1.3b_fp32/          # mandatory
-  geometry/                    # optional persistent acceleration tier
-  stats/
-    coordinate_stats_train_source.npz
-  audit/
-    validation_report.json
+  splits/train.jsonl
+  latents/wan2.1_1.3b_fp32_256/          # immutable shard，可选
+  latents/wan2.1_1.3b_fp32_256_lazy/     # per-clip cache
+  latents/wan2.1_1.3b_fp32_256_lazy_backup/
 ```
 
-### 5.1 Manifest and split indexes
+此外全局需要三个带 prompt/checksum metadata 的 UMT5 conditions，以及仅由 train split 计算的 source-frame coordinate mean/scale。
 
-`manifest.json` follows `docs/dataset_manifest_v1.schema.json`. Every JSONL row contains at least:
+## 验证门槛
 
-```json
-{"index": 0, "clip_id": "...", "parent_id": "...", "start": 0, "stride": 1, "timestamps": [0.0]}
-```
+1. shape/dtype/finite/clip order 合同正确；
+2. parent split 无泄漏；
+3. camera round-trip 和 diagonal identity 正确；
+4. occluded-valid 不被 visibility 错误过滤；
+5. VAE 重编码确定且 checksum 与配置一致；
+6. cache roots、原子临时文件、文件数量审计通过；
+7. 两 rank real-Wan 至少完成两个有限 optimizer updates；
+8. full checkpoint 能严格恢复 model、AdamW 和每 rank RNG。
 
-The actual timestamps array has exactly 21 finite, strictly increasing values.
-
-### 5.2 Frozen Wan clean latent cache
-
-Use the exact `Wan2.1_VAE.pth` referenced by the manifest and the repository `WanVAEEncoder`:
-
-- posterior mean, never posterior sampling;
-- Wan channel mean/std normalization performed by the adapter;
-- output shape exactly `[16,6,16,16]` for each 21-frame clip;
-- canonical cache dtype float32;
-- no noise, padding, pooling or interpolation.
-
-A clip uses 98,304 bytes (96 KiB), so this cache is mandatory even for modest datasets. Store sharded tensor-only files that support safe mmap loading; recommended shard size is 128 or 256 clips. Do not use one giant Python pickle. Record Wan checkpoint SHA-256, preprocessor Git commit and ordered clip IDs in the manifest.
-
-### 5.3 Train-only coordinate statistics
-
-Compute mean and standard deviation only from valid diagonal pointmaps of the training split, after expressing each diagonal pointmap in its own source-camera frame. Accumulate `sum` and `sum_of_squares` in float64; write float32 values:
-
-```text
-mean:          float32 [3]
-scale:         float32 [3]
-examples:      integer
-point_count:   integer
-coordinate_frame: "source"
-stats_source: "diagonal_pointmaps_in_selected_coordinate_frame"
-```
-
-Validation/test data must never affect these statistics. Normalize all trajectory targets channel-wise with this file.
-
-### 5.4 Optional persistent geometry acceleration
-
-The default consumer computes one source and all 21 targets using a bounded multi-thread prefetcher. If CPU geometry remains slower than GPU execution, add one of these explicitly versioned tiers:
-
-1. `compact_source_geometry`: source backprojection/object-local coordinates, instance ID and validity. Expected MOVi-F scale is roughly 30 GB for all clips and sources.
-2. `dense_xyz_fp16`: all source-target maps in mmap-capable shards. This is fastest but approximately 250 GB for 5,737 clips before masks. Quantization must pass the metric-error audit below.
-
-For dense storage, shard by contiguous clip range and keep source as a directly sliceable dimension. Recommended shape is `[clips,21,21,3,128,128]`; valid masks may be bit-packed. The loader must read only the selected source slice.
-
-Before creating an mmap tier, compare compressed size, uncompressed array size, available local-disk headroom, and dense-cache expansion. For scene-level compressed datasets, scene-local clip ordering plus a shared read-only scene LRU may remove the bottleneck without a persistent dense cache. The measured PointOdyssey case and its storage trade-offs are documented in `docs/POINTODYSSEY_INTEGRATION_LESSONS.md`.
-
-## 6. Consumer and performance contract
-
-The dataset adapter exposes:
-
-```python
-len(dataset)
-dataset.clip_id(index)
-dataset.clean_latent(index)                  # [16,6,16,16]
-dataset.source_all_targets(index, source)    # xyz [21,3,H,W], valid [21,H,W]
-```
-
-Canonical training behavior:
-
-- one random source per clip and all ordered targets 0..20;
-- source plans determined by `(seed, global_step)` so prefetch does not alter exact resume;
-- geometry prefetch enabled by default;
-- 8 CPU workers and bounded queue depth 2 initially;
-- submit one Future per clip rather than wrapping the batch loop in one Future;
-- use worker-local caches for small independently decoded samples, but use a lock-protected shared read-only LRU when the storage unit is a large scene archive; never let workers redundantly decompress the same scene;
-- preserve storage locality: when annotations are scene-level, consume contiguous clips within scene blocks and randomize source frames or scene-block order instead of issuing globally random scene reads;
-- visibility disabled for XYZ-only training;
-- pinned host tensors and non-blocking host-to-device copies;
-- train EPE computed on GPU;
-- detailed diagnostics and W&B logging at step 1, every 20 steps, and final step;
-- every W&B payload includes explicit `global_step`.
-
-A producer is not complete until a consumer can run a two-step real-Wan forward/backward/Adam smoke with finite gradients in Wan, geometry adapter and decoder. The two-step requirement is binding: selected hidden-layer readouts can leave trainable parameters unused, and the resulting DDP reduction-state error appears only when the second step begins.
-
-## 7. Mandatory validation gates
-
-Write all results to `audit/validation_report.json`; any failed gate blocks formal training.
-
-1. **Schema:** manifest, split rows, shapes and dtypes match this protocol.
-2. **Split leakage:** parent-ID intersections across splits are empty.
-3. **Temporal:** exactly 21 strictly ordered frames; no hidden padding/interpolation.
-4. **Alignment:** RGB/depth/segmentation use the same transformed pixel grid.
-5. **Camera round trip:** backproject then project valid pixels; max error <= `1e-3` pixel.
-6. **Diagonal identity:** `xyz[s,s]` equals source depth backprojection in source coordinates; max error <= `1e-4` metre for float32 labels.
-7. **Rigid dynamics:** reconstructed dynamic trajectories agree with direct instance transforms; max error <= `1e-4` metre.
-8. **Static background:** valid static world points remain invariant in world coordinates; max error <= `1e-4` metre.
-9. **Validity semantics:** at least one audited occluded point remains valid; visibility and validity are not conflated.
-10. **Finite values:** every valid XYZ and every transform used by it is finite.
-11. **Coordinate statistics:** train-only population/count and source-frame metadata are recorded.
-12. **Wan determinism:** re-encode at least 16 sampled clips twice; float32 latent max difference <= `1e-6` and shape is exact.
-13. **Cache order:** sampled clip IDs match across index, latent and geometry shards.
-14. **Quantization:** if FP16 dense XYZ is used, max valid metric error versus float32 <= `0.02` metre and mean <= `0.002` metre, or stricter dataset-specific thresholds.
-15. **Tiny overfit:** loss decreases on one clip with off-diagonal targets.
-16. **Real gradient smoke:** two optimizer steps complete with finite Wan/adapter/decoder gradients and correct W&B global steps.
-
-## 8. Reproducibility and handoff record
-
-The producer must report:
-
-- exact argv and environment;
-- preprocessing seed;
-- source dataset release/checksum;
-- preprocessor Git commit;
-- Wan VAE checkpoint SHA-256;
-- all artifact paths, byte sizes and SHA-256 values;
-- clip counts per split and rejected-clip reasons;
-- wall time, peak CPU RAM, GPU and disk usage;
-- complete validation report;
-- a ready-to-run training YAML referencing only immutable cache paths.
-
-Generated datasets, latents and weights are never committed to Git. Only code, manifests without secrets, schemas, audit summaries and reproduction commands are committed.
+入口见 `scripts/README.md`，数据位置见 `docs/DATASET_LOCATIONS.md`。生成数据、latent 和权重不得提交 Git。

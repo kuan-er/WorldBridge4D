@@ -1,70 +1,30 @@
 # WorldBridge4D environment
 
-## Supported baseline
-
-The validated environment is Linux x86_64, Python 3.10.13, CUDA-enabled PyTorch
-2.10.0+cu126, TensorFlow CPU 2.15.1, and the direct-package versions in
-`constraints-known-good-cu126.txt`. The training target is an NVIDIA 80 GiB
-GPU; CUDA/PyTorch wheels must match the host driver and GPU.
-
-TensorFlow is used only for read-only MOVi-F TFRecord parsing. Install
-`tensorflow-cpu`, not the GPU TensorFlow package, so dataset workers cannot
-reserve training GPU memory.
-
-## Fresh environment on the current CUDA 12.6 host
+Validated baseline: Linux x86_64、Python 3.10/3.11、CUDA-enabled PyTorch 2.10.0+cu126、TensorFlow CPU 2.16.x。TensorFlow 只用于只读解析 MOVi-F TFRecord，禁止安装 GPU TensorFlow 与训练争抢显存。
 
 ```bash
 python3.10 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
-
-# Install the CUDA-enabled wheel before the general requirements. For another
-# CUDA/driver combination, select the matching official PyTorch index instead.
-python -m pip install --index-url https://download.pytorch.org/whl/cu126 \
-  'torch==2.10.0'
-python -m pip install -r requirements.txt \
-  -c constraints-known-good-cu126.txt
+python -m pip install --index-url https://download.pytorch.org/whl/cu126 'torch==2.10.0'
+python -m pip install -r requirements.txt -c constraints-known-good-cu126.txt
 
 PYTHONPATH=src python scripts/check_environment.py --require-cuda
-PYTHONPATH=src pytest -q
+PYTHONPATH=src python -m pytest -q
 ```
 
-If the target machine cannot use CUDA 12.6, do not blindly reuse the CUDA
-constraint file. Install a compatible PyTorch wheel first, then install
-`requirements.txt` without the CUDA constraint file (or make a new constraint
-file that records the selected wheel and CUDA build).
+若主机不能使用 CUDA 12.6，应先选择匹配驱动的官方 PyTorch wheel，不要直接复用 CUDA constraint。
 
-## Non-Python inputs
+## 外部输入
 
-Python packages do not contain the model or data. The training machine also
-needs:
+Python package 不包含模型、数据或 condition。当前路径均记录在 `configs/worldbridge4d_gpu14_k19_150k.yaml`：
 
-```text
-/dataset/MOVi-F                         # read-only MOVi-F TFRecords
-/dataset/Wan2.1-T2V-1.3B                # Wan VAE/DiT and UMT5 files
-/tmp/worldbridge_dense4d/wan_empty_condition.pt
-/tmp/worldbridge_dense4d/coordinate_stats_train_source.npz
-```
+- Wan2.1-1.3B DiT/VAE；
+- Kubric、PointOdyssey、Dynamic Replica 只读挂载；
+- 三数据集 persistent geometry/latent cache；
+- 三个 dataset-specific UMT5 conditions；
+- train-only mixture coordinate stats。
 
-`wan_empty_condition.pt` is generated once by
-`scripts/create_wan_empty_text_condition.py` and requires a checked-out native
-Wan2.1 source tree via `WAN_SOURCE_ROOT` or `--wan-source`. The source tree and
-checkpoint files are external inputs and must be recorded by commit/checksum,
-not added to Git.
+Condition 由 `scripts/create_wan_text_conditions.py` 生成，需要 native Wan source。模型、生成 tensor 和 API key 均不得提交 Git。W&B 使用 `wandb login` 的机器本地凭据或进程环境变量 `WANDB_API_KEY`。
 
-The raw PointOdyssey, Dynamic Replica/dynamic_stereo, and MOVi-F 512x512 mounts
-available on the current training server are recorded in
-[`DATASET_LOCATIONS.md`](DATASET_LOCATIONS.md). These raw mounts are not
-interchangeable with the prepared cache paths above; preprocess and validate
-them before training.
-
-For W&B, run `wandb login` on the machine or provide `WANDB_API_KEY` in the
-process environment. Never put the key in Git or in a committed `.env` file.
-
-## Environment gate
-
-`PYTHONPATH=src python scripts/check_environment.py` checks every direct Python
-package, the Diffusers Wan APIs, TensorFlow TFRecord access, the manifest schema,
-and project imports. Add `--require-cuda` for a training host; it additionally
-checks CUDA availability, BF16 support and NVML. This gate does not load model
-weights or require the dataset, so it is safe to run before data provisioning.
+`check_environment.py` 检查直接依赖、Diffusers Wan API、TFRecord、manifest schema 和当前 9 个项目模块；`--require-cuda` 额外检查 CUDA 与 BF16，不加载模型或数据。

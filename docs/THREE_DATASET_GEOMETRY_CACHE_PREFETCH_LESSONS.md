@@ -1,6 +1,6 @@
 # 三数据集 Geometry Cache 与 Prefetch 性能经验
 
-状态：H023 两卡 K19/B2/A2 长训练的生产性能记录。本文记录不改变训练数值语义的缓存、并发和观测方法；训练协议本身仍以 `WORLDBRIDGE4D_256_THREE_DATASET_TRAINING_PLAN.md` 为准。
+状态：H023 两卡 K19/B2/A2 长训练的生产性能记录。当前训练协议与入口见 `WORLDBRIDGE4D_256_THREE_DATASET_IMPLEMENTATION.md`。
 
 ## 1. 结论
 
@@ -208,6 +208,6 @@ free -h
   - `src/worldbridge/training256.py`
   - `src/worldbridge/pointodyssey.py`
   - `src/worldbridge/dynamic_replica.py`
-  - `scripts/benchmark_geometry_prefetch_pipeline.py`
+  - 历史 matched benchmark（已从当前工作树移除，可由 Git 恢复）
 
 上述数值来自共享主机上的一次生产运行，应视为该硬件和缓存状态下的可复现实证，而不是对所有机器的绝对吞吐承诺。

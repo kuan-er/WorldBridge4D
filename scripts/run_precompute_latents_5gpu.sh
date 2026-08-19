@@ -8,10 +8,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG="${CONFIG:-$ROOT/configs/worldbridge4d_256_three_dataset_200m_fsdp_2gpu_k16_100k.yaml}"
+CONFIG="${CONFIG:-$ROOT/configs/worldbridge4d_gpu14_k19_150k.yaml}"
 GPUS="${GPUS:-0,4,5,6,7}"
 NPROC="${NPROC:-5}"
-STEPS="${STEPS:-100000}"
+STEPS="${STEPS:-150000}"
 STAGING_ROOT="${STAGING_ROOT:-/data/WorldBridge4D-persistent/worldbridge4d_staging/checkpoints}"
 GPU_FREE_MIN_MIB="${GPU_FREE_MIN_MIB:-3000}"
 

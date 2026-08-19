@@ -1,15 +1,23 @@
-# Experimental two-rank K=16 trajectory. This is not the formal audited-shard
-# K=4/K=6 configuration; it uses the deterministic lazy VAE pipeline.
+# Exact non-secret configuration snapshot used by the GPU1/4 H023 trajectory.
+# It resumes the step-56,503 K19/B2/A2 run and continuously extends its cosine
+# schedule to step 150,000. Absolute paths are intentionally server-specific.
 image_size: 256
 clip_length: 21
 latent_spatial_size: 32
 coordinate_frame: source
-
 wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
 vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
 backbone_readout: wan_hidden_structured
-wan_hidden_layers: [13, 14, 15, 29]
-layer_gate_initial_logits: [0.0, 0.0, 0.0, -1.0986122887]
+wan_hidden_layers:
+- 13
+- 14
+- 15
+- 29
+layer_gate_initial_logits:
+- 0.0
+- 0.0
+- 0.0
+- -1.0986122887
 layer_gate_temperature: 1.0
 layer_gate_top_k: 4
 geometry_dim: 512
@@ -18,51 +26,56 @@ geometry_num_heads: 8
 geometry_clean_skip: true
 motion_slots: 8
 structured_local_queries: true
-
 query_dim: 1536
 embedding_dim: 768
 num_cross_attn_layers: 5
 num_heads: 12
 query_grid_size: 32
-upsample_channels: [1536, 768, 384, 192]
+upsample_channels:
+- 1536
+- 768
+- 384
+- 192
 expected_non_wan_parameters: 193586693
-
 precision: bf16
 trainable_mode: full
 fsdp: full_shard
 fsdp_min_num_params: 5000000
 microbatch_per_gpu: 2
 gradient_accumulation: 2
-targets_per_source: 16
-# Matched GPU0 real-cache benchmark R-20260818100323-232501: four
-# workers/eight in-flight clips avoided the 8-worker geometry stalls.
+targets_per_source: 19
 geometry_prefetch_depth: 2
 geometry_prefetch_workers: 4
-
 learning_rate: 0.0003
 geometry_learning_rate: 0.0003
-backbone_learning_rate: 0.00005
+backbone_learning_rate: 5.0e-05
 weight_decay: 0.0001
 warmup_steps: 1000
 lr_schedule: cosine
 schedule_horizon_steps: 100000
-max_steps: 100000
+max_steps: 150000
 gradient_clip: 1.0
 smooth_l1_beta: 0.05
 gradient_checkpointing: true
 seed: 20260812
 geometry_seed: 20260812
 decoder_seed: 424242
-
-checkpoint_steps: [50, 100, 250, 500, 1000, 2000, 5000, 10000]
+checkpoint_steps:
+- 60000
+- 65000
+- 70000
+- 75000
+- 80000
+- 85000
+- 90000
+- 95000
+- 100000
+- 150000
 checkpoint_every_after: 5000
 checkpoint_keep_last: 2
 diagnostic_every_steps: 5
 graceful_stop_hours: 1000
 pipeline_wait_timeout_seconds: 3600
-
-# Gate-only bootstrap mixture statistics. The formal run remains blocked on
-# full train-only mixture statistics and complete immutable latent shards.
 mixture_coordinate_stats: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_b2_k16_a2/coordinate_stats_gate_bootstrap.npz
 text_conditions:
   kubric: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/kubric.pt
@@ -70,10 +83,18 @@ text_conditions:
   dynamic_replica: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/dynamic_replica.pt
   metadata: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/metadata.json
 prompts:
-  kubric: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows multiple rigid objects moving independently in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear."
-  pointodyssey: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated characters and objects undergoing diverse rigid and non-rigid motion in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear."
-  dynamic_replica: "Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated people moving through a rendered furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear."
-
+  kubric: Estimate dense three-dimensional point trajectories over time from this
+    monocular video. The video shows multiple rigid objects moving independently in
+    a rendered three-dimensional scene. The camera viewpoint may change over time,
+    and objects may become occluded and reappear.
+  pointodyssey: Estimate dense three-dimensional point trajectories over time from
+    this monocular video. The video shows articulated characters and objects undergoing
+    diverse rigid and non-rigid motion in a rendered three-dimensional scene. The
+    camera viewpoint may change over time, and objects may become occluded and reappear.
+  dynamic_replica: Estimate dense three-dimensional point trajectories over time from
+    this monocular video. The video shows articulated people moving through a rendered
+    furnished indoor three-dimensional scene. The camera viewpoint may change over
+    time, and people may become occluded and reappear.
 datasets:
   kubric:
     raw_root: /dataset/nas0/yejun/MOVi-F/512x512
@@ -89,10 +110,32 @@ datasets:
     raw_root: /dataset/data/Dynamic_dataset/dynamic_stereo
     geometry_cache_root: /data/WorldBridge4D-persistent/datasets/dynamic_stereo_worldbridge4d_v1
     cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica
-
 tracking:
   enabled: true
   project: worldbridge4d
   entity: zhaigong2023-sjtu-hpc-center
-  group: worldbridge4d-256-two-gpu-b2-k16-a2-100k
-  tags: [h023, 256px, 200m-readout, three-dataset, fsdp, full-shard, two-gpu-experiment, lazy-vae-pipeline, microbatch2, accumulation2, k16, fresh-100k]
+  group: worldbridge4d-256-two-gpu-b2-k19-a2-optimized-150k
+  tags:
+  - h023
+  - 256px
+  - 200m-readout
+  - three-dataset
+  - fsdp
+  - full-shard
+  - two-gpu-experiment
+  - lazy-vae-cache
+  - microbatch2
+  - accumulation2
+  - k19
+  - gpu1-gpu4
+  - resume-step-45500
+  - target-100k
+  - optimized-prefetch-4x2
+  - dataset-diagnostic-coverage
+  - resume-step-56503
+  - target-150000
+  - continuous-cosine-extension
+resume_status_path: /tmp/worldbridge4d-checkpoints/worldbridge4d_256_step45005_k19_gpu14_optimized_150k/train_status.json
+schedule_extension_start_step: 56503
+schedule_extension_horizon_steps: 150000
+diagnostic_ensure_dataset_coverage: true

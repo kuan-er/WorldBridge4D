@@ -16,8 +16,8 @@ set -euo pipefail  # 任一命令失败即退出；未定义变量和管道中�
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------- 配置、输出与 checkpoint ----------
-CONFIG="${CONFIG:-$ROOT/configs/worldbridge4d_256_three_dataset_200m_fsdp.yaml}"  # 训练 YAML。
-OUTPUT="${OUTPUT:-/data/WorldBridge4D-runs/worldbridge4d_256_three_dataset_200m}"  # 日志、W&B ID 和状态文件目录。
+CONFIG="${CONFIG:-$ROOT/configs/worldbridge4d_gpu14_k19_150k.yaml}"  # 当前 GPU1/4 K19/150k YAML。
+OUTPUT="${OUTPUT:-/data/WorldBridge4D-runs/worldbridge4d_256_step45005_k19_gpu14_to100k}"  # 日志、W&B ID 和状态文件目录。
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"  # 本次运行读写 checkpoint 的目录，可与 OUTPUT 分开。
 DURABLE_CHECKPOINT="${DURABLE_CHECKPOINT:-}"  # 可选：每次保存后异步复制到这个持久化路径。
 RESUME_CHECKPOINT="${RESUME_CHECKPOINT:-}"  # 可选：显式指定恢复文件；优先于 CHECKPOINT_DIR/latest.pt。
@@ -25,8 +25,8 @@ WANDB_LOG_AFTER_STEP="${WANDB_LOG_AFTER_STEP:--1}"  # 仅记录大于该 step �
 POST_RESUME_CHECKSUM_MARKER="${POST_RESUME_CHECKSUM_MARKER:-}"  # 可选：严格恢复后异步计算断点 SHA-256，并写 marker。
 
 # ---------- GPU 拓扑与训练长度 ----------
-GPUS="${GPUS:-0,1,2,3}"  # 物理 GPU 编号，写入 CUDA_VISIBLE_DEVICES。
-NPROC="${NPROC:-4}"  # 单机训练进程数，通常应与 GPUS 中的卡数一致。
+GPUS="${GPUS:-1,4}"  # 当前生产训练的物理 GPU 编号。
+NPROC="${NPROC:-2}"  # 当前生产训练固定为两个 ranks。
 STEPS="${STEPS:-}"  # 可选：覆盖 YAML 中的目标总 step；不是“再训练多少步”。
 
 # ---------- latent 生成模式（两者互斥） ----------
