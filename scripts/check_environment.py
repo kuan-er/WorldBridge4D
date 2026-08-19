@@ -24,7 +24,7 @@ PACKAGES = (
     ("numpy", "numpy", ">=1.26,<2.0"),
     ("PyYAML", "yaml", ">=6.0,<7"),
     ("torch", "torch", ">=2.4,<2.11"),
-    ("tensorflow-cpu", "tensorflow", ">=2.16,<2.17"),
+    ("tensorflow-cpu", "tensorflow", ">=2.15,<2.17"),
     ("diffusers", "diffusers", "==0.36.0"),
     ("safetensors", "safetensors", ">=0.7,<0.8"),
     ("transformers", "transformers", ">=4.41,<5"),
