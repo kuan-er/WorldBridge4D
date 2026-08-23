@@ -30,7 +30,7 @@ from ..data.text_conditions import load_dataset_text_conditions
 from ..utils.io import atomic_json
 from .checkpoint import restore_rng_state
 from .config import validate_config
-from .distributed import clip_optimizer_grad_norm_, initialize_distributed, wan_block_auto_wrap_policy
+from .distributed import clip_optimizer_grad_norm_, initialize_distributed
 from .fsdp_checkpoint import (
     launch_durable_checkpoint_replica, launch_post_resume_checksum,
     load_extended_optimizer_checkpoint, load_finetune_optimizer_checkpoint,
@@ -437,13 +437,10 @@ def main() -> None:
             },
         }), flush=True)
     dtype = precision_dtype(config["precision"])
-    if str(config.get("trainable_mode", "full")) == "lora":
-        auto_wrap = wan_block_auto_wrap_policy
-    else:
-        auto_wrap = lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
-            module, recurse, nonwrapped_numel,
-            min_num_params=int(config.get("fsdp_min_num_params", 5_000_000)),
-        )
+    auto_wrap = lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
+        module, recurse, nonwrapped_numel,
+        min_num_params=int(config.get("fsdp_min_num_params", 5_000_000)),
+    )
     fsdp = FSDP(
         model, sharding_strategy=ShardingStrategy.FULL_SHARD, auto_wrap_policy=auto_wrap,
         mixed_precision=MixedPrecision(param_dtype=dtype, reduce_dtype=dtype, buffer_dtype=dtype),

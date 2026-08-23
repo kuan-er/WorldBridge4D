@@ -8,74 +8,13 @@ from __future__ import annotations
 from collections import defaultdict
 import json
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import torch
 from torch import nn
 
 WAN_LATENT_SHAPE = (16, 6, 16, 16)
 WAN_LATENT_SHAPE_256 = (16, 6, 32, 32)
-
-
-class LoRALinear(nn.Module):
-    """Zero-initialized LoRA update around a frozen Wan linear layer."""
-
-    def __init__(self, base: nn.Linear, rank: int, alpha: float,
-                 dropout: float = 0.0):
-        super().__init__()
-        if rank <= 0:
-            raise ValueError("LoRA rank must be positive")
-        self.base = base
-        for parameter in self.base.parameters():
-            parameter.requires_grad_(False)
-        self.rank = int(rank)
-        self.scaling = float(alpha) / float(rank)
-        self.dropout = nn.Dropout(float(dropout)) if dropout else nn.Identity()
-        self.lora_A = nn.Linear(
-            base.in_features, self.rank, bias=False,
-            device=base.weight.device, dtype=base.weight.dtype,
-        )
-        self.lora_B = nn.Linear(
-            self.rank, base.out_features, bias=False,
-            device=base.weight.device, dtype=base.weight.dtype,
-        )
-        nn.init.kaiming_uniform_(self.lora_A.weight, a=5 ** 0.5)
-        nn.init.zeros_(self.lora_B.weight)
-
-    def forward(self, value: torch.Tensor) -> torch.Tensor:
-        update = self.lora_B(self.lora_A(self.dropout(value))) * self.scaling
-        return self.base(value) + update
-
-
-def inject_wan_lora(
-    module: nn.Module,
-    rank: int = 16,
-    alpha: float | None = None,
-    dropout: float = 0.0,
-    targets: Sequence[str] = (
-        "to_q", "to_k", "to_v", "to_out.0", "ffn.net.0.proj", "ffn.net.2",
-    ),
-) -> list[str]:
-    """Inject LoRA into selected Wan attention and FFN projections."""
-    alpha = float(rank if alpha is None else alpha)
-    target_suffixes = tuple(str(value) for value in targets)
-    replacements: list[tuple[str, nn.Linear]] = []
-    for name, child in module.named_modules():
-        if isinstance(child, nn.Linear) and any(
-            name.endswith(suffix) for suffix in target_suffixes
-        ):
-            replacements.append((name, child))
-    for name, child in replacements:
-        parent_name, leaf = name.rsplit(".", 1) if "." in name else ("", name)
-        parent = module.get_submodule(parent_name) if parent_name else module
-        replacement = LoRALinear(child, rank, alpha, dropout)
-        if leaf.isdigit() and isinstance(parent, (nn.Sequential, nn.ModuleList)):
-            parent[int(leaf)] = replacement
-        else:
-            setattr(parent, leaf, replacement)
-    if not replacements:
-        raise RuntimeError(f"no Wan linear matched LoRA targets {target_suffixes}")
-    return [name for name, _ in replacements]
 
 
 def freeze_module(module: nn.Module) -> nn.Module:

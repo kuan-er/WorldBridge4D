@@ -62,21 +62,6 @@ def clip_optimizer_grad_norm_(
         gradient.mul_(coefficient.to(dtype=gradient.dtype))
     return total_norm.float()
 
-def wan_block_auto_wrap_policy(
-    module: torch.nn.Module, recurse: bool, nonwrapped_numel: int,
-) -> bool:
-    """Shard Wan blocks, but never a parent whose custom forward is bypassed.
-
-    Structured hidden extraction calls ``dit.patch_embedding`` and individual
-    blocks directly instead of calling ``dit.forward``. Wrapping the parent
-    Wan transformer would leave its flat parameters sharded during those direct
-    calls. Each transformer block is invoked normally, so it is the safe FSDP
-    unit for the LoRA route.
-    """
-    if recurse:
-        return True
-    return module.__class__.__name__ == "WanTransformerBlock"
-
 def fsdp_state_context(model: FSDP):
     return FSDP.state_dict_type(
         model, StateDictType.FULL_STATE_DICT,
