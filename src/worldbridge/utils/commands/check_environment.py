@@ -114,10 +114,9 @@ def main() -> None:
         result["apis"]["tensorflow_tfrecord"] = "failed"
 
     project_modules = (
-        "worldbridge.data", "worldbridge.geometry", "worldbridge.dense4d",
-        "worldbridge.dense4d_runtime", "worldbridge.dynamic_replica",
-        "worldbridge.pointodyssey", "worldbridge.text_conditions",
-        "worldbridge.training256", "worldbridge.wan",
+        "worldbridge.models", "worldbridge.models.factory",
+        "worldbridge.data", "worldbridge.data.text_conditions",
+        "worldbridge.trainer", "worldbridge.evaluation", "worldbridge.utils",
     )
     imported = []
     for module_name in project_modules:

@@ -26,7 +26,7 @@ from worldbridge.trainer.schedulers import (
     apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
     extended_cosine_learning_rate_factor, training_diagnostic_due,
 )
-from worldbridge.text_conditions import load_inference_text_condition
+from worldbridge.data.text_conditions import load_inference_text_condition
 from worldbridge.data.commands.text_conditions import (
     PROMPTS, TASK_INSTRUCTION, completed_cache, native_encoder,
 )

@@ -950,11 +950,12 @@ h023_legacy_facade_removal:
   status: complete_validation_passed
   task: T-20260823081332-bcf490
   removed_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
-  canonical_root_modules: [__init__, text_conditions]
+  canonical_root_modules: [__init__]
+  text_conditions_module: worldbridge.data.text_conditions
   load_empty_condition_alias: removed
   tests_passed: 70
   compileall: passed
   shell_syntax: passed
   canonical_import_audit: passed
   diff_check: passed
-updated_at: 2026-08-23T08:40:00Z
+updated_at: 2026-08-23T08:48:00Z

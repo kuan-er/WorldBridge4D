@@ -35,13 +35,9 @@ def test_production_cache_paths_use_persistent_storage():
     assert all(path.is_relative_to("/data/WorldBridge4D-persistent") for path in runtime_paths)
 
 
-def test_legacy_top_level_facades_are_removed():
+def test_worldbridge_root_contains_only_package_initializer():
     package = Path(__file__).resolve().parents[1] / "src" / "worldbridge"
-    removed = {
-        "dense4d.py", "dense4d_runtime.py", "training256.py", "wan.py",
-        "geometry.py", "pointodyssey.py", "dynamic_replica.py",
-    }
-    assert not removed.intersection(path.name for path in package.glob("*.py"))
+    assert {path.name for path in package.glob("*.py")} == {"__init__.py"}
 
 
 def test_scripts_expose_exactly_five_thin_entrypoints():

@@ -14,7 +14,7 @@ from ..data.constants import DATASET_NAMES
 from ..data.factory import load_training_dataset
 from ..data.sampling import sample_eligible_targets, source_with_eligible_targets
 from ..models.factory import build_real_model, precision_dtype
-from ..text_conditions import load_inference_text_condition
+from ..data.text_conditions import load_inference_text_condition
 from ..trainer.lazy_vae import warm_lazy_latents
 from ..utils.io import atomic_json
 from .metrics import masked_metrics, paired_bootstrap_ci

@@ -26,7 +26,7 @@ from ..data.factory import load_training_datasets, prepare_training_indexes
 from ..data.sampling import deterministic_sample_plan, sample_eligible_targets, source_with_eligible_targets
 from ..models.factory import build_real_model, precision_dtype
 from ..models.wan import WanVAEEncoder
-from ..text_conditions import load_dataset_text_conditions
+from ..data.text_conditions import load_dataset_text_conditions
 from ..utils.io import atomic_json
 from .checkpoint import restore_rng_state
 from .config import validate_config
