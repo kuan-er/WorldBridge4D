@@ -61,6 +61,21 @@ def pair_epe(prediction: torch.Tensor, target: torch.Tensor,
     return means, counts
 
 
+def align_if_possible(prediction: torch.Tensor, target: torch.Tensor,
+                      valid: torch.Tensor, enabled: bool) -> tuple[torch.Tensor, dict[str, Any]]:
+    if not enabled:
+        return prediction, {"enabled": False, "method": "none"}
+    count = int(valid.sum())
+    if count < 3:
+        return prediction, {
+            "enabled": False,
+            "method": "proper_umeyama_prediction_to_ground_truth",
+            "reason": "insufficient_valid_points",
+            "points": count,
+        }
+    return align_sim3_to_ground_truth(prediction, target, valid)
+
+
 def protocol_id(config: dict[str, Any], dataset: str, checkpoint: Path,
                 target_chunk: int, sim3: bool) -> str:
     payload = {
@@ -220,10 +235,9 @@ def main() -> None:
                 )
                 raw = normalized * scale + mean
                 raw_epe, counts = pair_epe(raw, target, valid)
-                if args.no_sim3:
-                    aligned, sim3 = raw, {"enabled": False, "method": "none"}
-                else:
-                    aligned, sim3 = align_sim3_to_ground_truth(raw, target, valid)
+                aligned, sim3 = align_if_possible(
+                    raw, target, valid, enabled=not args.no_sim3,
+                )
                 aligned_epe, aligned_counts = pair_epe(aligned, target, valid)
                 if aligned_counts != counts:
                     raise RuntimeError("raw/aligned valid counts differ")

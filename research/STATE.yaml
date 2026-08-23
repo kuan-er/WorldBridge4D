@@ -1024,5 +1024,9 @@ h023_exhaustive_validation_evaluation:
   sim3_scope: one_joint_transform_per_clip_source_over_all_targets
   outputs: [per_clip_resumable_json, dataset_summary, source_target_21x21_matrix]
   persistent_output_root: /data/WorldBridge4D-runs/evaluation-step100000
-  tests_passed: 76
-updated_at: 2026-08-23T09:30:00Z
+  tests_passed: 77
+  pointodyssey_resume:
+    completed_clips_before_fix: 21
+    failure: source_with_zero_valid_points_cannot_fit_sim3
+    resolution: retain_null_pair_metrics_and_mark_source_sim3_insufficient
+updated_at: 2026-08-23T10:39:00Z

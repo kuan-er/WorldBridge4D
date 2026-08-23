@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from worldbridge.evaluation.benchmark import aggregate, validated_output_root
+from worldbridge.evaluation.benchmark import aggregate, align_if_possible, validated_output_root
 from worldbridge.evaluation.inference import DEFAULT_OUTPUT_ROOT, inference_output_path
 from worldbridge.evaluation.metrics import align_sim3_to_ground_truth
 
@@ -39,6 +39,20 @@ def test_inference_output_defaults_to_persistent_directory():
     path = inference_output_path("kubric", 7, 3, list(range(21)))
     assert path == (DEFAULT_OUTPUT_ROOT / "kubric-index000007-source03-all.pt").resolve()
     assert path.is_relative_to("/data/WorldBridge4D-runs")
+
+
+def test_exhaustive_alignment_skips_sources_without_valid_points():
+    prediction = torch.zeros(21, 3, 2, 2)
+    target = torch.ones_like(prediction)
+    valid = torch.zeros(21, 2, 2, dtype=torch.bool)
+    aligned, metadata = align_if_possible(prediction, target, valid, enabled=True)
+    assert aligned is prediction
+    assert metadata == {
+        "enabled": False,
+        "method": "proper_umeyama_prediction_to_ground_truth",
+        "reason": "insufficient_valid_points",
+        "points": 0,
+    }
 
 
 def test_exhaustive_aggregate_preserves_pair_macro_and_point_weighting():
