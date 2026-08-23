@@ -20,6 +20,7 @@ from .datasets.dynamic_replica import DynamicReplicaDataset
 from .datasets.movif256 import MOViF256Dataset
 from .datasets.pointodyssey import PointOdysseyDataset
 from .movif import MOViFDataset
+from .types import TrainingDataset
 
 def prepare_training_indexes(config: dict[str, Any]) -> None:
     """Create missing train indexes outside raw mounts before lazy VAE warmup."""
@@ -49,12 +50,80 @@ def prepare_training_indexes(config: dict[str, Any]) -> None:
         temporary.replace(destination)
 
 
+def _load_kubric_dataset(
+    values: dict[str, Any], *, split: str, allow_missing_latents: bool,
+    rgb_cache_root: str | Path | None, rgb_cache_max_open_shards: int,
+) -> TrainingDataset:
+    if split == "train":
+        mmap_root = values.get("geometry_mmap_root")
+        compact_root = values.get("geometry_compact_root", KUBRIC_GEOMETRY_CACHE)
+        max_open_shards = values.get("geometry_mmap_max_open_shards")
+    else:
+        mmap_root = values.get("geometry_mmap_validation_root")
+        compact_root = values.get("geometry_compact_validation_root")
+        max_open_shards = values.get("geometry_mmap_validation_max_open_shards")
+    return MOViF256Dataset(
+        values["raw_root"], values["cache_root"], split=split,
+        allow_missing_latents=allow_missing_latents,
+        geometry_mmap_root=mmap_root,
+        geometry_compact_root=compact_root,
+        geometry_sample_cache_size=int(values.get("geometry_sample_cache_size", 16)),
+        geometry_mmap_max_open_shards=(
+            None if max_open_shards is None else int(max_open_shards)
+        ),
+        rgb_cache_root=rgb_cache_root,
+        rgb_cache_max_open_shards=rgb_cache_max_open_shards,
+    )
+
+
+def _load_pointodyssey_dataset(
+    values: dict[str, Any], *, split: str, image_size: int,
+    allow_missing_latents: bool, rgb_cache_root: str | Path | None,
+    rgb_cache_max_open_shards: int,
+) -> TrainingDataset:
+    geometry = PointOdysseyDataset(
+        values.get("geometry_cache_root", values["cache_root"]), split=split,
+        image_size=image_size, raw_root=values["raw_root"],
+        annotation_cache_root=values.get("annotation_cache_root", POINTODYSSEY_ANNO_CACHE),
+        annotation_npy_cache_root=values.get(
+            "annotation_npy_cache_root", POINTODYSSEY_ANNO_NPY_CACHE
+        ),
+        depth_cache_root=values.get("depth_cache_root", POINTODYSSEY_DEPTH_CACHE),
+    )
+    return CachedExternalDataset(
+        geometry, values["cache_root"], "pointodyssey", split=split,
+        allow_missing_latents=allow_missing_latents,
+        rgb_cache_root=rgb_cache_root,
+        rgb_cache_max_open_shards=rgb_cache_max_open_shards,
+    )
+
+
+def _load_dynamic_replica_dataset(
+    values: dict[str, Any], *, split: str, image_size: int,
+    allow_missing_latents: bool, rgb_cache_root: str | Path | None,
+    rgb_cache_max_open_shards: int,
+) -> TrainingDataset:
+    geometry = DynamicReplicaDataset(
+        values.get("geometry_cache_root", values["cache_root"]), split=split,
+        image_size=image_size, raw_root=values["raw_root"],
+        trajectory_cache_root=values.get(
+            "trajectory_cache_root", DYNAMIC_REPLICA_TRAJECTORY_CACHE
+        ),
+        depth_cache_root=values.get("depth_cache_root", DYNAMIC_REPLICA_DEPTH_CACHE),
+    )
+    return CachedExternalDataset(
+        geometry, values["cache_root"], "dynamic_replica", split=split,
+        allow_missing_latents=allow_missing_latents,
+        rgb_cache_root=rgb_cache_root,
+        rgb_cache_max_open_shards=rgb_cache_max_open_shards,
+    )
+
+
 def load_dataset(
     config: dict[str, Any], name: str, *, split: str = "train",
     allow_missing_latents: bool = False,
 ) -> TrainingDataset:
     """Load one canonical train or validation dataset."""
-    roots = config["datasets"]
     image_size = int(config["image_size"])
     name = str(name).lower()
     split = str(split).lower()
@@ -64,70 +133,37 @@ def load_dataset(
         raise ValueError(f"dataset must be one of {DATASET_NAMES}, got {name!r}")
     if split not in {"train", "validation"}:
         raise ValueError(f"split must be train or validation, got {split!r}")
-    values = roots[name]
+
+    values = config["datasets"][name]
     rgb_cache_root = (
         config.get("source_rgb_cache_root")
         if split == "train" else config.get("validation_source_rgb_cache_root")
     )
     rgb_cache_max_open_shards = int(config.get("source_rgb_cache_max_open_shards", 16))
+    cache_options = {
+        "split": split,
+        "allow_missing_latents": allow_missing_latents,
+        "rgb_cache_root": rgb_cache_root,
+        "rgb_cache_max_open_shards": rgb_cache_max_open_shards,
+    }
     if name == "kubric":
-        if split == "train":
-            mmap_root = values.get("geometry_mmap_root")
-            compact_root = values.get("geometry_compact_root", KUBRIC_GEOMETRY_CACHE)
-            max_open_shards = values.get("geometry_mmap_max_open_shards")
-        else:
-            mmap_root = values.get("geometry_mmap_validation_root")
-            compact_root = values.get("geometry_compact_validation_root")
-            max_open_shards = values.get("geometry_mmap_validation_max_open_shards")
-        return MOViF256Dataset(
-            values["raw_root"], values["cache_root"], split=split,
-            allow_missing_latents=allow_missing_latents,
-            geometry_mmap_root=mmap_root,
-            geometry_compact_root=compact_root,
-            geometry_sample_cache_size=int(values.get("geometry_sample_cache_size", 16)),
-            geometry_mmap_max_open_shards=(
-                None if max_open_shards is None else int(max_open_shards)
-            ),
-            rgb_cache_root=rgb_cache_root,
-            rgb_cache_max_open_shards=rgb_cache_max_open_shards,
-        )
+        return _load_kubric_dataset(values, **cache_options)
     if name == "pointodyssey":
-        geometry = PointOdysseyDataset(
-            values.get("geometry_cache_root", values["cache_root"]), split=split,
-            image_size=image_size, raw_root=values["raw_root"],
-            annotation_cache_root=values.get("annotation_cache_root", POINTODYSSEY_ANNO_CACHE),
-            annotation_npy_cache_root=values.get(
-                "annotation_npy_cache_root", POINTODYSSEY_ANNO_NPY_CACHE
-            ),
-            depth_cache_root=values.get("depth_cache_root", POINTODYSSEY_DEPTH_CACHE),
+        return _load_pointodyssey_dataset(
+            values, image_size=image_size, **cache_options,
         )
-    else:
-        geometry = DynamicReplicaDataset(
-            values.get("geometry_cache_root", values["cache_root"]), split=split,
-            image_size=image_size, raw_root=values["raw_root"],
-            trajectory_cache_root=values.get(
-                "trajectory_cache_root", DYNAMIC_REPLICA_TRAJECTORY_CACHE
-            ),
-            depth_cache_root=values.get("depth_cache_root", DYNAMIC_REPLICA_DEPTH_CACHE),
-        )
-    return CachedExternalDataset(
-        geometry, values["cache_root"], name, split=split,
-        allow_missing_latents=allow_missing_latents,
-        rgb_cache_root=rgb_cache_root,
-        rgb_cache_max_open_shards=rgb_cache_max_open_shards,
+    return _load_dynamic_replica_dataset(
+        values, image_size=image_size, **cache_options,
     )
 
 
-def load_training_dataset(config: dict[str, Any], name: str,
-                          allow_missing_latents: bool = False) -> TrainingDataset:
-    return load_dataset(
-        config, name, split="train", allow_missing_latents=allow_missing_latents,
-    )
-
-
-def load_training_datasets(config: dict[str, Any],
-                           allow_missing_latents: bool = False) -> dict[str, TrainingDataset]:
+def load_training_datasets(
+    config: dict[str, Any], allow_missing_latents: bool = False,
+) -> dict[str, TrainingDataset]:
     return {
-        name: load_training_dataset(config, name, allow_missing_latents=allow_missing_latents)
+        name: load_dataset(
+            config, name, split="train",
+            allow_missing_latents=allow_missing_latents,
+        )
         for name in DATASET_NAMES
     }

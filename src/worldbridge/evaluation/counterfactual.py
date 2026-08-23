@@ -11,7 +11,7 @@ import torch
 import yaml
 
 from ..data.constants import DATASET_NAMES
-from ..data.factory import load_training_dataset
+from ..data.factory import load_dataset
 from ..data.sampling import sample_eligible_targets, source_with_eligible_targets
 from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_inference_text_condition
@@ -116,7 +116,9 @@ def main() -> None:
     # fixed evaluation plans first and populate only their missing latents
     # before constructing the 1.3B model, avoiding VAE/model co-residency.
     datasets = {
-        name: load_training_dataset(config, name, allow_missing_latents=True)
+        name: load_dataset(
+            config, name, split="train", allow_missing_latents=True,
+        )
         for name in args.datasets
     }
     plans_by_dataset = {

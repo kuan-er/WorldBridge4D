@@ -83,6 +83,26 @@ def test_refactored_decoder_forward_constructs_typed_output():
     assert torch.isfinite(output.normalized_xyz).all()
 
 
+def test_training_dataset_factory_uses_canonical_loader_directly(monkeypatch):
+    from worldbridge.data import factory
+
+    calls = []
+
+    def fake_load(config, name, *, split, allow_missing_latents):
+        calls.append((config, name, split, allow_missing_latents))
+        return name
+
+    config = object()
+    monkeypatch.setattr(factory, "load_dataset", fake_load)
+    datasets = factory.load_training_datasets(config, allow_missing_latents=True)
+
+    assert datasets == {name: name for name in factory.DATASET_NAMES}
+    assert calls == [
+        (config, name, "train", True) for name in factory.DATASET_NAMES
+    ]
+    assert not hasattr(factory, "load_training_dataset")
+
+
 def test_package_layers_import_without_compatibility_modules():
     from worldbridge.data.factory import load_training_datasets
     from worldbridge.evaluation.inference import main as inference_main
