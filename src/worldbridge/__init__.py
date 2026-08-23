@@ -1,13 +1,13 @@
-"""WorldBridge4D 256px three-dataset training components."""
+"""WorldBridge4D models, datasets, training, and evaluation components."""
 
-from .data import MOViFDataset, MOViSample
-from .dense4d import (
+from .data import (
+    CameraModel, DynamicReplicaDataset, GeometryBuilder, MOViFDataset, MOViSample,
+    PointOdysseyDataset,
+)
+from .models import (
     DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone,
     StructuredZ4D, WanHiddenGeometryBackbone,
 )
-from .dynamic_replica import DynamicReplicaDataset
-from .geometry import CameraModel, GeometryBuilder
-from .pointodyssey import PointOdysseyDataset
 
 __all__ = [
     "MOViFDataset", "MOViSample", "PointOdysseyDataset",

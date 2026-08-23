@@ -1,5 +1,5 @@
 import numpy as np
-from worldbridge.geometry import CameraModel
+from worldbridge.data.geometry import CameraModel
 
 
 def test_camera_pixel_roundtrip_and_radial_depth():

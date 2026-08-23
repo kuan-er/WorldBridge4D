@@ -4,8 +4,8 @@ import json
 import numpy as np
 from safetensors.numpy import save_file
 
-import worldbridge.dynamic_replica as dynamic_replica
-from worldbridge.dynamic_replica import DynamicReplicaDataset, T
+import worldbridge.data.datasets.dynamic_replica as dynamic_replica
+from worldbridge.data.datasets.dynamic_replica import DynamicReplicaDataset, T
 
 
 def viewpoint() -> dict:
@@ -69,7 +69,7 @@ def test_source_visibility_anchors_track_but_target_visibility_does_not(monkeypa
     monkeypatch.setattr(
         dynamic_replica,
         "_depth",
-        lambda _path: (np.ones((128, 128), np.float32), np.ones((128, 128), bool)),
+        lambda *_args: (np.ones((128, 128), np.float32), np.ones((128, 128), bool)),
     )
 
     xyz, valid, target_visible = dataset.source_all_targets_with_visibility(0, source=0)

@@ -99,17 +99,23 @@ datasets:
   kubric:
     raw_root: /dataset/nas0/yejun/MOVi-F/512x512
     cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/kubric
-    geometry_mmap_root: /tmp/worldbridge4d-cache-v2/kubric_geometry_mmap
+    geometry_mmap_root: /data/WorldBridge4D-persistent/worldbridge4d-cache-v2/kubric_geometry_mmap
+    geometry_compact_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/kubric_geometry
     geometry_sample_cache_size: 16
     geometry_mmap_max_open_shards: 90
   pointodyssey:
     raw_root: /dataset/nas0/PointOdyssey
     geometry_cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1
     cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/pointodyssey
+    annotation_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/anno
+    annotation_npy_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/anno_npy
+    depth_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/depth/pointodyssey
   dynamic_replica:
     raw_root: /dataset/data/Dynamic_dataset/dynamic_stereo
     geometry_cache_root: /data/WorldBridge4D-persistent/datasets/dynamic_stereo_worldbridge4d_v1
     cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica
+    trajectory_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/trajectories
+    depth_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/depth/dynamic_replica
 tracking:
   enabled: true
   project: worldbridge4d

@@ -56,7 +56,7 @@ findmnt -T <cache-path> -o TARGET,SOURCE,FSTYPE,OPTIONS
 lsblk -o NAME,TYPE,SIZE,ROTA,MODEL,MOUNTPOINTS
 ```
 
-当前机器的 hot cache 位于 `/tmp/worldbridge4d-cache*`，实际由 `/ssd` backing store 承载。lazy-latent live 路径可以是该 hot tier 的 symlink，但同级 `<lazy>_backup` 必须是非 symlink 的 durable authoritative copy；`scripts/validate_three_dataset_256_cache_roots.py` 对此 fail closed。不要把 scratch symlink 本身描述成 durable cache。
+当前正式 geometry 与 source-RGB cache 已迁移到 `/data/WorldBridge4D-persistent/`，配置和 reader 不再依赖 `/tmp` symlink。lazy-latent live 路径仍可使用可重建 hot tier 的 symlink，但同级 `<lazy>_backup` 必须是非 symlink 的 durable authoritative copy；`scripts/prepare_data.py cache-roots` 对此 fail closed。不要把 scratch symlink 本身描述成 durable cache。
 
 ### 3.2 Linux page cache
 
@@ -204,10 +204,10 @@ free -h
 - Resume step：56,503
 - 稳定窗口：56,550--56,575
 - 代码入口：
-  - `scripts/train_three_dataset_256_fsdp.py`
-  - `src/worldbridge/training256.py`
-  - `src/worldbridge/pointodyssey.py`
-  - `src/worldbridge/dynamic_replica.py`
+  - `scripts/train.py`
+  - `src/worldbridge/data/factory.py`
+  - `src/worldbridge/data/datasets/pointodyssey.py`
+  - `src/worldbridge/data/datasets/dynamic_replica.py`
   - 历史 matched benchmark（已从当前工作树移除，可由 Git 恢复）
 
 上述数值来自共享主机上的一次生产运行，应视为该硬件和缓存状态下的可复现实证，而不是对所有机器的绝对吞吐承诺。
