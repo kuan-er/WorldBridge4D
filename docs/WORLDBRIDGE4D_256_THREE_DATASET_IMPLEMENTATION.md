@@ -14,8 +14,8 @@
 主入口：
 
 ```text
-scripts/run_three_dataset_256_fsdp.sh
-  -> scripts/train_three_dataset_256_fsdp.py
+scripts/run_fsdp.sh
+  -> scripts/train.py
   -> worldbridge.trainer.WorldBridgeTrainer
 ```
 
@@ -40,15 +40,7 @@ Checkpoint format 3 保存 full model、AdamW、global step、数据集计数和
 4. 恢复每 rank RNG；
 5. 才允许下一次 optimizer update。
 
-历史 GPU1/4 handoff 使用：
-
-```text
-scripts/wait_resume_three_dataset_256_gpu14_150k.sh
-  -> scripts/prepare_three_dataset_256_gpu14_handoff.py
-  -> scripts/run_three_dataset_256_fsdp.sh
-```
-
-它要求两 rank、K19、B2/A2、完整 checkpoint/status/RNG、GPU1/4 独占预检及 immutable marker。最终生产端点是 step 100,000；配置保留原连续 150k horizon 仅作为未来显式 exact resume 的 LR provenance。
+历史 GPU1/4 handoff watcher 已从正式入口删除，其审计证据保留在 research 和 Git 历史中。当前恢复统一通过 `scripts/run_fsdp.sh` 显式传入完整 checkpoint；它要求两 rank、K19、B2/A2、完整 checkpoint/status/RNG。最终生产端点是 step 100,000；配置保留原连续 150k horizon 仅作为未来显式 exact resume 的 LR provenance。
 
 ## 数据和缓存
 
@@ -69,8 +61,7 @@ scripts/wait_resume_three_dataset_256_gpu14_150k.sh
 ```bash
 PYTHONPATH=src python -m pytest -q
 python -m compileall -q src scripts tests
-bash -n scripts/run_three_dataset_256_fsdp.sh
-bash -n scripts/wait_resume_three_dataset_256_gpu14_150k.sh
+bash -n scripts/run_fsdp.sh
 ```
 
 任何训练协议变更都必须使用新的 PRL Run；不要原地修改正在运行的 immutable snapshot 或 checkpoint。

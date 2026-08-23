@@ -27,7 +27,7 @@ _SCALE = W / CROP_SIZE
 # +X right, +Y up, -Z forward.
 _P3D_TO_PROTOCOL = np.array([-1.0, 1.0, -1.0], dtype=np.float64)
 # Per-stream compact trajectory archives produced by
-# scripts/compact_dynamic_replica_trajectories.py.  When present, _load_stream
+# scripts/prepare_data.py compact-dynamic-replica. When present, _load_stream
 # reads a single .npz instead of ~294 small torch .pth files.
 COMPACT_TRAJECTORY_ROOT = Path("/tmp/worldbridge4d-cache/trajectories")
 

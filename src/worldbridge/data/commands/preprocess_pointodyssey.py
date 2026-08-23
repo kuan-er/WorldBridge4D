@@ -23,9 +23,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT / "src") not in sys.path:
-    sys.path.insert(0, str(ROOT / "src"))
+ROOT = Path(__file__).resolve().parents[4]
 
 T, H, W, FPS = 21, 128, 128, 24.0
 RAW_W, RAW_H = 960, 540

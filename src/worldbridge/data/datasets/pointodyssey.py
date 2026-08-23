@@ -14,10 +14,10 @@ T, H, W = 21, 128, 128
 RAW_W, RAW_H, CROP_X, CROP_Y, CROP_SIZE = 960, 540, 210, 0, 540
 D = np.diag([1.0, -1.0, -1.0, 1.0])
 DEPTH_SCALE = np.float32(1000.0 / 65535.0)
-# /tmp SSD hot-cache copies of scene anno.npz (see scripts/copy_anno_to_tmp.py).
+# /tmp SSD hot-cache copies (see scripts/prepare_data.py copy-anno).
 # The authoritative copies remain on NFS; this adapter prefers the SSD copy.
 ANNO_CACHE = Path("/tmp/worldbridge4d-cache/anno")
-# Uncompressed per-scene .npy files (see scripts/convert_anno_to_npy.py).
+# Uncompressed per-scene files (see scripts/prepare_data.py convert-anno).
 # The adapter mmaps these and lazily reads only the frames a clip needs.
 ANNO_NPY_CACHE = Path("/tmp/worldbridge4d-cache/anno_npy")
 

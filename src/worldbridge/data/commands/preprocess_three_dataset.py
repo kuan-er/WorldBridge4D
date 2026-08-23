@@ -11,14 +11,11 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 import torch
 from safetensors.torch import save_file
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
 from worldbridge.data import MOViFDataset
 from worldbridge.data.datasets.dynamic_replica import DynamicReplicaDataset
 from worldbridge.data.datasets.pointodyssey import PointOdysseyDataset

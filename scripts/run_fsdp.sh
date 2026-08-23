@@ -3,11 +3,11 @@
 #
 # 本脚本只负责“启动前准备”：解析环境变量、检查数据和缓存、选择断点、
 # 将大文件暂存到高速盘，最后用 torchrun 启动训练。模型构建、训练循环、
-# loss、反向传播和 checkpoint 内容都在 train_three_dataset_256_fsdp.py 中。
+# loss、反向传播和 checkpoint 内容都在 worldbridge.trainer 中。
 #
 # 两卡启动示例（配置中的 batch/K 等参数仍由 YAML 决定）：
-#   GPUS=1,4 NPROC=2 CONFIG=/path/to/config.yaml OUTPUT=/path/to/output \
-#     bash scripts/run_three_dataset_256_fsdp.sh
+#   GPUS=0,1 NPROC=2 CONFIG=/path/to/config.yaml OUTPUT=/path/to/output \
+#     bash scripts/run_fsdp.sh
 #
 # 启动顺序：环境变量 -> fresh/resume 选择 -> 数据/缓存检查 -> 输入暂存
 #          -> 拼接 Python 参数 -> torchrun。
@@ -16,8 +16,8 @@ set -euo pipefail  # 任一命令失败即退出；未定义变量和管道中�
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------- 配置、输出与 checkpoint ----------
-CONFIG="${CONFIG:-$ROOT/configs/worldbridge4d_gpu14_k19_150k.yaml}"  # 当前 GPU1/4 K19/150k YAML。
-OUTPUT="${OUTPUT:-/data/WorldBridge4D-runs/worldbridge4d_256_step45005_k19_gpu14_to100k}"  # 日志、W&B ID 和状态文件目录。
+CONFIG="${CONFIG:-$ROOT/configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml}"  # step-100k source-RGB 主线。
+OUTPUT="${OUTPUT:-/data/WorldBridge4D-runs/worldbridge4d_256_source_rgb}"  # 日志、W&B ID 和状态文件目录。
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"  # 本次运行读写 checkpoint 的目录，可与 OUTPUT 分开。
 DURABLE_CHECKPOINT="${DURABLE_CHECKPOINT:-}"  # 可选：每次保存后异步复制到这个持久化路径。
 RESUME_CHECKPOINT="${RESUME_CHECKPOINT:-}"  # 可选：显式指定恢复文件；优先于 CHECKPOINT_DIR/latest.pt。
@@ -25,7 +25,7 @@ WANDB_LOG_AFTER_STEP="${WANDB_LOG_AFTER_STEP:--1}"  # 仅记录大于该 step �
 POST_RESUME_CHECKSUM_MARKER="${POST_RESUME_CHECKSUM_MARKER:-}"  # 可选：严格恢复后异步计算断点 SHA-256，并写 marker。
 
 # ---------- GPU 拓扑与训练长度 ----------
-GPUS="${GPUS:-1,4}"  # 当前生产训练的物理 GPU 编号。
+GPUS="${GPUS:-0,1}"  # 默认物理 GPU 编号，可由环境覆盖。
 NPROC="${NPROC:-2}"  # 当前生产训练固定为两个 ranks。
 STEPS="${STEPS:-}"  # 可选：覆盖 YAML 中的目标总 step；不是“再训练多少步”。
 
@@ -127,7 +127,7 @@ PY
 # ---------- 权威缓存根检查 ----------
 # 训练只接受可持久化的模型输入缓存；拒绝断开的软链接、软链接缓存根，以及
 # 伪装成持久缓存的 /tmp 路径。--create 只创建合法目录，不生成训练数据。
-python "$ROOT/scripts/validate_three_dataset_256_cache_roots.py" \
+python "$ROOT/scripts/prepare_data.py" cache-roots \
   --config "$CONFIG" --create
 
 # ---------- 可选的高速盘暂存 ----------
@@ -139,7 +139,7 @@ if [[ "$STAGE_INPUTS" == "1" ]]; then
   if [[ -n "$RESUME" ]]; then
     STAGE_ARGS+=(--resume "$RESUME")
   fi
-  mapfile -t STAGED < <(python "$ROOT/scripts/stage_three_dataset_256_inputs.py" "${STAGE_ARGS[@]}")
+  mapfile -t STAGED < <(python "$ROOT/scripts/prepare_data.py" stage-inputs "${STAGE_ARGS[@]}")
   if [[ "${#STAGED[@]}" -ne 2 ]]; then
     echo "staging helper returned an invalid response" >&2
     exit 2
@@ -170,5 +170,5 @@ export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 # expandable_segments 可降低动态 decoder batch 带来的 CUDA 内存碎片。
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 exec torchrun --standalone --nproc-per-node="$NPROC" \
-  "$ROOT/scripts/train_three_dataset_256_fsdp.py" \
+  "$ROOT/scripts/train.py" \
   --config "$CONFIG" --output-dir "$OUTPUT" "${EXTRA[@]}"

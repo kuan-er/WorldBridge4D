@@ -25,7 +25,7 @@ def load_text_condition(path: str | Path) -> torch.Tensor:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(
-            f"native Wan text condition not found: {path}; create it with scripts/create_wan_text_conditions.py"
+            f"native Wan text condition not found: {path}; create it with scripts/prepare_data.py text-conditions"
         )
     value = torch.load(path, map_location="cpu", weights_only=True)
     value = value.get("encoder_hidden_states", value) if isinstance(value, dict) else value

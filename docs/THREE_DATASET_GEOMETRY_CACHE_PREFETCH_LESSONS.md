@@ -56,7 +56,7 @@ findmnt -T <cache-path> -o TARGET,SOURCE,FSTYPE,OPTIONS
 lsblk -o NAME,TYPE,SIZE,ROTA,MODEL,MOUNTPOINTS
 ```
 
-当前机器的 hot cache 位于 `/tmp/worldbridge4d-cache*`，实际由 `/ssd` backing store 承载。lazy-latent live 路径可以是该 hot tier 的 symlink，但同级 `<lazy>_backup` 必须是非 symlink 的 durable authoritative copy；`scripts/validate_three_dataset_256_cache_roots.py` 对此 fail closed。不要把 scratch symlink 本身描述成 durable cache。
+当前机器的 hot cache 位于 `/tmp/worldbridge4d-cache*`，实际由 `/ssd` backing store 承载。lazy-latent live 路径可以是该 hot tier 的 symlink，但同级 `<lazy>_backup` 必须是非 symlink 的 durable authoritative copy；`scripts/prepare_data.py cache-roots` 对此 fail closed。不要把 scratch symlink 本身描述成 durable cache。
 
 ### 3.2 Linux page cache
 
@@ -204,7 +204,7 @@ free -h
 - Resume step：56,503
 - 稳定窗口：56,550--56,575
 - 代码入口：
-  - `scripts/train_three_dataset_256_fsdp.py`
+  - `scripts/train.py`
   - `src/worldbridge/training256.py`
   - `src/worldbridge/pointodyssey.py`
   - `src/worldbridge/dynamic_replica.py`

@@ -27,9 +27,6 @@ import time
 import numpy as np
 import torch
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-
 DYNAMIC_REPLICA_TRAIN = Path("/dataset/data/Dynamic_dataset/dynamic_stereo/train")
 OUTPUT_ROOT = Path("/tmp/worldbridge4d-cache/trajectories")
 SPLITS_JSONL = Path(

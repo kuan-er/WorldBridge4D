@@ -1,5 +1,6 @@
-current_task: null
-active_hypotheses: []
+current_task: T-20260823073939-687ee7
+active_hypotheses:
+  - H023
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -863,9 +864,11 @@ h023_package_refactor:
   canonical_packages: [models, data, trainer, evaluation, utils]
   trainer_class: worldbridge.trainer.WorldBridgeTrainer
   thin_clis:
-    - scripts/train_three_dataset_256_fsdp.py
-    - scripts/infer_three_dataset_256.py
-    - scripts/eval_source_rgb_counterfactual_256.py
+    - scripts/train.py
+    - scripts/infer.py
+    - scripts/evaluate.py
+    - scripts/prepare_data.py
+    - scripts/run_fsdp.sh
   compatibility_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
   invariants: [state_dict_attribute_paths, checkpoint_format, optimizer_groups, exact_resume, sampling, schedule, objective]
   validation:
@@ -910,4 +913,12 @@ h023_package_refactor:
       pre_refactor_vs_refactored: 4.76837158203125e-07
       pre_refactor_vs_pre_refactor_repeat: 4.76837158203125e-07
     conclusion: refactor adds no detectable numerical drift beyond the original training stack's non-bitwise CUDA/FSDP replay variability
-updated_at: 2026-08-23T07:28:00Z
+h023_script_consolidation:
+  status: implementation_complete_validation_pending
+  task: T-20260823073939-687ee7
+  entrypoint_count: 5
+  entrypoints: [train.py, infer.py, evaluate.py, prepare_data.py, run_fsdp.sh]
+  preparation_subcommands: 19
+  historical_gpu14_watcher: removed
+  implementation_ownership: [worldbridge.data.commands, worldbridge.trainer.commands, worldbridge.utils.commands]
+updated_at: 2026-08-23T07:45:00Z

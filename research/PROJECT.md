@@ -12,8 +12,10 @@
 
 ## Code map
 
-- `scripts/train_three_dataset_256_fsdp.py`: 薄训练 CLI
-- `scripts/run_three_dataset_256_fsdp.sh`: 通用 torchrun launcher
+- `scripts/train.py`: 薄训练 CLI
+- `scripts/infer.py`, `evaluate.py`: 薄推理与评测 CLI
+- `scripts/prepare_data.py`: 数据、cache 与 checkpoint 维护的统一子命令入口
+- `scripts/run_fsdp.sh`: 通用 torchrun launcher
 - `src/worldbridge/models/`: structured representation、Wan backbone、decoder 与 source-RGB fusion
 - `src/worldbridge/data/`: 三数据集 adapter、geometry、cache、sampling 与 factory
 - `src/worldbridge/trainer/`: `WorldBridgeTrainer`、objective、optimizer、FSDP、checkpoint 与 exact resume

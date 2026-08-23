@@ -19,8 +19,8 @@
 ## 当前实际执行链
 
 ```text
-scripts/run_three_dataset_256_fsdp.sh
-  -> scripts/train_three_dataset_256_fsdp.py       # thin CLI
+scripts/run_fsdp.sh
+  -> scripts/train.py                              # thin CLI
   -> worldbridge.trainer.WorldBridgeTrainer
        -> worldbridge.models
        -> worldbridge.data
@@ -35,7 +35,7 @@ scripts/run_three_dataset_256_fsdp.sh
 环境检查：
 
 ```bash
-PYTHONPATH=src python scripts/check_environment.py --require-cuda
+PYTHONPATH=src python scripts/prepare_data.py check-environment --require-cuda
 ```
 
 按当前配置启动/恢复普通两卡训练：
@@ -44,13 +44,13 @@ PYTHONPATH=src python scripts/check_environment.py --require-cuda
 GPUS=0,1 NPROC=2 LAZY_VAE_CACHE=1 STAGE_INPUTS=0 \
 CONFIG=configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml \
 OUTPUT=/data/WorldBridge4D-runs/worldbridge4d_256_source_rgb \
-  bash scripts/run_three_dataset_256_fsdp.sh
+  bash scripts/run_fsdp.sh
 ```
 
 需要恢复时显式传入经过校验的完整 checkpoint。推理入口：
 
 ```bash
-PYTHONPATH=src python scripts/infer_three_dataset_256.py \
+PYTHONPATH=src python scripts/infer.py \
   --config configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml \
   --checkpoint /path/to/latest.pt --dataset pointodyssey \
   --index 0 --source 0 --targets 0 1 2 --output /tmp/prediction.pt
@@ -65,7 +65,7 @@ PYTHONPATH=src python scripts/infer_three_dataset_256.py \
 - `src/worldbridge/data/`：数据集、geometry、cache、sampling 与 factory。
 - `src/worldbridge/trainer/`：训练循环、objective、optimizer、FSDP 与 checkpoint。
 - `src/worldbridge/evaluation/`：推理、counterfactual evaluator 与 metrics。
-- `scripts/`：训练、handoff、推理、数据准备与当前 cache 构建工具。
+- `scripts/`：仅五个薄入口；数据/cache/checkpoint 子命令统一由 `prepare_data.py` 调度。
 - `tests/`：当前三数据集、几何、训练和 exact-resume 回归测试。
 - `docs/`：当前数据协议、环境和 K19 cache/prefetch 经验。
 - `research/`：历史研究证据；其中提到的旧文件应从对应 Git commit 恢复。

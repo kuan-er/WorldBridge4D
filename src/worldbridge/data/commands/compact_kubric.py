@@ -11,13 +11,10 @@ import argparse
 import concurrent.futures
 import json
 from pathlib import Path
-import sys
 import time
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
 
 from worldbridge.data import MOViFDataset
 from worldbridge.data.datasets.movif256 import MOViF256Dataset

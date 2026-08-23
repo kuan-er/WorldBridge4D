@@ -22,7 +22,7 @@ import torch
 from PIL import Image
 from safetensors.torch import save_file
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[4]
 
 def sha256_file(path: Path, chunk: int = 8 << 20) -> str:
     h = hashlib.sha256()

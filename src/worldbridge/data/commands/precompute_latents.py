@@ -2,7 +2,7 @@
 """Multi-GPU offline VAE latent pre-encoding for the 256px three-dataset route.
 
 Runs the same deterministic per-rank clip enumeration and balanced hash owner
-assignment as train_three_dataset_256_fsdp.py's --lazy-vae-cache branch, but
+assignment as the trainer's --lazy-vae-cache branch, but
 stops after encoding (no FSDP/model construction, no training).  The per-clip
 latent cache is shared and idempotent, so this can be run with any world size
 and safely resumed.
@@ -10,11 +10,9 @@ and safely resumed.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 from pathlib import Path
 import random
-import sys
 from typing import Any
 
 import numpy as np
@@ -22,24 +20,13 @@ import torch
 import torch.distributed as dist
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-
-from validate_three_dataset_256_cache_roots import (
-    assert_expected_latent_files, validate_cache_roots,
-)
+from .cache_roots import assert_expected_latent_files, validate_cache_roots
 from worldbridge.data import DATASET_NAMES, load_training_datasets
-
-
-def _load_train_module() -> Any:
-    spec = importlib.util.spec_from_file_location(
-        "train_three_dataset_256_fsdp",
-        ROOT / "scripts" / "train_three_dataset_256_fsdp.py",
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from worldbridge.data.factory import prepare_training_indexes
+from worldbridge.trainer.distributed import initialize_distributed
+from worldbridge.trainer.lazy_vae import (
+    lazy_latent_owner, required_latent_indices, warm_lazy_latents,
+)
 
 
 def main() -> None:
@@ -48,12 +35,11 @@ def main() -> None:
     parser.add_argument("--steps", type=int)
     args = parser.parse_args()
 
-    train = _load_train_module()
     config = yaml.safe_load(Path(args.config).read_text())
     # Defense in depth: the launcher checks this before torchrun, and every
     # standalone worker checks again before writing authoritative latents.
     validate_cache_roots(config, create=True)
-    rank, world, local, device = train.initialize_distributed()
+    rank, world, local, device = initialize_distributed()
     seed = int(config.get("seed", 20260812))
     random.seed(seed + rank)
     np.random.seed(seed + rank)
@@ -61,7 +47,7 @@ def main() -> None:
     torch.cuda.manual_seed_all(seed + rank)
 
     if rank == 0:
-        train.prepare_training_indexes(config)
+        prepare_training_indexes(config)
     dist.barrier()
 
     datasets = load_training_datasets(config, allow_missing_latents=True)
@@ -69,7 +55,7 @@ def main() -> None:
     accumulation = int(config["gradient_accumulation"])
     microbatch = int(config["microbatch_per_gpu"])
 
-    local_required = train.required_latent_indices(
+    local_required = required_latent_indices(
         datasets, seed, 0, target_steps, rank, accumulation, microbatch,
     )
     gathered: list[Any] = [None] * world
@@ -79,7 +65,7 @@ def main() -> None:
     for name in DATASET_NAMES:
         all_indices = sorted({index for item in gathered for index in item[name]})
         for index in all_indices:
-            if train.lazy_latent_owner(name, index, world) == rank:
+            if lazy_latent_owner(name, index, world) == rank:
                 owned[name].append(index)
 
     owned_total = sum(len(v) for v in owned.values())
@@ -92,7 +78,7 @@ def main() -> None:
         **{name: len(v) for name, v in owned.items()},
     }), flush=True)
 
-    counts = train.warm_lazy_latents(config, datasets, owned, device, rank)
+    counts = warm_lazy_latents(config, datasets, owned, device, rank)
     dist.barrier()
 
     if rank == 0:

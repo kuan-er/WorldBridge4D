@@ -1,4 +1,6 @@
+import importlib.util
 from pathlib import Path
+import runpy
 
 import torch
 
@@ -21,16 +23,29 @@ def test_legacy_data_imports_are_identity_compatible():
     assert LegacyMOViF256Dataset is MOViF256Dataset
 
 
-def test_cli_entry_points_are_thin():
-    root = Path(__file__).resolve().parents[1]
+def test_scripts_expose_exactly_five_thin_entrypoints():
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
     limits = {
-        "train_three_dataset_256_fsdp.py": 40,
-        "infer_three_dataset_256.py": 20,
-        "eval_source_rgb_counterfactual_256.py": 20,
+        "train.py": 20,
+        "infer.py": 20,
+        "evaluate.py": 20,
+        "prepare_data.py": 60,
+        "run_fsdp.sh": 200,
     }
+    entrypoints = {
+        path.name for path in scripts.iterdir() if path.suffix in {".py", ".sh"}
+    }
+    assert entrypoints == set(limits)
     for name, limit in limits.items():
-        lines = (root / "scripts" / name).read_text().splitlines()
+        lines = (scripts / name).read_text().splitlines()
         assert len(lines) <= limit, f"{name} contains orchestration logic"
+
+
+def test_prepare_data_subcommands_resolve_to_package_modules():
+    script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_data.py"
+    commands = runpy.run_path(str(script))["COMMANDS"]
+    assert len(commands) == 19
+    assert all(importlib.util.find_spec(module) is not None for module in commands.values())
 
 
 def test_refactored_decoder_forward_constructs_typed_output():

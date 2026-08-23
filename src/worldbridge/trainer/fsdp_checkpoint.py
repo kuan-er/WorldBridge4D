@@ -17,8 +17,6 @@ from ..utils.io import atomic_json
 from .checkpoint import capture_rng_state, restore_rng_state
 from .distributed import fsdp_state_context
 
-ROOT = Path(__file__).resolve().parents[3]
-
 def save_checkpoint(path: Path, model: FSDP, optimizer: torch.optim.Optimizer,
                     config: dict[str, Any], training_state: dict[str, Any],
                     mean: np.ndarray, scale: np.ndarray, rank: int, world: int) -> None:
@@ -58,7 +56,7 @@ def launch_durable_checkpoint_replica(source: Path, destination: Path,
     """Start a detached, best-effort SSD-to-HDD replica without blocking training."""
     log_path = source.parent / "durable_replication.log"
     command = [
-        sys.executable, str(ROOT / "scripts" / "replicate_checkpoint.py"),
+        sys.executable, "-m", "worldbridge.trainer.commands.replicate_checkpoint",
         "--source", str(source), "--destination", str(destination),
         "--step", str(int(step)),
     ]
@@ -96,7 +94,7 @@ def launch_post_resume_checksum(marker: Path, resume: Path, step: int) -> None:
     log_path = marker.parent / "post_resume_checksum.log"
     command = [
         "ionice", "-c", "3", "nice", "-n", "19", sys.executable,
-        str(ROOT / "scripts" / "prepare_three_dataset_256_gpu14_handoff.py"),
+        "-m", "worldbridge.trainer.commands.handoff",
         "--finalize-checksum-marker", str(marker),
     ]
     with log_path.open("ab", buffering=0) as stream:
