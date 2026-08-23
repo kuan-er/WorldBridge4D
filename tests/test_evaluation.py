@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from worldbridge.evaluation.benchmark import aggregate, validated_output_root
 from worldbridge.evaluation.inference import DEFAULT_OUTPUT_ROOT, inference_output_path
 from worldbridge.evaluation.metrics import align_sim3_to_ground_truth
 
@@ -38,6 +39,29 @@ def test_inference_output_defaults_to_persistent_directory():
     path = inference_output_path("kubric", 7, 3, list(range(21)))
     assert path == (DEFAULT_OUTPUT_ROOT / "kubric-index000007-source03-all.pt").resolve()
     assert path.is_relative_to("/data/WorldBridge4D-runs")
+
+
+def test_exhaustive_aggregate_preserves_pair_macro_and_point_weighting():
+    matrix = [[None for _ in range(21)] for _ in range(21)]
+    counts = [[0 for _ in range(21)] for _ in range(21)]
+    matrix[0][0], counts[0][0] = 1.0, 10
+    matrix[0][1], counts[0][1] = 3.0, 30
+    record = {"sim3": {
+        "source_target_mean_epe_m": matrix,
+        "source_target_valid_points": counts,
+    }}
+    result = aggregate([record], "sim3")
+    assert result["macro_source_target_mean_epe_m"] == pytest.approx(2.0)
+    assert result["point_weighted_mean_epe_m"] == pytest.approx(2.5)
+    assert result["source_target_mean_epe_m"][0][:2] == [1.0, 3.0]
+
+
+def test_evaluation_output_rejects_ephemeral_root():
+    assert validated_output_root(
+        "/data/WorldBridge4D-runs/evaluation-step100000", "kubric"
+    ).is_relative_to("/data/WorldBridge4D-runs")
+    with pytest.raises(ValueError, match="evaluation output"):
+        validated_output_root("/tmp/evaluation", "kubric")
 
 
 def test_inference_output_rejects_ephemeral_or_non_pt_paths():

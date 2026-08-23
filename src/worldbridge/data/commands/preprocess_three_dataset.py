@@ -60,7 +60,10 @@ def build_movi_index(raw_root: Path, cache_root: Path) -> None:
 def dataset_reader(name: str, raw_root: Path, cache_root: Path, split: str):
     if name == "kubric":
         build_movi_index(raw_root, cache_root)
-        return MOViF256Dataset(raw_root, cache_root, split)
+        return MOViF256Dataset(
+            raw_root, cache_root, split, allow_missing_latents=True,
+            geometry_compact_root=None,
+        )
     if name == "pointodyssey":
         return PointOdysseyDataset(cache_root, split, image_size=256, raw_root=raw_root)
     if name == "dynamic_replica":

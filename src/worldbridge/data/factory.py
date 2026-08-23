@@ -49,31 +49,42 @@ def prepare_training_indexes(config: dict[str, Any]) -> None:
         temporary.replace(destination)
 
 
-def load_training_dataset(config: dict[str, Any], name: str,
-                          allow_missing_latents: bool = False) -> TrainingDataset:
-    """Load only one requested dataset (important for standalone inference)."""
+def load_dataset(
+    config: dict[str, Any], name: str, *, split: str = "train",
+    allow_missing_latents: bool = False,
+) -> TrainingDataset:
+    """Load one canonical train or validation dataset."""
     roots = config["datasets"]
     image_size = int(config["image_size"])
     name = str(name).lower()
+    split = str(split).lower()
     if image_size != 256:
         raise ValueError("three-dataset route requires image_size=256")
     if name not in DATASET_NAMES:
         raise ValueError(f"dataset must be one of {DATASET_NAMES}, got {name!r}")
+    if split not in {"train", "validation"}:
+        raise ValueError(f"split must be train or validation, got {split!r}")
     values = roots[name]
-    rgb_cache_root = config.get("source_rgb_cache_root")
+    rgb_cache_root = (
+        config.get("source_rgb_cache_root")
+        if split == "train" else config.get("validation_source_rgb_cache_root")
+    )
     rgb_cache_max_open_shards = int(config.get("source_rgb_cache_max_open_shards", 16))
     if name == "kubric":
-        max_open_shards = values.get("geometry_mmap_max_open_shards")
+        if split == "train":
+            mmap_root = values.get("geometry_mmap_root")
+            compact_root = values.get("geometry_compact_root", KUBRIC_GEOMETRY_CACHE)
+            max_open_shards = values.get("geometry_mmap_max_open_shards")
+        else:
+            mmap_root = values.get("geometry_mmap_validation_root")
+            compact_root = values.get("geometry_compact_validation_root")
+            max_open_shards = values.get("geometry_mmap_validation_max_open_shards")
         return MOViF256Dataset(
-            values["raw_root"], values["cache_root"],
+            values["raw_root"], values["cache_root"], split=split,
             allow_missing_latents=allow_missing_latents,
-            geometry_mmap_root=values.get("geometry_mmap_root"),
-            geometry_compact_root=values.get(
-                "geometry_compact_root", KUBRIC_GEOMETRY_CACHE
-            ),
-            geometry_sample_cache_size=int(
-                values.get("geometry_sample_cache_size", 16)
-            ),
+            geometry_mmap_root=mmap_root,
+            geometry_compact_root=compact_root,
+            geometry_sample_cache_size=int(values.get("geometry_sample_cache_size", 16)),
             geometry_mmap_max_open_shards=(
                 None if max_open_shards is None else int(max_open_shards)
             ),
@@ -82,34 +93,35 @@ def load_training_dataset(config: dict[str, Any], name: str,
         )
     if name == "pointodyssey":
         geometry = PointOdysseyDataset(
-            values.get("geometry_cache_root", values["cache_root"]),
+            values.get("geometry_cache_root", values["cache_root"]), split=split,
             image_size=image_size, raw_root=values["raw_root"],
-            annotation_cache_root=values.get(
-                "annotation_cache_root", POINTODYSSEY_ANNO_CACHE
-            ),
+            annotation_cache_root=values.get("annotation_cache_root", POINTODYSSEY_ANNO_CACHE),
             annotation_npy_cache_root=values.get(
                 "annotation_npy_cache_root", POINTODYSSEY_ANNO_NPY_CACHE
             ),
-            depth_cache_root=values.get(
-                "depth_cache_root", POINTODYSSEY_DEPTH_CACHE
-            ),
+            depth_cache_root=values.get("depth_cache_root", POINTODYSSEY_DEPTH_CACHE),
         )
     else:
         geometry = DynamicReplicaDataset(
-            values.get("geometry_cache_root", values["cache_root"]),
+            values.get("geometry_cache_root", values["cache_root"]), split=split,
             image_size=image_size, raw_root=values["raw_root"],
             trajectory_cache_root=values.get(
                 "trajectory_cache_root", DYNAMIC_REPLICA_TRAJECTORY_CACHE
             ),
-            depth_cache_root=values.get(
-                "depth_cache_root", DYNAMIC_REPLICA_DEPTH_CACHE
-            ),
+            depth_cache_root=values.get("depth_cache_root", DYNAMIC_REPLICA_DEPTH_CACHE),
         )
     return CachedExternalDataset(
-        geometry, values["cache_root"], name,
+        geometry, values["cache_root"], name, split=split,
         allow_missing_latents=allow_missing_latents,
         rgb_cache_root=rgb_cache_root,
         rgb_cache_max_open_shards=rgb_cache_max_open_shards,
+    )
+
+
+def load_training_dataset(config: dict[str, Any], name: str,
+                          allow_missing_latents: bool = False) -> TrainingDataset:
+    return load_dataset(
+        config, name, split="train", allow_missing_latents=allow_missing_latents,
     )
 
 

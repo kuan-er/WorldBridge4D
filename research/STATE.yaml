@@ -1,5 +1,5 @@
-current_task: null
-active_hypotheses: []
+current_task: T-20260823091808-48c86a
+active_hypotheses: [H023]
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -1012,4 +1012,17 @@ h023_step100000_three_dataset_inference:
       sha256: 61283f1c6625f209bcf6354ba10eda2aee4617d3410753239137bebfaed11294
   artifact_shape: [21, 3, 256, 256]
   finite_raw_and_aligned: true
-updated_at: 2026-08-23T09:14:00Z
+h023_exhaustive_validation_evaluation:
+  status: implementation_complete_validation_latents_pending
+  task: T-20260823091808-48c86a
+  split: validation
+  clips: {kubric: 147, pointodyssey: 1620, dynamic_replica: 672}
+  sources_per_clip: 21
+  targets_per_source: 21
+  source_target_pairs: 1075599
+  pair_metric: mean_valid_point_epe_m
+  sim3_scope: one_joint_transform_per_clip_source_over_all_targets
+  outputs: [per_clip_resumable_json, dataset_summary, source_target_21x21_matrix]
+  persistent_output_root: /data/WorldBridge4D-runs/evaluation-step100000
+  tests_passed: 76
+updated_at: 2026-08-23T09:30:00Z

@@ -73,8 +73,11 @@ class PointOdysseyDataset:
             raise FileNotFoundError(f"PointOdyssey cache index is missing: {index}")
         self.rows = [json.loads(x) for x in index.read_text().splitlines() if x]
         if self.raw_root is not None:
+            raw_split = "val" if split == "validation" else split
             for row in self.rows:
-                row["source_scene"] = str(self.raw_root / split / Path(row["source_scene"]).name)
+                row["source_scene"] = str(
+                    self.raw_root / raw_split / Path(row["source_scene"]).name
+                )
         # An annotation can be hundreds of MB.  Keep a small per-consumer LRU;
         # the DDP geometry workers each create their own dataset instance.
         self._anno: OrderedDict[str, dict[str, np.ndarray]] = OrderedDict()

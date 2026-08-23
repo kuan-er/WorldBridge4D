@@ -16,13 +16,13 @@ class CachedExternalDataset:
     """Attach canonical sharded and optional lazy 256 latents to PO/DR geometry."""
     def __init__(self, geometry: PointOdysseyDataset | DynamicReplicaDataset,
                  cache_root: str | Path, dataset_name: str,
-                 allow_missing_latents: bool = False,
+                 split: str = "train", allow_missing_latents: bool = False,
                  rgb_cache_root: str | Path | None = None,
                  rgb_cache_max_open_shards: int = 16) -> None:
         self.geometry = geometry
         self.dataset_name = str(dataset_name)
         cache_root = Path(cache_root)
-        index_path = cache_root / "splits" / "train.jsonl"
+        index_path = cache_root / "splits" / f"{split}.jsonl"
         if not index_path.is_file():
             raise FileNotFoundError(index_path)
         self.rows = [json.loads(line) for line in index_path.read_text().splitlines() if line]
@@ -38,16 +38,24 @@ class CachedExternalDataset:
             self.geometry_indices = [by_clip[str(row["clip_id"])] for row in self.rows]
         except KeyError as exc:
             raise ValueError(f"256 index is not a subset of its geometry cache: {exc}") from exc
+        latent_name = (
+            "wan2.1_1.3b_fp32_256"
+            if split == "train" else f"wan2.1_1.3b_fp32_256_{split}"
+        )
         try:
             self.latents: LatentShardStore | None = LatentShardStore(
-                cache_root / "latents" / "wan2.1_1.3b_fp32_256"
+                cache_root / "latents" / latent_name
             )
         except FileNotFoundError:
             if not allow_missing_latents:
                 raise
             self.latents = None
+        lazy_name = (
+            "wan2.1_1.3b_fp32_256_lazy"
+            if split == "train" else f"wan2.1_1.3b_fp32_256_{split}_lazy"
+        )
         self.lazy_latents = LazyLatentCache(
-            cache_root / "latents" / "wan2.1_1.3b_fp32_256_lazy", self.dataset_name
+            cache_root / "latents" / lazy_name, self.dataset_name
         )
 
     def __len__(self) -> int:

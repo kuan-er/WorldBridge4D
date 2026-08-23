@@ -62,6 +62,18 @@ PYTHONPATH=src python scripts/infer.py \
 `/data/WorldBridge4D-runs/inference-step100000/`，显式 `--output` 或
 `--output-root` 也必须位于 `/data/WorldBridge4D-runs/` 下。
 
+正式评测遍历 validation split 的每个 clip 和全部 21×21 source-target：
+
+```bash
+PYTHONPATH=src python scripts/evaluate.py \
+  --config configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml \
+  --checkpoint /path/to/checkpoint-0100000.pt --dataset kubric
+```
+
+每个 clip 原子保存一个可恢复 JSON，最终汇总 pair-macro、clip-macro、
+point-weighted EPE 和 21×21 EPE 矩阵；默认每个 source 联合拟合一个 Sim(3)。
+输出固定在 `/data/WorldBridge4D-runs/evaluation-step100000/` 下。
+
 数据准备、缓存脚本分组见 [`scripts/README.md`](scripts/README.md)，完整实现说明见 [`docs/WORLDBRIDGE4D_256_THREE_DATASET_IMPLEMENTATION.md`](docs/WORLDBRIDGE4D_256_THREE_DATASET_IMPLEMENTATION.md)。
 
 ## 目录

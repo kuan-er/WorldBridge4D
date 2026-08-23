@@ -4,7 +4,7 @@
 
 - `train.py`：FSDP 训练与 exact resume。
 - `infer.py`：三数据集 prompt-conditioned 推理。
-- `evaluate.py`：source-RGB counterfactual 评测。
+- `evaluate.py`：validation split 全 clip、全 21×21 source-target EPE 评测。
 - `prepare_data.py`：数据、cache 与 checkpoint 维护的统一子命令入口。
 - `run_fsdp.sh`：两卡/多卡 `torchrun` 启动和输入预检。
 

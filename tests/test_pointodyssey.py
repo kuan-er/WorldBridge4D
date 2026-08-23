@@ -17,6 +17,18 @@ def test_raw_root_override_rebases_immutable_scene_references(tmp_path):
     assert dataset.rows[0]["source_scene"] == "/dataset/nas0/PointOdyssey/train/scene_a"
 
 
+def test_validation_raw_root_uses_official_val_directory(tmp_path):
+    split = tmp_path / "splits"
+    split.mkdir()
+    (split / "validation.jsonl").write_text(json.dumps({
+        "source_scene": "/dataset/PointOdyssey/val/scene_b", "start": 0,
+    }) + "\n")
+    dataset = PointOdysseyDataset(
+        tmp_path, split="validation", raw_root="/dataset/nas0/PointOdyssey"
+    )
+    assert dataset.rows[0]["source_scene"] == "/dataset/nas0/PointOdyssey/val/scene_b"
+
+
 def test_source_anchor_requires_visibility_but_targets_only_require_validity(monkeypatch):
     """An occluded source cannot define a pixel identity; target occlusion can."""
     dataset = PointOdysseyDataset.__new__(PointOdysseyDataset)

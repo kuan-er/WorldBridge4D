@@ -21,7 +21,7 @@ class MOViF256Dataset:
     def __init__(self, raw_root: str | Path, cache_root: str | Path,
                  split: str = "train", allow_missing_latents: bool = False,
                  geometry_mmap_root: str | Path | None = None,
-                 geometry_compact_root: str | Path = KUBRIC_GEOMETRY_CACHE,
+                 geometry_compact_root: str | Path | None = KUBRIC_GEOMETRY_CACHE,
                  geometry_sample_cache_size: int = 16,
                  geometry_mmap_max_open_shards: int | None = None,
                  rgb_cache_root: str | Path | None = None,
@@ -44,14 +44,24 @@ class MOViF256Dataset:
         max_index = max(int(row["raw_index"]) for row in self.rows)
         self.native = MOViFDataset(raw_root, split=split, clip_length=21, clip_start=0,
                                    max_examples=max_index + 1)
-        latent_root = cache_root / "latents" / "wan2.1_1.3b_fp32_256"
+        latent_name = (
+            "wan2.1_1.3b_fp32_256"
+            if split == "train" else f"wan2.1_1.3b_fp32_256_{split}"
+        )
+        latent_root = cache_root / "latents" / latent_name
         self.latents = LatentShardStore(latent_root) if latent_root.is_dir() and any(latent_root.glob("*.safetensors")) else None
         if self.latents is None and not allow_missing_latents:
             raise FileNotFoundError("MOVi-F 256 latent cache has not been generated")
-        self.lazy_latents = LazyLatentCache(
-            cache_root / "latents" / "wan2.1_1.3b_fp32_256_lazy", "kubric"
+        lazy_name = (
+            "wan2.1_1.3b_fp32_256_lazy"
+            if split == "train" else f"wan2.1_1.3b_fp32_256_{split}_lazy"
         )
-        self.geometry_compact_root = Path(geometry_compact_root)
+        self.lazy_latents = LazyLatentCache(
+            cache_root / "latents" / lazy_name, "kubric"
+        )
+        self.geometry_compact_root = (
+            Path(geometry_compact_root) if geometry_compact_root is not None else None
+        )
         self.geometry_mmap = (
             KubricGeometryMmapStore(
                 geometry_mmap_root,
@@ -112,12 +122,15 @@ class MOViF256Dataset:
                 if value is not None:
                     self._sample_cache.move_to_end(raw_index)
                     return value
-            compact = self.geometry_compact_root / f"geom_{raw_index:06d}.npz"
+            compact = (
+                self.geometry_compact_root / f"geom_{raw_index:06d}.npz"
+                if self.geometry_compact_root is not None else None
+            )
             if self.geometry_mmap is not None:
-                if not compact.is_file():
+                if compact is None or not compact.is_file():
                     raise FileNotFoundError(compact)
                 value = self._load_compact_sample(compact, self.geometry_mmap.read(raw_index))
-            elif compact.is_file():
+            elif compact is not None and compact.is_file():
                 value = self._load_compact_sample(compact)
             else:
                 value = self._resize_sample(self.native[raw_index])
