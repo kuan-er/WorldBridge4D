@@ -856,4 +856,121 @@ h023_source_rgb_step100k_promotion:
     compileall: passed
     shell_syntax: passed
     diff_check: passed
-updated_at: 2026-08-23T08:22:15.705Z
+h023_package_refactor:
+  status: implementation_and_checkpoint_compatibility_passed
+  task: T-20260823064208-540496
+  baseline_run: R-20260823064217-9e6e24
+  canonical_packages: [models, data, trainer, evaluation, utils]
+  trainer_class: worldbridge.trainer.WorldBridgeTrainer
+  thin_clis:
+    - scripts/train.py
+    - scripts/infer.py
+    - scripts/evaluate.py
+    - scripts/prepare_data.py
+    - scripts/run_fsdp.sh
+  compatibility_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
+  invariants: [state_dict_attribute_paths, checkpoint_format, optimizer_groups, exact_resume, sampling, schedule, objective]
+  validation:
+    package_run: R-20260823065821-11ebe9
+    final_validation_run: R-20260823070140-04d672
+    tests_passed: 70
+    compileall: passed
+    shell_syntax: passed
+    cli_smoke: passed
+    diff_check: passed
+    checkpoint_run: R-20260823070018-21183f
+    checkpoint_global_step: 100000
+    checkpoint_state_entries: 1055
+    model_parameters: 1613397325
+    trainable_parameters: 1594887819
+    strict_model_load: passed
+  two_step_gpu01_replay:
+    status: complete_numerically_equivalent_within_existing_cuda_fsdp_run_variability
+    replay_task: T-20260823071021-5cdbec
+    stable_baseline_task: T-20260823071157-9eecf3
+    start_checkpoint_step: 100000
+    end_checkpoint_step: 100002
+    physical_gpus: [0, 1]
+    world_size: 2
+    pairs_per_step: 152
+    pre_refactor_run: R-20260823072302-09a18d
+    refactored_run: R-20260823072315-fc1407
+    pre_refactor_repeat_run: R-20260823072608-1a9abe
+    step_100001_loss_all_runs: 0.013928089989349246
+    step_100001_epe_m_all_runs: 0.12306794599078553
+    step_100002_loss:
+      pre_refactor: 0.06044484628364444
+      refactored: 0.06047195615246892
+      pre_refactor_repeat: 0.06042315997183323
+    step_100002_epe_m:
+      pre_refactor: 0.4320237571214193
+      refactored: 0.43194110870892105
+      pre_refactor_repeat: 0.4318575048970798
+    sampling_lr_counters_rgb_alpha: exact_match
+    peak_memory_gib_all_runs: 75.29922
+    first_weight_max_abs_difference:
+      pre_refactor_vs_refactored: 4.76837158203125e-07
+      pre_refactor_vs_pre_refactor_repeat: 4.76837158203125e-07
+    conclusion: refactor adds no detectable numerical drift beyond the original training stack's non-bitwise CUDA/FSDP replay variability
+h023_script_consolidation:
+  status: complete_validation_passed
+  task: T-20260823073939-687ee7
+  entrypoint_count: 5
+  entrypoints: [train.py, infer.py, evaluate.py, prepare_data.py, run_fsdp.sh]
+  preparation_subcommands: 19
+  historical_gpu14_watcher: removed
+  implementation_ownership: [worldbridge.data.commands, worldbridge.trainer.commands, worldbridge.utils.commands]
+  validation_run: R-20260823075231-63d7e1
+  tests_passed: 70
+  all_entrypoint_and_subcommand_help: passed
+  compileall: passed
+  shell_syntax: passed
+  diff_check: passed
+h023_persistent_runtime_caches:
+  status: complete_validation_passed
+  task: T-20260823081332-bcf490
+  validation_run: R-20260823082111-e03f13
+  tests_passed: 71
+  compileall: passed
+  shell_syntax: passed
+  diff_check: passed
+  cache_root_audit: passed
+  runtime_inventory_audit: passed
+  root: /data/WorldBridge4D-persistent/worldbridge4d-cache
+  source_rgb_root: /data/WorldBridge4D-persistent/worldbridge4d-rgb-uint8-256
+  configured_caches: [source_rgb, kubric_geometry, pointodyssey_annotations, pointodyssey_depth, dynamic_replica_depth, dynamic_replica_trajectories]
+  tmp_symlink_dependency: removed
+  observed_inventory:
+    kubric_geometry_clips: 5737
+    pointodyssey_annotation_scenes: 109
+    pointodyssey_depth_scenes: 109
+    dynamic_replica_depth_streams: 435
+    dynamic_replica_trajectory_streams: 435
+h023_legacy_facade_removal:
+  status: complete_validation_passed
+  task: T-20260823081332-bcf490
+  removed_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
+  canonical_root_modules: [__init__]
+  text_conditions_module: worldbridge.data.text_conditions
+  load_empty_condition_alias: removed
+  tests_passed: 70
+  compileall: passed
+  shell_syntax: passed
+  canonical_import_audit: passed
+  diff_check: passed
+h023_default_sim3_inference:
+  status: complete_validation_passed
+  task: T-20260823081332-bcf490
+  alignment: one_joint_proper_umeyama_sim3_per_requested_clip_source_targets
+  alignment_direction: prediction_to_dataset_ground_truth
+  default_enabled: true
+  disable_flag: --no-sim3
+  preserves_raw_prediction: xyz_meters_raw
+  aligned_prediction: xyz_meters
+  persistent_output_root: /data/WorldBridge4D-runs/inference-step100000
+  outside_persistent_root: rejected
+  tests_passed: 73
+  compileall: passed
+  cli_help: passed
+  diff_check: passed
+updated_at: 2026-08-23T09:05:00Z

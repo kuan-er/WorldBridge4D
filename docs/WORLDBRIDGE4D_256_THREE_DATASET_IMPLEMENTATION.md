@@ -1,6 +1,6 @@
 # 当前 256×256 三数据集 FSDP 实现
 
-当前唯一配置是 `configs/worldbridge4d_gpu14_k19_150k.yaml`，对应正在物理 GPU 1/4 上运行的 H023 K19/B2/A2 trajectory。
+当前生产配置是 `configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml`，对应 H023 step-100k source-RGB K19/B2/A2 endpoint。
 
 ## 模型与训练
 
@@ -14,21 +14,21 @@
 主入口：
 
 ```text
-scripts/run_three_dataset_256_fsdp.sh
-  -> scripts/train_three_dataset_256_fsdp.py
+scripts/run_fsdp.sh
+  -> scripts/train.py
+  -> worldbridge.trainer.WorldBridgeTrainer
 ```
 
-训练脚本只直接导入：
+实现按职责分层：
 
 ```text
-worldbridge.dense4d
-worldbridge.dense4d_runtime
-worldbridge.training256
-worldbridge.wan
-worldbridge.text_conditions
+worldbridge.models       模型、Wan backbone、decoder、source-RGB fusion
+worldbridge.data         datasets、geometry、cache、sampling、factory
+worldbridge.trainer      objective、optimizer、FSDP、checkpoint、训练循环
+worldbridge.evaluation   inference、counterfactual evaluation、metrics
 ```
 
-它们再传递依赖 `data.py`、`geometry.py`、`pointodyssey.py` 和 `dynamic_replica.py`。
+旧的 `worldbridge.dense4d`、`dense4d_runtime`、`training256`、`wan` 以及顶层数据集兼容路径已经删除；实现只从规范 package 导入。
 
 ## Exact resume
 
@@ -40,15 +40,7 @@ Checkpoint format 3 保存 full model、AdamW、global step、数据集计数和
 4. 恢复每 rank RNG；
 5. 才允许下一次 optimizer update。
 
-GPU1/4 生产 handoff 使用：
-
-```text
-scripts/wait_resume_three_dataset_256_gpu14_150k.sh
-  -> scripts/prepare_three_dataset_256_gpu14_handoff.py
-  -> scripts/run_three_dataset_256_fsdp.sh
-```
-
-它要求两 rank、K19、B2/A2、完整 checkpoint/status/RNG、GPU1/4 独占预检及 immutable marker。当前 schedule 在 step 56,503 保持原 100k cosine factor，然后连续衰减到 step 150,000，不产生 LR 跳变。
+历史 GPU1/4 handoff watcher 已从正式入口删除，其审计证据保留在 research 和 Git 历史中。当前恢复统一通过 `scripts/run_fsdp.sh` 显式传入完整 checkpoint；它要求两 rank、K19、B2/A2、完整 checkpoint/status/RNG。最终生产端点是 step 100,000；配置保留原连续 150k horizon 仅作为未来显式 exact resume 的 LR provenance。
 
 ## 数据和缓存
 
@@ -69,8 +61,7 @@ scripts/wait_resume_three_dataset_256_gpu14_150k.sh
 ```bash
 PYTHONPATH=src python -m pytest -q
 python -m compileall -q src scripts tests
-bash -n scripts/run_three_dataset_256_fsdp.sh
-bash -n scripts/wait_resume_three_dataset_256_gpu14_150k.sh
+bash -n scripts/run_fsdp.sh
 ```
 
 任何训练协议变更都必须使用新的 PRL Run；不要原地修改正在运行的 immutable snapshot 或 checkpoint。

@@ -9,7 +9,7 @@ python -m pip install --upgrade pip
 python -m pip install --index-url https://download.pytorch.org/whl/cu126 'torch==2.10.0'
 python -m pip install -r requirements.txt -c constraints-known-good-cu126.txt
 
-PYTHONPATH=src python scripts/check_environment.py --require-cuda
+PYTHONPATH=src python scripts/prepare_data.py check-environment --require-cuda
 PYTHONPATH=src python -m pytest -q
 ```
 
@@ -25,6 +25,6 @@ Python package 不包含模型、数据或 condition。当前路径均记录在 
 - 三个 dataset-specific UMT5 conditions；
 - train-only mixture coordinate stats。
 
-Condition 由 `scripts/create_wan_text_conditions.py` 生成，需要 native Wan source。模型、生成 tensor 和 API key 均不得提交 Git。W&B 使用 `wandb login` 的机器本地凭据或进程环境变量 `WANDB_API_KEY`。
+Condition 由 `scripts/prepare_data.py text-conditions` 生成，需要 native Wan source。模型、生成 tensor 和 API key 均不得提交 Git。W&B 使用 `wandb login` 的机器本地凭据或进程环境变量 `WANDB_API_KEY`。
 
 `check_environment.py` 检查直接依赖、Diffusers Wan API、TFRecord、manifest schema 和当前 9 个项目模块；`--require-cuda` 额外检查 CUDA 与 BF16，不加载模型或数据。
