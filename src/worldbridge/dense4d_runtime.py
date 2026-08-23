@@ -183,6 +183,11 @@ def build_real_model(
         structured_local_queries=bool(config.get("structured_local_queries", True)) if structured else False,
         structured_pair_motion_queries=bool(config.get("structured_pair_motion_queries", False)) if structured else False,
         structured_pair_motion_zero_init=bool(config.get("structured_pair_motion_zero_init", False)) if structured else False,
+        source_rgb_pyramid=bool(config.get("source_rgb_pyramid", False)),
+        source_rgb_channels=tuple(int(value) for value in config.get(
+            "source_rgb_channels", (32, 64, 128)
+        )),
+        source_rgb_fusion_32=bool(config.get("source_rgb_fusion_32", False)),
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
     mode = str(config.get("trainable_mode", "full"))
@@ -207,12 +212,27 @@ def build_real_model(
 
 
 def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[dict[str, Any]]:
+    named = list(model.named_parameters())
+    names_by_id = {id(parameter): name for name, parameter in named}
+    rgb_prefixes = (
+        "decoder.upsampler.source_rgb_encoder.",
+        "decoder.upsampler.source_fusions.",
+    )
+    separate_rgb = bool(config.get("source_rgb_separate_optimizer_group", False))
+    rgb = [
+        parameter for name, parameter in named
+        if separate_rgb and parameter.requires_grad and name.startswith(rgb_prefixes)
+    ]
+    rgb_ids = {id(parameter) for parameter in rgb}
     backbone = [parameter for parameter in model.backbone.parameters() if parameter.requires_grad]
     adapter = [parameter for parameter in getattr(model.backbone, "adapter_parameters", [])
                if parameter.requires_grad]
     adapter_ids = {id(parameter) for parameter in adapter}
     wan = [parameter for parameter in backbone if id(parameter) not in adapter_ids]
-    decoder = [parameter for parameter in model.decoder.parameters() if parameter.requires_grad]
+    decoder = [
+        parameter for parameter in model.decoder.parameters()
+        if parameter.requires_grad and id(parameter) not in rgb_ids
+    ]
     groups = []
     if wan:
         groups.append({"params": wan, "lr": float(config.get("backbone_learning_rate", config["learning_rate"])),
@@ -222,6 +242,29 @@ def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[
                        "name": "geometry_adapter"})
     if decoder:
         groups.append({"params": decoder, "lr": float(config["learning_rate"]), "name": "dense_decoder"})
+    if rgb:
+        multiplier = float(config.get("source_rgb_learning_rate_multiplier", 1.0))
+        if not np.isfinite(multiplier) or multiplier <= 0:
+            raise ValueError("source RGB learning-rate multiplier must be finite and positive")
+        rgb_lr = float(config["learning_rate"]) * multiplier
+        decay = [parameter for parameter in rgb if parameter.ndim > 1]
+        no_decay = [parameter for parameter in rgb if parameter.ndim <= 1]
+        if decay:
+            groups.append({
+                "params": decay, "lr": rgb_lr,
+                "weight_decay": float(config["weight_decay"]),
+                "name": "source_rgb_decay",
+            })
+        if no_decay:
+            groups.append({
+                "params": no_decay, "lr": rgb_lr, "weight_decay": 0.0,
+                "name": "source_rgb_no_decay",
+            })
+        grouped_rgb = {id(parameter) for group in groups[-2:] for parameter in group["params"]} \
+            if decay and no_decay else {id(parameter) for parameter in (decay + no_decay)}
+        if grouped_rgb != rgb_ids:
+            missing = [names_by_id[value] for value in rgb_ids - grouped_rgb]
+            raise RuntimeError(f"source RGB optimizer grouping lost parameters: {missing[:8]}")
     if not groups:
         raise ValueError("model has no trainable parameters")
     return groups

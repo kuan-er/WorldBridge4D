@@ -38,6 +38,7 @@ class TrainingDataset(Protocol):
     def __len__(self) -> int: ...
     def source_all_targets(self, index: int, source: int) -> tuple[np.ndarray, np.ndarray]: ...
     def rgb(self, index: int) -> np.ndarray: ...
+    def source_rgb(self, index: int, source: int) -> np.ndarray: ...
     def clean_latent(self, index: int) -> np.ndarray: ...
     def latent_cached(self, index: int) -> bool: ...
     def cache_latent(self, index: int, value: np.ndarray, vae_sha256: str) -> bool: ...
@@ -287,6 +288,133 @@ class LatentShardStore:
         raise IndexError(f"latent index {index} is not covered by {self.root}")
 
 
+class RGBUInt8ShardStore:
+    """Bounded mmap LRU over audited NTHWC uint8 RGB shards.
+
+    Startup validates the cache contract, completion marker, exact shard
+    coverage, NPY headers, and checksum-sidecar structure.  It deliberately
+    does not reread the 83 GiB payload to recompute shard SHA-256 values.
+    """
+
+    CONTRACT = "worldbridge4d_rgb_uint8_256_v1"
+    CLIP_SHAPE = (21, 256, 256, 3)
+
+    def __init__(self, root: str | Path, dataset: str, count: int,
+                 max_open_shards: int = 16) -> None:
+        self.root = Path(root)
+        self.dataset = str(dataset)
+        self.count = int(count)
+        self.max_open_shards = max(1, int(max_open_shards))
+        if self.dataset not in DATASET_NAMES or self.count < 1:
+            raise ValueError("invalid RGB shard dataset/count")
+        contract_path = self.root / "contract.json"
+        progress_path = self.root / "progress.json"
+        if not contract_path.is_file() or not progress_path.is_file():
+            raise FileNotFoundError(
+                f"RGB cache metadata missing under {self.root}"
+            )
+        contract = json.loads(contract_path.read_text())
+        progress = json.loads(progress_path.read_text())
+        expected_contract = {
+            "contract": self.CONTRACT,
+            "dtype": "uint8",
+            "layout": "NTHWC",
+            "clip_shape": list(self.CLIP_SHAPE),
+            "compression": "none",
+            "shard_size": 64,
+        }
+        mismatches = {
+            key: (contract.get(key), value)
+            for key, value in expected_contract.items()
+            if contract.get(key) != value
+        }
+        if mismatches:
+            raise RuntimeError(f"RGB cache contract mismatch: {mismatches}")
+        dataset_contract = contract.get("indexes", {}).get(self.dataset, {})
+        if int(dataset_contract.get("clips", -1)) != self.count:
+            raise RuntimeError(
+                f"RGB cache count mismatch for {self.dataset}: "
+                f"{dataset_contract.get('clips')} != {self.count}"
+            )
+        dataset_progress = progress.get("datasets", {}).get(self.dataset, {})
+        if progress.get("status") != "complete" \
+                or int(progress.get("clips_complete", -1)) != int(progress.get("clips_total", -2)) \
+                or int(dataset_progress.get("clips_complete", -1)) != self.count \
+                or int(dataset_progress.get("clips_total", -2)) != self.count:
+            raise RuntimeError(f"RGB cache is incomplete for {self.dataset}")
+        self.shard_size = int(contract["shard_size"])
+        self.directory = self.root / self.dataset / "train"
+        if not self.directory.is_dir():
+            raise FileNotFoundError(self.directory)
+        expected_paths: dict[Path, tuple[int, int]] = {}
+        for first in range(0, self.count, self.shard_size):
+            end = min(first + self.shard_size, self.count)
+            path = self.directory / f"shard_{first:06d}_{end:06d}.npy"
+            expected_paths[path] = (first, end)
+        actual_paths = set(self.directory.glob("shard_*.npy"))
+        if actual_paths != set(expected_paths):
+            missing = sorted(str(path.name) for path in set(expected_paths) - actual_paths)
+            extra = sorted(str(path.name) for path in actual_paths - set(expected_paths))
+            raise RuntimeError(
+                f"RGB shard coverage mismatch for {self.dataset}; "
+                f"missing={missing[:4]}, extra={extra[:4]}"
+            )
+        temporaries = list(self.directory.glob("*.tmp*"))
+        if temporaries:
+            raise RuntimeError(f"RGB cache has temporary files: {temporaries[:4]}")
+        for path, (first, end) in expected_paths.items():
+            sidecar = path.with_suffix(path.suffix + ".sha256")
+            if not sidecar.is_file():
+                raise FileNotFoundError(sidecar)
+            record = sidecar.read_text().strip()
+            if not re.fullmatch(rf"[0-9a-f]{{64}}  {re.escape(path.name)}", record):
+                raise RuntimeError(f"invalid RGB checksum sidecar: {sidecar}")
+            value = np.load(path, mmap_mode="r", allow_pickle=False)
+            expected_shape = (end - first, *self.CLIP_SHAPE)
+            if tuple(value.shape) != expected_shape or value.dtype != np.uint8 \
+                    or not value.flags.c_contiguous:
+                raise RuntimeError(
+                    f"RGB shard header mismatch in {path}: "
+                    f"{value.shape}/{value.dtype}/contiguous={value.flags.c_contiguous}"
+                )
+            if isinstance(value, np.memmap):
+                value._mmap.close()
+        self.paths = expected_paths
+        self.cache: OrderedDict[Path, np.ndarray] = OrderedDict()
+        self.lock = threading.RLock()
+
+    def _path(self, index: int) -> tuple[Path, int]:
+        index = int(index)
+        if not 0 <= index < self.count:
+            raise IndexError(f"RGB index {index} outside [0,{self.count})")
+        first = index // self.shard_size * self.shard_size
+        end = min(first + self.shard_size, self.count)
+        return self.directory / f"shard_{first:06d}_{end:06d}.npy", index - first
+
+    def _open(self, path: Path) -> np.ndarray:
+        with self.lock:
+            value = self.cache.pop(path, None)
+            if value is None:
+                value = np.load(path, mmap_mode="r", allow_pickle=False)
+            self.cache[path] = value
+            while len(self.cache) > self.max_open_shards:
+                self.cache.popitem(last=False)
+            return value
+
+    def source_rgb(self, index: int, source: int) -> np.ndarray:
+        source = int(source)
+        if not 0 <= source < self.CLIP_SHAPE[0]:
+            raise ValueError(f"source must be in [0,20], got {source}")
+        path, local = self._path(index)
+        # Copy exactly one 192-KiB frame so a returned batch never depends on
+        # the mmap remaining in the LRU after another worker opens a shard.
+        return np.array(self._open(path)[local, source], dtype=np.uint8, copy=True)
+
+    def clip(self, index: int) -> np.ndarray:
+        path, local = self._path(index)
+        return np.array(self._open(path)[local], dtype=np.uint8, copy=True)
+
+
 class LazyLatentCache:
     """Per-clip read-through cache with process locks and atomic publication."""
     CONTRACT = "wan2.1_vae_posterior_mean_fp32_256_v1"
@@ -360,7 +488,9 @@ class CachedExternalDataset:
     """Attach canonical sharded and optional lazy 256 latents to PO/DR geometry."""
     def __init__(self, geometry: PointOdysseyDataset | DynamicReplicaDataset,
                  cache_root: str | Path, dataset_name: str,
-                 allow_missing_latents: bool = False) -> None:
+                 allow_missing_latents: bool = False,
+                 rgb_cache_root: str | Path | None = None,
+                 rgb_cache_max_open_shards: int = 16) -> None:
         self.geometry = geometry
         self.dataset_name = str(dataset_name)
         cache_root = Path(cache_root)
@@ -368,6 +498,13 @@ class CachedExternalDataset:
         if not index_path.is_file():
             raise FileNotFoundError(index_path)
         self.rows = [json.loads(line) for line in index_path.read_text().splitlines() if line]
+        self.rgb_shards = (
+            RGBUInt8ShardStore(
+                rgb_cache_root, self.dataset_name, len(self.rows),
+                max_open_shards=rgb_cache_max_open_shards,
+            )
+            if rgb_cache_root is not None else None
+        )
         by_clip = {str(row["clip_id"]): index for index, row in enumerate(geometry.rows)}
         try:
             self.geometry_indices = [by_clip[str(row["clip_id"])] for row in self.rows]
@@ -397,7 +534,20 @@ class CachedExternalDataset:
         return self.geometry.source_all_targets_with_visibility(self.geometry_indices[index], source)
 
     def rgb(self, index: int) -> np.ndarray:
+        if self.rgb_shards is not None:
+            return self.rgb_shards.clip(int(index))
         return self.geometry.rgb(self.geometry_indices[int(index)])
+
+    def source_rgb(self, index: int, source: int) -> np.ndarray:
+        source = int(source)
+        if not 0 <= source < 21:
+            raise ValueError(f"source must be in [0,20], got {source}")
+        if self.rgb_shards is not None:
+            return self.rgb_shards.source_rgb(int(index), source)
+        geometry_index = self.geometry_indices[int(index)]
+        if hasattr(self.geometry, "source_rgb"):
+            return self.geometry.source_rgb(geometry_index, source)
+        return self.geometry.rgb(geometry_index)[source]
 
     def set_lazy_vae_sha256(self, value: str) -> None:
         self.lazy_latents.set_vae_sha256(value)
@@ -487,7 +637,9 @@ class MOViF256Dataset:
                  split: str = "train", allow_missing_latents: bool = False,
                  geometry_mmap_root: str | Path | None = None,
                  geometry_sample_cache_size: int = 16,
-                 geometry_mmap_max_open_shards: int | None = None) -> None:
+                 geometry_mmap_max_open_shards: int | None = None,
+                 rgb_cache_root: str | Path | None = None,
+                 rgb_cache_max_open_shards: int = 16) -> None:
         cache_root = Path(cache_root)
         self.cache_root = cache_root
         index_path = cache_root / "splits" / f"{split}.jsonl"
@@ -496,6 +648,13 @@ class MOViF256Dataset:
         self.rows = [json.loads(line) for line in index_path.read_text().splitlines() if line]
         if not self.rows:
             raise RuntimeError(f"empty MOVi-F 256 index: {index_path}")
+        self.rgb_shards = (
+            RGBUInt8ShardStore(
+                rgb_cache_root, "kubric", len(self.rows),
+                max_open_shards=rgb_cache_max_open_shards,
+            )
+            if rgb_cache_root is not None else None
+        )
         max_index = max(int(row["raw_index"]) for row in self.rows)
         self.native = MOViFDataset(raw_root, split=split, clip_length=21, clip_start=0,
                                    max_examples=max_index + 1)
@@ -517,6 +676,13 @@ class MOViF256Dataset:
         self._sample_cache: OrderedDict[int, MOViSample] = OrderedDict()
         self._sample_cache_lock = threading.RLock()
         self._sample_load_locks: dict[int, threading.Lock] = {}
+        # Geometry-only compact samples intentionally omit RGB.  Keep a small,
+        # separate resized RGB-clip LRU for source-pyramid training without
+        # inflating the much larger geometry sample cache.
+        self._rgb_cache_size = max(1, min(4, self._sample_cache_size))
+        self._rgb_cache: OrderedDict[int, np.ndarray] = OrderedDict()
+        self._rgb_cache_lock = threading.RLock()
+        self._rgb_load_locks: dict[int, threading.Lock] = {}
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -638,7 +804,54 @@ class MOViF256Dataset:
         return xyz, valid, visible
 
     def rgb(self, index: int) -> np.ndarray:
-        return self.sample(index).rgb
+        if self.rgb_shards is not None:
+            return self.rgb_shards.clip(int(index))
+        sample = self.sample(index)
+        if sample.rgb.size:
+            return sample.rgb
+        return self._rgb_clip(index)
+
+    def _rgb_clip(self, index: int) -> np.ndarray:
+        from PIL import Image
+        raw_index = int(self.rows[int(index)]["raw_index"])
+        with self._rgb_cache_lock:
+            cached = self._rgb_cache.get(raw_index)
+            if cached is not None:
+                self._rgb_cache.move_to_end(raw_index)
+                return cached
+            load_lock = self._rgb_load_locks.setdefault(raw_index, threading.Lock())
+        with load_lock:
+            with self._rgb_cache_lock:
+                cached = self._rgb_cache.get(raw_index)
+                if cached is not None:
+                    self._rgb_cache.move_to_end(raw_index)
+                    return cached
+            native_rgb = self.native[raw_index].rgb
+            resized = np.stack([
+                np.asarray(Image.fromarray(frame).resize(
+                    (256, 256), Image.Resampling.BICUBIC,
+                ), dtype=np.uint8)
+                for frame in native_rgb
+            ])
+            if resized.shape != (21, 256, 256, 3):
+                raise RuntimeError(f"unexpected MOVi-F RGB clip shape: {resized.shape}")
+            with self._rgb_cache_lock:
+                self._rgb_cache[raw_index] = resized
+                self._rgb_cache.move_to_end(raw_index)
+                while len(self._rgb_cache) > self._rgb_cache_size:
+                    self._rgb_cache.popitem(last=False)
+                return resized
+
+    def source_rgb(self, index: int, source: int) -> np.ndarray:
+        source = int(source)
+        if not 0 <= source < 21:
+            raise ValueError(f"source must be in [0,20], got {source}")
+        if self.rgb_shards is not None:
+            return self.rgb_shards.source_rgb(int(index), source)
+        sample = self.sample(int(index))
+        if sample.rgb.size:
+            return sample.rgb[source]
+        return self._rgb_clip(int(index))[source]
 
     def set_lazy_vae_sha256(self, value: str) -> None:
         self.lazy_latents.set_vae_sha256(value)
@@ -703,6 +916,8 @@ def load_training_dataset(config: dict[str, Any], name: str,
     if name not in DATASET_NAMES:
         raise ValueError(f"dataset must be one of {DATASET_NAMES}, got {name!r}")
     values = roots[name]
+    rgb_cache_root = config.get("source_rgb_cache_root")
+    rgb_cache_max_open_shards = int(config.get("source_rgb_cache_max_open_shards", 16))
     if name == "kubric":
         max_open_shards = values.get("geometry_mmap_max_open_shards")
         return MOViF256Dataset(
@@ -715,6 +930,8 @@ def load_training_dataset(config: dict[str, Any], name: str,
             geometry_mmap_max_open_shards=(
                 None if max_open_shards is None else int(max_open_shards)
             ),
+            rgb_cache_root=rgb_cache_root,
+            rgb_cache_max_open_shards=rgb_cache_max_open_shards,
         )
     if name == "pointodyssey":
         geometry = PointOdysseyDataset(
@@ -729,6 +946,8 @@ def load_training_dataset(config: dict[str, Any], name: str,
     return CachedExternalDataset(
         geometry, values["cache_root"], name,
         allow_missing_latents=allow_missing_latents,
+        rgb_cache_root=rgb_cache_root,
+        rgb_cache_max_open_shards=rgb_cache_max_open_shards,
     )
 
 

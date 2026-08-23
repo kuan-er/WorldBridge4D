@@ -1,5 +1,12 @@
 # Research Decisions
 
+## 2026-08-23 — Promote the step-100k source-RGB fusion32 route
+
+- Promote the H023 source-RGB pyramid with 32/64/128/256px decoder fusions as the production route. Keep source-RGB groups at the selected 10× multiplier, cap Wan and the mature decoder at 0.1× of their legacy group learning rates, and keep the geometry adapter frozen.
+- The causal N=16 screen established that matched source RGB is used: versus alpha-zero, aggregate EPE improved by 4.31%/1.52%/1.03% on Kubric/PointOdyssey/Dynamic Replica; versus wrong RGB, it improved by 7.27%/2.15%/3.10%. The added 32px path is retained for trajectory continuity but is not claimed to solve boundaries; boundary ablation found most local value at 64/128px.
+- The immutable step-100,000 checkpoint has exact clip counters 280,000/240,000/280,000, full model/AdamW/two-rank RNG state, SHA-256 `3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2`, and durable artifact `artifact://H023/R-20260822143915-eec343/checkpoint/3181a255d48687f1`. Weights remain outside Git.
+- Boundary-weighted loss, pointwise XYZ residual, guided final upsample, and target-RGB cross-attention remain experiments and are not part of this promotion.
+
 ## 2026-08-10 — Canonical defaults use all-target supervision and full DiT fine-tuning
 
 - Change the canonical dense4d profiles (`dense4d_smoke`, `dense4d_tiny_overfit`, `dense4d_arbitrary_overfit`, and `dense4d_train`) to source-frame coordinates, `source_all_targets` sampling, and `trainable_mode: full`.

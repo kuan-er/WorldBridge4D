@@ -227,12 +227,88 @@ class ResidualBlock2D(nn.Module):
         return x + residual
 
 
+class SourceRGBPyramid(nn.Module):
+    """Lightweight source-only appearance pyramid for 256px dense tracking."""
+
+    def __init__(self, channels: Sequence[int] = (32, 64, 128)):
+        super().__init__()
+        channels = tuple(int(value) for value in channels)
+        if len(channels) != 3 or any(value < 1 for value in channels):
+            raise ValueError("source RGB pyramid channels must contain three positive values")
+        high, middle, low = channels
+        self.channels_by_scale = {256: high, 128: middle, 64: low, 32: low}
+        self.stem = nn.Sequential(
+            nn.Conv2d(3, high, 3, padding=1),
+            nn.GroupNorm(_group_count(high), high),
+            nn.SiLU(),
+            ResidualBlock2D(high, high),
+        )
+        self.down_128 = nn.Sequential(
+            nn.Conv2d(high, middle, 3, stride=2, padding=1),
+            ResidualBlock2D(middle, middle),
+        )
+        self.down_64 = nn.Sequential(
+            nn.Conv2d(middle, low, 3, stride=2, padding=1),
+            ResidualBlock2D(low, low),
+        )
+
+    def forward(self, source_rgb: torch.Tensor) -> dict[int, torch.Tensor]:
+        if source_rgb.ndim != 4 or source_rgb.shape[1:] != (3, 256, 256):
+            raise ValueError(
+                f"source RGB must be [B,3,256,256], got {tuple(source_rgb.shape)}"
+            )
+        feature_256 = self.stem(source_rgb)
+        feature_128 = self.down_128(feature_256)
+        feature_64 = self.down_64(feature_128)
+        # Reuse the mature encoder and derive the new coarse identity scale
+        # without introducing another high-resolution activation path.
+        feature_32 = F.avg_pool2d(feature_64, kernel_size=2, stride=2)
+        return {32: feature_32, 64: feature_64, 128: feature_128, 256: feature_256}
+
+
+class GatedSourceFusion(nn.Module):
+    """Inject one K-shared source appearance scale into pair-specific tracking."""
+
+    def __init__(self, source_channels: int, tracking_channels: int):
+        super().__init__()
+        source_channels = int(source_channels)
+        tracking_channels = int(tracking_channels)
+        self.source_projection = nn.Sequential(
+            nn.GroupNorm(_group_count(source_channels), source_channels),
+            nn.Conv2d(source_channels, tracking_channels, 1),
+        )
+        # A scalar spatial gate is pair/target dependent while avoiding another
+        # full C-channel activation at 256px for large K.
+        self.gate = nn.Conv2d(tracking_channels, 1, 1)
+        # Exact zero makes a migrated baseline checkpoint functionally
+        # unchanged before the source branch starts learning.
+        # FSDP rejects scalar parameters; keep one element in a 1D tensor.
+        self.alpha = nn.Parameter(torch.zeros(1))
+
+    def forward(self, tracking: torch.Tensor, source: torch.Tensor,
+                batch: int, pairs: int) -> torch.Tensor:
+        batch, pairs = int(batch), int(pairs)
+        if tracking.ndim != 4 or tracking.shape[0] != batch * pairs:
+            raise ValueError("tracking feature does not match batch*pair dimensions")
+        if source.ndim != 4 or source.shape[0] != batch \
+                or source.shape[-2:] != tracking.shape[-2:]:
+            raise ValueError("source feature does not match tracking batch/spatial dimensions")
+        source = self.source_projection(source)
+        if source.shape[1] != tracking.shape[1]:
+            raise RuntimeError("projected source and tracking channels differ")
+        source = source[:, None].expand(-1, pairs, -1, -1, -1).reshape_as(tracking)
+        gate = torch.sigmoid(self.gate(tracking))
+        return tracking + self.alpha.to(dtype=tracking.dtype) * gate * source
+
+
 class DenseUpsampler2D(nn.Module):
-    """Bilinear 16->32->64->128 XYZ decoder (never transposed convolution)."""
+    """Bilinear residual XYZ decoder with optional source-RGB pyramid fusion."""
 
     def __init__(self, query_dim: int = 256, channels: Sequence[int] = (256, 128, 64, 32),
                  latent_size: tuple[int, int] = (16, 16), output_size: tuple[int, int] = (128, 128),
-                 fullres_coordinates: bool = False):
+                 fullres_coordinates: bool = False, source_rgb_pyramid: bool = False,
+                 source_rgb_channels: Sequence[int] = (32, 64, 128),
+                 source_rgb_fusion_32: bool = False):
         super().__init__()
         channels = tuple(int(x) for x in channels)
         if len(channels) < 2:
@@ -243,11 +319,31 @@ class DenseUpsampler2D(nn.Module):
         self.latent_size = tuple(latent_size)
         self.output_size = tuple(output_size)
         self.fullres_coordinates = bool(fullres_coordinates)
+        self.source_rgb_pyramid_enabled = bool(source_rgb_pyramid)
+        self.source_rgb_fusion_32 = bool(source_rgb_fusion_32)
         self.projection = nn.Conv2d(query_dim, channels[0], 3, padding=1)
         self.blocks = nn.ModuleList([
             ResidualBlock2D(in_channel, out_channel)
             for in_channel, out_channel in zip(channels[:-1], channels[1:])
         ])
+        self.source_rgb_encoder: SourceRGBPyramid | None = None
+        self.source_fusions = nn.ModuleDict()
+        self.stage_scales = tuple(
+            int(self.latent_size[0] * 2 ** (index + 1)) for index in range(len(self.blocks))
+        )
+        if self.source_rgb_pyramid_enabled:
+            if self.latent_size != (32, 32) or self.output_size != (256, 256) \
+                    or self.stage_scales != (64, 128, 256):
+                raise ValueError("source RGB pyramid requires the 32->64->128->256 decoder")
+            self.source_rgb_encoder = SourceRGBPyramid(source_rgb_channels)
+            if self.source_rgb_fusion_32:
+                self.source_fusions["32"] = GatedSourceFusion(
+                    self.source_rgb_encoder.channels_by_scale[32], channels[0],
+                )
+            for scale, tracking_channels in zip(self.stage_scales, channels[1:]):
+                self.source_fusions[str(scale)] = GatedSourceFusion(
+                    self.source_rgb_encoder.channels_by_scale[scale], tracking_channels,
+                )
         self.xyz = nn.Conv2d(channels[-1] + (2 if self.fullres_coordinates else 0), 3, 3, padding=1)
         if self.fullres_coordinates:
             v, u = torch.meshgrid(
@@ -261,11 +357,37 @@ class DenseUpsampler2D(nn.Module):
                 persistent=False,
             )
 
-    def forward(self, feature: torch.Tensor) -> torch.Tensor:
+    def encode_source_rgb(self, source_rgb: torch.Tensor) -> dict[int, torch.Tensor]:
+        if not self.source_rgb_pyramid_enabled or self.source_rgb_encoder is None:
+            raise RuntimeError("source RGB pyramid is disabled")
+        return self.source_rgb_encoder(source_rgb)
+
+    def forward(self, feature: torch.Tensor, source_rgb: torch.Tensor | None = None,
+                source_pyramid: dict[int, torch.Tensor] | None = None,
+                batch: int | None = None, pairs: int | None = None) -> torch.Tensor:
+        if source_rgb is not None and source_pyramid is not None:
+            raise ValueError("pass source_rgb or source_pyramid, not both")
+        if self.source_rgb_pyramid_enabled:
+            if batch is None or pairs is None:
+                raise ValueError("source RGB pyramid requires batch and pairs")
+            if source_pyramid is None:
+                if source_rgb is None:
+                    raise ValueError("source RGB pyramid requires source_rgb or source_pyramid")
+                source_pyramid = self.encode_source_rgb(source_rgb)
+        elif source_rgb is not None or source_pyramid is not None:
+            raise ValueError("source appearance was provided but the RGB pyramid is disabled")
         x = self.projection(feature)
-        for block in self.blocks:
+        if source_pyramid is not None and self.source_rgb_fusion_32:
+            x = self.source_fusions["32"](
+                x, source_pyramid[32], int(batch), int(pairs),
+            )
+        for scale, block in zip(self.stage_scales, self.blocks):
             x = F.interpolate(x, scale_factor=2.0, mode="bilinear", align_corners=False)
             x = block(x)
+            if source_pyramid is not None:
+                x = self.source_fusions[str(scale)](
+                    x, source_pyramid[scale], int(batch), int(pairs),
+                )
         if self.fullres_coordinates:
             x = torch.cat((x, self.fullres_uv.expand(x.shape[0], -1, -1, -1).to(dtype=x.dtype)), dim=1)
         x = self.xyz(x)
@@ -291,7 +413,10 @@ class DenseQueryDecoder(nn.Module):
                  fullres_coordinates: bool = False, query_grid_size: int | None = None,
                  structured_motion_slots: int = 0, structured_local_queries: bool = False,
                  structured_pair_motion_queries: bool = False,
-                 structured_pair_motion_zero_init: bool = False):
+                 structured_pair_motion_zero_init: bool = False,
+                 source_rgb_pyramid: bool = False,
+                 source_rgb_channels: Sequence[int] = (32, 64, 128),
+                 source_rgb_fusion_32: bool = False):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
@@ -328,6 +453,9 @@ class DenseQueryDecoder(nn.Module):
         self.upsampler = DenseUpsampler2D(
             query_dim, upsample_channels, self.query_grid_shape, output_size,
             fullres_coordinates=fullres_coordinates,
+            source_rgb_pyramid=source_rgb_pyramid,
+            source_rgb_channels=source_rgb_channels,
+            source_rgb_fusion_32=source_rgb_fusion_32,
         )
         self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
         # Constructed after all baseline modules so enabling this ablation does
@@ -410,8 +538,13 @@ class DenseQueryDecoder(nn.Module):
         )
         return self.motion_pair_projection(pair_motion)
 
+    def encode_source_rgb(self, source_rgb: torch.Tensor) -> dict[int, torch.Tensor]:
+        return self.upsampler.encode_source_rgb(source_rgb)
+
     def forward(self, z4d: torch.Tensor | StructuredZ4D, source: torch.Tensor,
-                target: torch.Tensor) -> DenseQueryOutput:
+                target: torch.Tensor, source_rgb: torch.Tensor | None = None,
+                source_pyramid: dict[int, torch.Tensor] | None = None
+                ) -> DenseQueryOutput:
         structured = isinstance(z4d, StructuredZ4D)
         dense = z4d.dense if structured else z4d
         if dense.ndim != 5 or tuple(dense.shape[1:]) != self.latent_shape:
@@ -443,7 +576,10 @@ class DenseQueryDecoder(nn.Module):
         feature = query.reshape(batch * pairs, query_height, query_width, self.query_dim).permute(0, 3, 1, 2)
         coarse = self.coarse_head(feature).reshape(batch, pairs, 3, query_height, query_width) \
             if self.coarse_head is not None else None
-        xyz = self.upsampler(feature).reshape(batch, pairs, 3, *self.upsampler.output_size)
+        xyz = self.upsampler(
+            feature, source_rgb=source_rgb, source_pyramid=source_pyramid,
+            batch=batch, pairs=pairs,
+        ).reshape(batch, pairs, 3, *self.upsampler.output_size)
         feature = feature.reshape(batch, pairs, self.query_dim, query_height, query_width)
         return DenseQueryOutput(xyz, feature, coarse)
 
@@ -698,13 +834,14 @@ class DenseQueryWanModel(nn.Module):
         self.decoder = decoder
 
     def forward(self, clean_video_latent: torch.Tensor, source: torch.Tensor,
-                target: torch.Tensor, encoder_hidden_states: torch.Tensor | None = None
+                target: torch.Tensor, encoder_hidden_states: torch.Tensor | None = None,
+                source_rgb: torch.Tensor | None = None
                 ) -> tuple[torch.Tensor, torch.Tensor | StructuredZ4D, DenseQueryOutput]:
         if encoder_hidden_states is None:
             z4d = self.backbone(clean_video_latent)
         else:
             z4d = self.backbone(clean_video_latent, encoder_hidden_states)
-        output = self.decoder(z4d, source, target)
+        output = self.decoder(z4d, source, target, source_rgb=source_rgb)
         return output.normalized_xyz, z4d, output
 
     def configure_trainable(self, mode: str = "full", last_blocks: int = 2) -> None:
@@ -719,6 +856,34 @@ class DenseQueryWanModel(nn.Module):
         if mode == "decoder_only":
             for parameter in self.backbone.parameters():
                 parameter.requires_grad_(False)
+            return
+        if mode == "source_rgb_only":
+            for parameter in self.parameters():
+                parameter.requires_grad_(False)
+            encoder = self.decoder.upsampler.source_rgb_encoder
+            fusions = self.decoder.upsampler.source_fusions
+            if encoder is None or not fusions:
+                raise ValueError("source_rgb_only requires an enabled source RGB pyramid")
+            for parameter in encoder.parameters():
+                parameter.requires_grad_(True)
+            for parameter in fusions.parameters():
+                parameter.requires_grad_(True)
+            return
+        if mode == "source_rgb_plus_wan_decoder":
+            for parameter in self.parameters():
+                parameter.requires_grad_(False)
+            for parameter in self.backbone.parameters():
+                parameter.requires_grad_(True)
+            for parameter in getattr(self.backbone, "adapter_parameters", []):
+                parameter.requires_grad_(False)
+            for parameter in bypassed:
+                parameter.requires_grad_(False)
+            for parameter in self.decoder.parameters():
+                parameter.requires_grad_(True)
+            if self.decoder.upsampler.source_rgb_encoder is None:
+                raise ValueError(
+                    "source_rgb_plus_wan_decoder requires an enabled source RGB pyramid"
+                )
             return
         if mode == "geometry_adapter":
             adapter = list(getattr(self.backbone, "adapter_parameters", []))

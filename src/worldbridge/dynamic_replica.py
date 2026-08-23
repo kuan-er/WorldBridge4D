@@ -288,6 +288,13 @@ class DynamicReplicaDataset:
         row = self.rows[index]
         return np.stack([_rgb(self.raw_train_root / frame["rgb"], self.image_size) for frame in row["frames"]])
 
+    def source_rgb(self, index: int, source: int) -> np.ndarray:
+        source = int(source)
+        if not 0 <= source < T:
+            raise ValueError(f"source must be in [0,20], got {source}")
+        frame = self.rows[int(index)]["frames"][source]
+        return _rgb(self.raw_train_root / frame["rgb"], self.image_size)
+
     def camera(self, index: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         row = self.rows[index]
         intrinsics = np.stack([_pixel_intrinsics(frame["viewpoint"], self.image_size) for frame in row["frames"]])

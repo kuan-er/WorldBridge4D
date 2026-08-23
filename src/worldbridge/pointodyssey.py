@@ -108,6 +108,14 @@ class PointOdysseyDataset:
         scene, start = Path(row["source_scene"]), int(row["start"])
         return np.stack([_rgb(scene / "rgbs" / f"rgb_{start + j:05d}.jpg", self.image_size) for j in range(T)])
 
+    def source_rgb(self, index: int, source: int) -> np.ndarray:
+        source = int(source)
+        if not 0 <= source < T:
+            raise ValueError(f"source must be in [0,20], got {source}")
+        row = self.rows[int(index)]
+        scene, start = Path(row["source_scene"]), int(row["start"])
+        return _rgb(scene / "rgbs" / f"rgb_{start + source:05d}.jpg", self.image_size)
+
     def camera(self, index: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         row, a = self.rows[index], self._load(self.rows[index])
         start = int(row["start"])

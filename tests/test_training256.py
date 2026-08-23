@@ -10,10 +10,14 @@ import pytest
 import torch
 from torch import nn
 
-from worldbridge.dense4d import DenseQueryDecoder, WanHiddenGeometryBackbone, masked_pair_smooth_l1
+from worldbridge.dense4d import (
+    DenseQueryDecoder, DenseQueryWanModel, DenseUpsampler2D, GatedSourceFusion,
+    WanHiddenGeometryBackbone, masked_pair_smooth_l1,
+)
+from worldbridge.dense4d_runtime import parameter_groups
 from worldbridge.training256 import (
     CachedExternalDataset, KubricGeometryMmapStore, LazyLatentCache, MOViF256Dataset,
-    apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
+    RGBUInt8ShardStore, apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
     deterministic_sample_plan, extended_cosine_learning_rate_factor,
     sample_eligible_targets, source_with_eligible_targets, training_diagnostic_due,
 )
@@ -121,7 +125,9 @@ def test_inference_condition_is_dataset_specific_and_checksum_verified(tmp_path)
 def test_resume_planning_uses_status_sidecar_not_full_checkpoint_load():
     source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
     planning = source[source.index("# Cache planning needs only"):source.index("planned_start =")]
-    assert '"resume_status_path", resume.parent / "train_status.json"' in planning
+    assert 'config.get("finetune_expected_global_step", -1)' in planning
+    assert '"resume_status_path", planning_checkpoint.parent / "train_status.json"' in planning
+    assert "finetune_status_path" not in planning
     assert "torch.load" not in planning
 
 
@@ -148,13 +154,366 @@ def test_full_resume_skips_redundant_native_wan_weights(monkeypatch, tmp_path):
     assert "load_wan_pretrained=load_wan_pretrained" in source
 
 
+def test_audited_model_migration_permits_only_new_32px_fusion():
+    from scripts.train_three_dataset_256_fsdp import load_model_state_for_resume
+
+    class TinyModel(nn.Module):
+        def __init__(self, extended: bool):
+            super().__init__()
+            self.old = nn.Linear(2, 2)
+            self.decoder = nn.Module()
+            self.decoder.upsampler = nn.Module()
+            self.decoder.upsampler.source_fusions = nn.ModuleDict()
+            if extended:
+                self.decoder.upsampler.source_fusions["32"] = nn.Linear(2, 2)
+
+    old = TinyModel(extended=False)
+    extended = TinyModel(extended=True)
+    missing = load_model_state_for_resume(
+        extended, old.state_dict(),
+        ("decoder.upsampler.source_fusions.32.",),
+    )
+    assert set(missing) == {
+        "decoder.upsampler.source_fusions.32.weight",
+        "decoder.upsampler.source_fusions.32.bias",
+    }
+    with pytest.raises(RuntimeError, match="structural checkpoint migration mismatch"):
+        load_model_state_for_resume(
+            extended, {"old.weight": old.old.weight.detach().clone()},
+            ("decoder.upsampler.source_fusions.32.",),
+        )
+
+
+def test_weights_only_initialization_permits_only_new_rgb_modules(tmp_path):
+    from scripts.train_three_dataset_256_fsdp import load_initial_model_weights
+
+    class TinyRGBModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.shared = nn.Linear(3, 4)
+            self.decoder = nn.Module()
+            self.decoder.upsampler = nn.Module()
+            self.decoder.upsampler.source_rgb_encoder = nn.Linear(2, 2)
+            self.decoder.upsampler.source_fusions = nn.ModuleDict({"64": nn.Linear(2, 2)})
+
+    model = TinyRGBModel()
+    original = {name: value.detach().clone() for name, value in model.state_dict().items()}
+    old_state = {
+        name: value for name, value in original.items()
+        if not name.startswith((
+            "decoder.upsampler.source_rgb_encoder.",
+            "decoder.upsampler.source_fusions.",
+        ))
+    }
+    checkpoint = tmp_path / "old.pt"
+    torch.save({"model": old_state}, checkpoint)
+    with torch.no_grad():
+        model.shared.weight.zero_()
+    load_initial_model_weights(checkpoint, model, rank=0)
+    torch.testing.assert_close(model.shared.weight, original["shared.weight"])
+    torch.testing.assert_close(
+        model.decoder.upsampler.source_rgb_encoder.weight,
+        original["decoder.upsampler.source_rgb_encoder.weight"],
+    )
+
+
+def test_weights_only_continuation_validates_step_counters_and_lr_schedule(tmp_path):
+    from scripts.train_three_dataset_256_fsdp import load_initial_model_weights
+
+    class TinyRGBModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.shared = nn.Linear(2, 2)
+            self.decoder = nn.Module()
+            self.decoder.upsampler = nn.Module()
+            self.decoder.upsampler.source_rgb_encoder = nn.Linear(2, 2)
+            self.decoder.upsampler.source_fusions = nn.ModuleDict({"64": nn.Linear(2, 2)})
+
+    model = TinyRGBModel()
+    old_state = {
+        name: value for name, value in model.state_dict().items()
+        if "source_rgb_encoder" not in name and "source_fusions" not in name
+    }
+    schedule = {
+        "learning_rate": 3e-4,
+        "schedule_extension_start_step": 56_503,
+        "schedule_extension_horizon_steps": 150_000,
+    }
+    clips = {"kubric": 238_000, "pointodyssey": 204_000, "dynamic_replica": 238_000}
+    checkpoint = tmp_path / "step85000.pt"
+    torch.save({
+        "model": old_state,
+        "config": schedule,
+        "training_state": {"global_step": 85_000, "clips_seen": clips},
+    }, checkpoint)
+    load_initial_model_weights(
+        checkpoint, model, rank=0, expected_global_step=85_000,
+        expected_clips_seen=clips, expected_schedule=schedule,
+    )
+    with pytest.raises(RuntimeError, match="initial model step"):
+        load_initial_model_weights(
+            checkpoint, model, rank=0, expected_global_step=84_999,
+            expected_clips_seen=clips, expected_schedule=schedule,
+        )
+    with pytest.raises(RuntimeError, match="LR schedule mismatch"):
+        load_initial_model_weights(
+            checkpoint, model, rank=0, expected_global_step=85_000,
+            expected_clips_seen=clips,
+            expected_schedule={**schedule, "learning_rate": 1e-4},
+        )
+
+
+def test_optimizer_state_extension_restores_old_and_leaves_only_rgb_fresh():
+    from scripts.train_three_dataset_256_fsdp import extend_optimizer_state_for_rgb
+
+    source = {
+        "state": {
+            "backbone.weight": {"step": torch.tensor(85_000)},
+            "decoder.old.weight": {"step": torch.tensor(85_000)},
+        },
+        "param_groups": [
+            {"name": "wan_backbone", "params": ["backbone.weight"], "lr": 1e-5},
+            {"name": "geometry_adapter", "params": [], "lr": 9e-5},
+            {"name": "dense_decoder", "params": ["decoder.old.weight"], "lr": 9e-5},
+        ],
+    }
+    current = {
+        "wan_backbone": ["backbone.weight"],
+        "geometry_adapter": [],
+        "dense_decoder": [
+            "decoder.old.weight",
+            "decoder.upsampler.source_rgb_encoder.stem.weight",
+            "decoder.upsampler.source_fusions.64.alpha",
+        ],
+    }
+    merged, added = extend_optimizer_state_for_rgb(source, current)
+    assert merged["state"] is source["state"]
+    assert added == current["dense_decoder"][1:]
+    assert merged["param_groups"][2]["params"] == current["dense_decoder"]
+    assert set(merged["state"]) == {"backbone.weight", "decoder.old.weight"}
+    with pytest.raises(RuntimeError, match="invalid_added"):
+        extend_optimizer_state_for_rgb(
+            source,
+            {**current, "dense_decoder": ["decoder.old.weight", "decoder.unexpected"]},
+        )
+
+
+def test_collective_rgb_grad_clipper_handles_local_gradients_and_empty_rank(monkeypatch):
+    from scripts.train_three_dataset_256_fsdp import clip_optimizer_grad_norm_
+
+    monkeypatch.setattr(torch.distributed, "all_reduce", lambda value, op=None: value)
+    parameter = nn.Parameter(torch.tensor([3.0, 4.0]))
+    optimizer = torch.optim.AdamW([parameter])
+    parameter.grad = torch.tensor([3.0, 4.0])
+    norm = clip_optimizer_grad_norm_(optimizer, 1.0, torch.device("cpu"))
+    assert float(norm) == pytest.approx(5.0)
+    torch.testing.assert_close(parameter.grad, torch.tensor([0.6, 0.8]), atol=1e-6, rtol=0)
+    parameter.grad = None
+    assert float(clip_optimizer_grad_norm_(optimizer, 1.0, torch.device("cpu"))) == 0.0
+
+
+def test_source_rgb_only_freezes_every_old_parameter_and_splits_decay_groups():
+    class TinyBackbone(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.old = nn.Linear(2, 2)
+            self.adapter_parameters = []
+            self.bypassed_parameters = []
+
+    class TinyDecoder(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.old = nn.Linear(2, 2)
+            self.upsampler = nn.Module()
+            self.upsampler.source_rgb_encoder = nn.Sequential(
+                nn.Conv2d(3, 4, 1, bias=True), nn.GroupNorm(1, 4),
+            )
+            fusion = nn.Module()
+            fusion.projection = nn.Conv2d(4, 4, 1, bias=True)
+            fusion.alpha = nn.Parameter(torch.zeros(1))
+            self.upsampler.source_fusions = nn.ModuleDict({"64": fusion})
+
+    model = DenseQueryWanModel(TinyBackbone(), TinyDecoder())
+    model.configure_trainable("source_rgb_only")
+    trainable = {
+        name: parameter for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+    }
+    assert trainable
+    assert all(name.startswith((
+        "decoder.upsampler.source_rgb_encoder.",
+        "decoder.upsampler.source_fusions.",
+    )) for name in trainable)
+    assert not model.backbone.old.weight.requires_grad
+    assert not model.decoder.old.weight.requires_grad
+
+    groups = parameter_groups(model, {
+        "learning_rate": 3e-4, "weight_decay": 1e-4,
+        "source_rgb_separate_optimizer_group": True,
+        "source_rgb_learning_rate_multiplier": 3.0,
+    })
+    assert [group["name"] for group in groups] == [
+        "source_rgb_decay", "source_rgb_no_decay",
+    ]
+    assert all(group["lr"] == pytest.approx(9e-4) for group in groups)
+    assert groups[0]["weight_decay"] == pytest.approx(1e-4)
+    assert groups[1]["weight_decay"] == 0.0
+    assert all(parameter.ndim > 1 for parameter in groups[0]["params"])
+    assert all(parameter.ndim <= 1 for parameter in groups[1]["params"])
+
+
+def test_rgb_only_optimizer_filter_retains_moments_and_new_group_options():
+    from scripts.train_three_dataset_256_fsdp import filter_optimizer_state_for_trainable
+
+    encoder = "decoder.upsampler.source_rgb_encoder.stem.weight"
+    alpha = "decoder.upsampler.source_fusions.64.alpha"
+    source = {
+        "state": {
+            encoder: {"step": torch.tensor(90_000)},
+            alpha: {"step": torch.tensor(90_000)},
+            "decoder.old.weight": {"step": torch.tensor(90_000)},
+        },
+        "param_groups": [],
+    }
+    current = [
+        {"name": "source_rgb_decay", "params": [encoder], "lr": 9e-4, "weight_decay": 1e-4},
+        {"name": "source_rgb_no_decay", "params": [alpha], "lr": 9e-4, "weight_decay": 0.0},
+    ]
+    filtered, fresh = filter_optimizer_state_for_trainable(source, current)
+    assert set(filtered["state"]) == {encoder, alpha}
+    assert filtered["param_groups"] == current
+    assert fresh == []
+    with pytest.raises(RuntimeError, match="non-RGB"):
+        filter_optimizer_state_for_trainable(
+            source, [{"name": "bad", "params": ["decoder.old.weight"]}],
+        )
+
+
+def test_joint_optimizer_filter_restores_rgb_and_initializes_old_modules_fresh():
+    from scripts.train_three_dataset_256_fsdp import filter_optimizer_state_for_trainable
+
+    encoder = "decoder.upsampler.source_rgb_encoder.stem.weight"
+    alpha = "decoder.upsampler.source_fusions.64.alpha"
+    wan = "backbone.dit.blocks.0.attn.weight"
+    decoder = "decoder.cross_attention.weight"
+    source = {
+        "state": {
+            encoder: {"step": torch.tensor(92_000)},
+            alpha: {"step": torch.tensor(92_000)},
+        },
+        "param_groups": [],
+    }
+    current = [
+        {"name": "wan_backbone", "params": [wan], "lr": 5e-5},
+        {"name": "dense_decoder", "params": [decoder], "lr": 3e-4},
+        {"name": "source_rgb_decay", "params": [encoder], "lr": 3e-3},
+        {"name": "source_rgb_no_decay", "params": [alpha], "lr": 3e-3},
+    ]
+    filtered, fresh = filter_optimizer_state_for_trainable(
+        source, current, allow_fresh_non_rgb=True,
+    )
+    assert set(filtered["state"]) == {encoder, alpha}
+    assert fresh == [wan, decoder]
+    assert filtered["param_groups"] == current
+    with pytest.raises(RuntimeError, match="lacks RGB"):
+        filter_optimizer_state_for_trainable(
+            {"state": {alpha: source["state"][alpha]}, "param_groups": []},
+            current,
+            allow_fresh_non_rgb=True,
+        )
+
+    alpha32 = "decoder.upsampler.source_fusions.32.alpha"
+    extended_groups = [dict(group) for group in current]
+    extended_groups[-1] = {
+        **extended_groups[-1],
+        "params": [*extended_groups[-1]["params"], alpha32],
+    }
+    migrated, fresh = filter_optimizer_state_for_trainable(
+        source, extended_groups, allow_fresh_non_rgb=True,
+        allowed_fresh_rgb_prefixes=("decoder.upsampler.source_fusions.32.",),
+    )
+    assert set(migrated["state"]) == {encoder, alpha}
+    assert fresh == [wan, decoder, alpha32]
+
+
+def test_source_rgb_32_fusion_is_zero_init_and_precedes_upsampling():
+    upsampler = DenseUpsampler2D(
+        query_dim=4, channels=(8, 4, 2, 1), latent_size=(32, 32),
+        output_size=(256, 256), source_rgb_pyramid=True,
+        source_rgb_channels=(2, 4, 8), source_rgb_fusion_32=True,
+    )
+    assert set(upsampler.source_fusions) == {"32", "64", "128", "256"}
+    assert sum(parameter.numel() for parameter in GatedSourceFusion(128, 1536).parameters()) == 199_938
+    feature = torch.randn(2, 4, 32, 32)
+    source_rgb = torch.randn(1, 3, 256, 256)
+    pyramid = upsampler.encode_source_rgb(source_rgb)
+    assert pyramid[32].shape == (1, 8, 32, 32)
+    with torch.no_grad():
+        baseline = upsampler(feature, source_pyramid=pyramid, batch=1, pairs=2)
+        upsampler.source_fusions["32"].alpha.fill_(1.0)
+        changed = upsampler(feature, source_pyramid=pyramid, batch=1, pairs=2)
+    assert baseline.shape == changed.shape == (2, 3, 256, 256)
+    assert not torch.equal(baseline, changed)
+
+
+def test_fresh_group_warmup_ramps_joint_groups_only():
+    from scripts.train_three_dataset_256_fsdp import apply_fresh_group_warmup
+
+    values = [nn.Parameter(torch.zeros(1)) for _ in range(3)]
+    optimizer = torch.optim.AdamW([
+        {"params": [values[0]], "name": "wan_backbone", "lr": 5e-5},
+        {"params": [values[1]], "name": "dense_decoder", "lr": 3e-4},
+        {"params": [values[2]], "name": "source_rgb_no_decay", "lr": 3e-3},
+    ])
+    factor = apply_fresh_group_warmup(
+        optimizer, {"wan_backbone", "dense_decoder"}, 92_001, 92_000, 500, 0.1,
+    )
+    assert factor == pytest.approx(0.0002)
+    assert optimizer.param_groups[0]["lr"] == pytest.approx(1e-8)
+    assert optimizer.param_groups[1]["lr"] == pytest.approx(6e-8)
+    assert optimizer.param_groups[2]["lr"] == pytest.approx(3e-3)
+    with pytest.raises(RuntimeError, match="groups missing"):
+        apply_fresh_group_warmup(optimizer, {"missing"}, 92_001, 92_000, 500)
+    with pytest.raises(ValueError, match="maximum LR scale"):
+        apply_fresh_group_warmup(
+            optimizer, {"wan_backbone", "dense_decoder"}, 92_001, 92_000, 500, 1.1,
+        )
+
+
+def test_source_rgb_plus_wan_decoder_freezes_only_geometry_and_bypassed_backbone():
+    class TinyBackbone(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.dit = nn.Linear(2, 2)
+            self.adapter = nn.Linear(2, 2)
+            self.bypassed = nn.Parameter(torch.ones(1))
+            self.adapter_parameters = list(self.adapter.parameters())
+            self.bypassed_parameters = [self.bypassed]
+
+    class TinyDecoder(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.old = nn.Linear(2, 2)
+            self.upsampler = nn.Module()
+            self.upsampler.source_rgb_encoder = nn.Conv2d(3, 4, 1)
+            self.upsampler.source_fusions = nn.ModuleDict()
+
+    model = DenseQueryWanModel(TinyBackbone(), TinyDecoder())
+    model.configure_trainable("source_rgb_plus_wan_decoder")
+    assert all(parameter.requires_grad for parameter in model.backbone.dit.parameters())
+    assert all(not parameter.requires_grad for parameter in model.backbone.adapter.parameters())
+    assert not model.backbone.bypassed.requires_grad
+    assert all(parameter.requires_grad for parameter in model.decoder.parameters())
+
+
 def test_full_resume_loads_rank0_model_before_fsdp_sync():
     source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
     helper = source[
         source.index("def load_unwrapped_model_checkpoint"):
         source.index("def load_optimizer_checkpoint")
     ]
-    assert 'model.load_state_dict(payload["model"], strict=True)' in helper
+    assert 'model, payload["model"], allowed_missing_prefixes' in helper
+    assert "model.load_state_dict(state, strict=True)" in source
     assert "fsdp_state_context" not in helper
 
     main = source[source.index("def main()") :]
@@ -169,6 +528,15 @@ def test_wandb_resume_can_skip_already_published_steps():
     source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
     assert '"--wandb-log-after-step", type=int, default=-1' in source
     assert "completed > args.wandb_log_after_step" in source
+
+
+def test_wandb_logs_loss_and_raw_epe_as_separate_dataset_series():
+    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    assert 'run.define_metric("train/loss_by_dataset/*"' in source
+    assert 'run.define_metric("train/raw_epe_m_by_dataset/*"' in source
+    assert 'f"train/loss_by_dataset/{name}": dataset_loss' in source
+    assert 'f"train/raw_epe_m_by_dataset/{name}": raw_epe_m' in source
+    assert '"event": "diagnostic_dataset_cycle_complete"' in source
 
 
 def test_checkpoint_publishes_matching_planning_sidecar():
@@ -210,7 +578,8 @@ def test_staging_is_checksum_verified_reusable_and_wires_runtime_paths(tmp_path)
 def test_inference_script_encodes_backbone_once_before_target_chunks():
     source = (Path(__file__).resolve().parents[1] / "scripts/infer_three_dataset_256.py").read_text()
     assert "z4d = model.backbone(latent, condition)" in source
-    assert "model.decoder(z4d, source_tensor, target_tensor)" in source
+    assert "model.decoder.encode_source_rgb(source_rgb)" in source
+    assert "z4d, source_tensor, target_tensor, source_pyramid=source_pyramid" in source
     assert "model(latent, source_tensor, target_tensor, condition)" not in source
 
 
@@ -440,6 +809,33 @@ def test_experimental_k_modes_require_explicit_world_size_flags():
             {**extended, "schedule_extension_horizon_steps": 90000},
             world=2, allow_two_gpu=True,
         )
+
+
+def test_source_rgb_fusion32_to150k_config_is_strict_structural_migration():
+    import yaml
+    from scripts.train_three_dataset_256_fsdp import validate_config
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "configs/worldbridge4d_256_source_rgb_fusion32_cap0p1_gpu01_to150000.yaml"
+    )
+    config = yaml.safe_load(path.read_text())
+    assert config["source_rgb_fusion_scales"] == [32, 64, 128, 256]
+    assert config["source_rgb_fusion_32"] is True
+    assert config["finetune_allow_new_source_rgb_fusion_32"] is True
+    assert config["finetune_expected_global_step"] == 93_381
+    assert config["finetune_expected_clips_seen"] == {
+        "kubric": 261_464,
+        "pointodyssey": 224_112,
+        "dynamic_replica": 261_472,
+    }
+    assert config["expected_non_wan_parameters"] == 194_400_525
+    assert config["expected_source_rgb_trainable_parameters"] == 813_832
+    assert config["joint_fresh_group_warmup_steps"] == 0
+    assert config["joint_fresh_group_max_lr_scale"] == 0.1
+    assert config["max_steps"] == 150_000
+    assert config["checkpoint_every_after"] == 5_000
+    validate_config(config, world=2, allow_two_gpu=True)
 
 
 def _handoff_original_config():
@@ -763,6 +1159,39 @@ def test_lazy_latent_cache_roundtrip_identity_checksum_and_no_overwrite(tmp_path
         cache.read(7, "clip-7")
 
 
+def test_rgb_uint8_shard_store_validates_structure_and_reads_one_source(tmp_path):
+    root = tmp_path / "rgb"
+    directory = root / "kubric" / "train"
+    directory.mkdir(parents=True)
+    (root / "contract.json").write_text(json.dumps({
+        "contract": "worldbridge4d_rgb_uint8_256_v1",
+        "dtype": "uint8", "layout": "NTHWC", "compression": "none",
+        "clip_shape": [21, 256, 256, 3], "shard_size": 64,
+        "indexes": {"kubric": {"clips": 2}},
+    }))
+    (root / "progress.json").write_text(json.dumps({
+        "status": "complete", "clips_complete": 2, "clips_total": 2,
+        "datasets": {"kubric": {"clips_complete": 2, "clips_total": 2}},
+    }))
+    path = directory / "shard_000000_000002.npy"
+    value = np.lib.format.open_memmap(
+        path, mode="w+", dtype=np.uint8, shape=(2, 21, 256, 256, 3),
+    )
+    value[1, 7].fill(23)
+    value.flush()
+    del value
+    sidecar = path.with_suffix(path.suffix + ".sha256")
+    sidecar.write_text("a" * 64 + f"  {path.name}\n")
+    store = RGBUInt8ShardStore(root, "kubric", 2, max_open_shards=1)
+    source = store.source_rgb(1, 7)
+    assert source.shape == (256, 256, 3) and source.dtype == np.uint8
+    assert np.all(source == 23)
+    assert store.clip(0).shape == (21, 256, 256, 3)
+    sidecar.write_text("invalid\n")
+    with pytest.raises(RuntimeError, match="checksum sidecar"):
+        RGBUInt8ShardStore(root, "kubric", 2)
+
+
 def test_cached_external_dataset_falls_back_to_lazy_latent(tmp_path):
     split = tmp_path / "splits"; split.mkdir()
     (split / "train.jsonl").write_text('{"clip_id":"keep"}\n')
@@ -771,6 +1200,7 @@ def test_cached_external_dataset_falls_back_to_lazy_latent(tmp_path):
         def source_all_targets(self, index, source): return index, source
         def source_all_targets_with_visibility(self, index, source): return index, source, True
         def rgb(self, index): return np.zeros((21, 256, 256, 3), np.uint8)
+        def source_rgb(self, index, source): return np.full((256, 256, 3), source, np.uint8)
     dataset = CachedExternalDataset(
         Geometry(), tmp_path, "pointodyssey", allow_missing_latents=True
     )
@@ -780,6 +1210,7 @@ def test_cached_external_dataset_falls_back_to_lazy_latent(tmp_path):
     assert dataset.latent_cached(0)
     np.testing.assert_array_equal(dataset.clean_latent(0), value)
     assert dataset.rgb(0).shape == (21, 256, 256, 3)
+    np.testing.assert_array_equal(dataset.source_rgb(0, 7), np.full((256, 256, 3), 7, np.uint8))
 
 
 def test_parent_balanced_plan_keeps_ranks_in_one_scene_block():

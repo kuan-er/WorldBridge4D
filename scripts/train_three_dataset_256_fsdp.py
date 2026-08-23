@@ -73,6 +73,44 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def clip_optimizer_grad_norm_(
+    optimizer: torch.optim.Optimizer, max_norm: float, device: torch.device,
+) -> torch.Tensor:
+    """Collectively clip optimizer-owned sharded gradients on every rank.
+
+    With ``use_orig_params=True`` a small trainable suffix can reside entirely
+    on one rank while another rank has no local gradients. FSDP's convenience
+    clipper returns early on the empty rank, which leaves the owner blocked in
+    its collective. This helper always participates in one all-reduce.
+    """
+    max_norm = float(max_norm)
+    if max_norm <= 0:
+        raise ValueError("gradient clip norm must be positive")
+    local_squared = torch.zeros((), device=device, dtype=torch.float64)
+    gradients = []
+    seen: set[int] = set()
+    for group in optimizer.param_groups:
+        for parameter in group["params"]:
+            if id(parameter) in seen:
+                continue
+            seen.add(id(parameter))
+            gradient = parameter.grad
+            if gradient is None:
+                continue
+            gradients.append(gradient)
+            local_squared += gradient.detach().double().square().sum()
+    dist.all_reduce(local_squared, op=dist.ReduceOp.SUM)
+    total_norm = local_squared.sqrt()
+    coefficient = torch.clamp(
+        torch.as_tensor(max_norm, device=device, dtype=torch.float64)
+        / (total_norm + 1e-6),
+        max=1.0,
+    )
+    for gradient in gradients:
+        gradient.mul_(coefficient.to(dtype=gradient.dtype))
+    return total_norm.float()
+
+
 def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
                     allow_four_gpu_experiment: bool = False,
                     allow_arbitrary_world: bool = False) -> None:
@@ -85,6 +123,27 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
     mismatches = {key: (config.get(key), value) for key, value in expected.items() if config.get(key) != value}
     if mismatches:
         raise ValueError(f"256/200M frozen configuration mismatch: {mismatches}")
+    if bool(config.get("source_rgb_pyramid", False)):
+        if list(config.get("source_rgb_channels", [])) != [32, 64, 128]:
+            raise ValueError("source RGB pyramid fixes channels to [32,64,128]")
+        expected_rgb_scales = (
+            [32, 64, 128, 256]
+            if bool(config.get("source_rgb_fusion_32", False))
+            else [64, 128, 256]
+        )
+        if list(config.get("source_rgb_fusion_scales", [])) != expected_rgb_scales:
+            raise ValueError(
+                f"source RGB pyramid fixes fusion scales to {expected_rgb_scales}"
+            )
+        if not bool(config.get("source_rgb_zero_init", False)):
+            raise ValueError("source RGB pyramid requires zero-initialized residual gates")
+        if not config.get("source_rgb_cache_root"):
+            raise ValueError("source RGB pyramid requires source_rgb_cache_root")
+        if int(config.get("source_rgb_cache_max_open_shards", 0)) < 1:
+            raise ValueError("source RGB mmap cache size must be positive")
+        if bool(config.get("finetune_allow_new_source_rgb_fusion_32", False)) \
+                and not bool(config.get("source_rgb_fusion_32", False)):
+            raise ValueError("32px structural migration requires source_rgb_fusion_32")
     wan_num_layers = int(config.get("wan_num_layers", 30))
     if wan_num_layers < 16:
         raise ValueError("wan_num_layers must include readout blocks 13,14,15")
@@ -94,8 +153,29 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
             f"wan_hidden_layers must include the model's final block: {expected_hidden_layers}"
         )
     mode = str(config.get("trainable_mode", "full"))
-    if mode not in {"full", "lora"}:
-        raise ValueError("three-dataset training supports trainable_mode full or lora")
+    allowed_modes = {
+        "full", "lora", "source_rgb_only", "source_rgb_plus_wan_decoder",
+    }
+    if mode not in allowed_modes:
+        raise ValueError(
+            "three-dataset training supports full, lora, and audited source-RGB phases"
+        )
+    if mode.startswith("source_rgb_"):
+        if not bool(config.get("source_rgb_pyramid", False)):
+            raise ValueError("source-RGB trainable modes require the RGB pyramid")
+        if not bool(config.get("source_rgb_separate_optimizer_group", False)):
+            raise ValueError("source-RGB trainable modes require separate optimizer groups")
+        multiplier = float(config.get("source_rgb_learning_rate_multiplier", 0.0))
+        if multiplier not in {3.0, 10.0}:
+            raise ValueError("source-RGB warm-up LR multiplier must be exactly 3 or 10")
+        if not allow_two_gpu or world != 2:
+            raise ValueError("source-RGB warm-up is registered only as a two-GPU experiment")
+    if mode == "source_rgb_plus_wan_decoder":
+        if int(config.get("joint_fresh_group_warmup_steps", 0)) < 0:
+            raise ValueError("joint fresh-group warm-up steps must be non-negative")
+        max_scale = float(config.get("joint_fresh_group_max_lr_scale", 1.0))
+        if not 0.0 < max_scale <= 1.0:
+            raise ValueError("joint fresh-group maximum LR scale must be in (0,1]")
     if mode == "lora":
         if int(config.get("lora_rank", 0)) <= 0:
             raise ValueError("lora_rank must be positive")
@@ -475,6 +555,8 @@ def init_wandb(config: dict[str, Any], output: Path, rank: int, disabled: bool):
     )
     run.define_metric("global_step")
     run.define_metric("train/*", step_metric="global_step")
+    run.define_metric("train/loss_by_dataset/*", step_metric="global_step")
+    run.define_metric("train/raw_epe_m_by_dataset/*", step_metric="global_step")
     run.define_metric("system/*", step_metric="global_step")
     run.define_metric("sampling/*", step_metric="global_step")
     return run
@@ -590,9 +672,33 @@ def prune_periodic_checkpoints(output: Path, keep_last: int) -> list[str]:
     return removed
 
 
-def load_unwrapped_model_checkpoint(path: Path, model: torch.nn.Module, rank: int,
-                                    world: int
-                                    ) -> tuple[dict[str, Any] | None, dict[str, Any], list[Any]]:
+def load_model_state_for_resume(
+    model: torch.nn.Module,
+    state: dict[str, torch.Tensor],
+    allowed_missing_prefixes: tuple[str, ...] = (),
+) -> list[str]:
+    """Load an exact state, or one audited zero-init structural extension."""
+    if not allowed_missing_prefixes:
+        model.load_state_dict(state, strict=True)
+        return []
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    invalid_missing = [
+        name for name in missing
+        if not name.startswith(allowed_missing_prefixes)
+    ]
+    if unexpected or invalid_missing or not missing:
+        raise RuntimeError(
+            "structural checkpoint migration mismatch; "
+            f"missing={missing[:8]}, invalid_missing={invalid_missing[:8]}, "
+            f"unexpected={unexpected[:8]}"
+        )
+    return list(missing)
+
+
+def load_unwrapped_model_checkpoint(
+    path: Path, model: torch.nn.Module, rank: int, world: int,
+    allowed_missing_prefixes: tuple[str, ...] = (),
+) -> tuple[dict[str, Any] | None, dict[str, Any], list[Any]]:
     """Load rank 0 before FSDP so ``sync_module_states`` broadcasts exact weights.
 
     Loading a rank-0-only FULL_STATE_DICT after FSDP construction does not
@@ -613,8 +719,267 @@ def load_unwrapped_model_checkpoint(path: Path, model: torch.nn.Module, rank: in
     if len(states) != world:
         raise ValueError("checkpoint lacks one RNG state per rank")
     if rank == 0:
-        model.load_state_dict(payload["model"], strict=True)
+        missing = load_model_state_for_resume(
+            model, payload["model"], allowed_missing_prefixes,
+        )
+        if missing:
+            print(json.dumps({
+                "event": "structural_model_extension_loaded",
+                "fresh_parameters": len(missing),
+                "allowed_prefixes": list(allowed_missing_prefixes),
+            }), flush=True)
     return payload, training_state, states
+
+
+def load_initial_model_weights(
+    path: Path,
+    model: torch.nn.Module,
+    rank: int,
+    expected_global_step: int = 0,
+    expected_clips_seen: dict[str, int] | None = None,
+    expected_schedule: dict[str, Any] | None = None,
+    restore_optimizer: bool = False,
+) -> dict[str, Any] | None:
+    """Initialize the RGB-pyramid route from an old strict model-only state.
+
+    With ``restore_optimizer``, existing parameters retain their saved AdamW
+    moments and step while the new RGB parameters receive empty, lazy optimizer
+    state.  This is a structure-aware continuation, not a strict exact resume.
+    """
+    if rank != 0:
+        return None
+    payload = torch.load(path, map_location="cpu", mmap=True, weights_only=True)
+    source_state = payload.get("training_state", {})
+    if expected_global_step:
+        source_step = int(source_state.get("global_step", -1))
+        if source_step != int(expected_global_step):
+            raise RuntimeError(
+                f"initial model step {source_step} != expected {expected_global_step}"
+            )
+        source_clips = {
+            key: int(value)
+            for key, value in source_state.get("clips_seen", {}).items()
+        }
+        expected_clips = {
+            key: int(value) for key, value in (expected_clips_seen or {}).items()
+        }
+        if source_clips != expected_clips:
+            raise RuntimeError(
+                f"initial model clip counters {source_clips} != expected {expected_clips}"
+            )
+        source_config = payload.get("config", {})
+        schedule_mismatches = {
+            key: (source_config.get(key), value)
+            for key, value in (expected_schedule or {}).items()
+            if source_config.get(key) != value
+        }
+        if schedule_mismatches:
+            raise RuntimeError(
+                f"initial model LR schedule mismatch: {schedule_mismatches}"
+            )
+    missing, unexpected = model.load_state_dict(payload["model"], strict=False)
+    allowed_prefixes = (
+        "decoder.upsampler.source_rgb_encoder.",
+        "decoder.upsampler.source_fusions.",
+    )
+    invalid_missing = [
+        name for name in missing if not name.startswith(allowed_prefixes)
+    ]
+    if invalid_missing or unexpected:
+        raise RuntimeError(
+            "initial model checkpoint mismatch; "
+            f"missing={invalid_missing[:8]}, unexpected={unexpected[:8]}"
+        )
+    if not missing:
+        raise RuntimeError("initial model checkpoint already contains the RGB pyramid")
+    print(json.dumps({
+        "event": "initial_model_weights_loaded",
+        "checkpoint": str(path.resolve()),
+        "new_parameters": len(missing),
+        "optimizer": (
+            "checkpoint_plus_fresh_rgb" if restore_optimizer else "fresh"
+        ),
+        "rng": "restored" if restore_optimizer else "fresh",
+        "global_step": int(expected_global_step),
+        "clips_seen": expected_clips_seen or {},
+    }), flush=True)
+    return payload
+
+
+def extend_optimizer_state_for_rgb(
+    source: dict[str, Any], current_group_names: dict[str, list[str]],
+) -> tuple[dict[str, Any], list[str]]:
+    """Extend a name-keyed full AdamW state with only the new RGB parameters."""
+    source_groups = {
+        str(group.get("name")): group for group in source["param_groups"]
+    }
+    if set(source_groups) != set(current_group_names):
+        raise RuntimeError(
+            f"optimizer groups changed: {set(source_groups)} != {set(current_group_names)}"
+        )
+    merged_groups = []
+    added_names: list[str] = []
+    allowed_prefixes = (
+        "decoder.upsampler.source_rgb_encoder.",
+        "decoder.upsampler.source_fusions.",
+    )
+    for group_name, names in current_group_names.items():
+        old_group = source_groups[group_name]
+        old_names = list(old_group["params"])
+        old_set = set(old_names)
+        current_set = set(names)
+        removed = sorted(old_set - current_set)
+        added = [name for name in names if name not in old_set]
+        invalid_added = [
+            name for name in added if not name.startswith(allowed_prefixes)
+        ]
+        if removed or invalid_added:
+            raise RuntimeError(
+                f"optimizer parameter mismatch in {group_name}: "
+                f"removed={removed[:8]}, invalid_added={invalid_added[:8]}"
+            )
+        if added and group_name != "dense_decoder":
+            raise RuntimeError(
+                f"new RGB optimizer parameters unexpectedly entered {group_name}"
+            )
+        merged_groups.append({**old_group, "params": list(names)})
+        added_names.extend(added)
+    if not added_names:
+        raise RuntimeError("optimizer checkpoint already contains RGB parameters")
+    return {
+        "state": source["state"],
+        "param_groups": merged_groups,
+    }, added_names
+
+
+def load_extended_optimizer_checkpoint(
+    payload: dict[str, Any] | None,
+    model: FSDP,
+    optimizer: torch.optim.Optimizer,
+    states: list[Any],
+    current_group_names: dict[str, list[str]],
+    rank: int,
+) -> None:
+    full_optimizer_state = None
+    added_names: list[str] = []
+    if rank == 0:
+        if payload is None:
+            raise RuntimeError("rank zero lacks initial optimizer checkpoint")
+        full_optimizer_state, added_names = extend_optimizer_state_for_rgb(
+            payload["optimizer"], current_group_names,
+        )
+    optimizer_state = FSDP.scatter_full_optim_state_dict(
+        full_optimizer_state, model, optim=optimizer,
+    )
+    optimizer.load_state_dict(optimizer_state)
+    restore_rng_state(states[rank])
+    if rank == 0:
+        print(json.dumps({
+            "event": "initial_optimizer_state_loaded",
+            "restored_parameters": len(payload["optimizer"]["state"]),
+            "fresh_rgb_parameters": len(added_names),
+            "optimizer_step": int(payload["training_state"]["global_step"]),
+            "rng_states": len(states),
+        }), flush=True)
+
+
+def filter_optimizer_state_for_trainable(
+    source: dict[str, Any], current_groups: list[dict[str, Any]],
+    *, allow_fresh_non_rgb: bool = False,
+    allowed_fresh_rgb_prefixes: tuple[str, ...] = (),
+) -> tuple[dict[str, Any], list[str]]:
+    """Restore all available moments while strictly preserving RGB history.
+
+    RGB-only warm-up requires every current tensor to have a source state. The
+    following joint phase may add Wan and decoder tensors with fresh AdamW state,
+    but all RGB tensors must still restore their accumulated moments.
+    """
+    prefixes = (
+        "decoder.upsampler.source_rgb_encoder.",
+        "decoder.upsampler.source_fusions.",
+    )
+    names = [str(name) for group in current_groups for name in group["params"]]
+    if len(names) != len(set(names)):
+        raise RuntimeError("fine-tune optimizer contains duplicate parameters")
+    current = set(names)
+    source_names = set(source["state"])
+    invalid = [name for name in names if not name.startswith(prefixes)]
+    if invalid and not allow_fresh_non_rgb:
+        raise RuntimeError(
+            f"RGB-only optimizer unexpectedly includes non-RGB parameters: {invalid[:8]}"
+        )
+    rgb_names = {name for name in current if name.startswith(prefixes)}
+    missing_rgb = sorted(rgb_names - source_names)
+    invalid_missing_rgb = [
+        name for name in missing_rgb
+        if not name.startswith(allowed_fresh_rgb_prefixes)
+    ]
+    if invalid_missing_rgb:
+        raise RuntimeError(
+            f"source checkpoint lacks RGB AdamW state: {invalid_missing_rgb[:8]}"
+        )
+    fresh = [name for name in names if name not in source_names]
+    if fresh and not allow_fresh_non_rgb:
+        raise RuntimeError(f"source checkpoint lacks RGB AdamW state: {fresh[:8]}")
+    fresh_rgb = [name for name in fresh if name.startswith(prefixes)]
+    invalid_fresh_rgb = [
+        name for name in fresh_rgb
+        if not name.startswith(allowed_fresh_rgb_prefixes)
+    ]
+    if invalid_fresh_rgb:
+        raise RuntimeError(
+            f"joint phase would reset RGB AdamW state: {invalid_fresh_rgb[:8]}"
+        )
+    restored = [name for name in names if name in source_names]
+    return ({
+        "state": {name: source["state"][name] for name in restored},
+        "param_groups": current_groups,
+    }, fresh)
+
+
+def load_finetune_optimizer_checkpoint(
+    payload: dict[str, Any] | None,
+    model: FSDP,
+    optimizer: torch.optim.Optimizer,
+    states: list[Any],
+    current_group_names: dict[str, list[str]],
+    rank: int,
+    *,
+    allow_fresh_non_rgb: bool = False,
+    allowed_fresh_rgb_prefixes: tuple[str, ...] = (),
+) -> None:
+    full_optimizer_state = None
+    restored = 0
+    fresh = 0
+    if rank == 0:
+        if payload is None:
+            raise RuntimeError("rank zero lacks the fine-tune source checkpoint")
+        current_groups = []
+        for group in optimizer.param_groups:
+            group_name = str(group["name"])
+            values = {key: value for key, value in group.items() if key != "params"}
+            values["params"] = list(current_group_names[group_name])
+            current_groups.append(values)
+        full_optimizer_state, fresh_names = filter_optimizer_state_for_trainable(
+            payload["optimizer"], current_groups,
+            allow_fresh_non_rgb=allow_fresh_non_rgb,
+            allowed_fresh_rgb_prefixes=allowed_fresh_rgb_prefixes,
+        )
+        restored = len(full_optimizer_state["state"])
+        fresh = len(fresh_names)
+    optimizer_state = FSDP.scatter_full_optim_state_dict(
+        full_optimizer_state, model, optim=optimizer,
+    )
+    optimizer.load_state_dict(optimizer_state)
+    restore_rng_state(states[rank])
+    if rank == 0:
+        print(json.dumps({
+            "event": "finetune_optimizer_state_loaded",
+            "restored_trainable_parameters": restored,
+            "fresh_trainable_parameters": fresh,
+            "optimizer_groups": [group["name"] for group in optimizer.param_groups],
+            "rng_states": len(states),
+        }), flush=True)
 
 
 def load_optimizer_checkpoint(payload: dict[str, Any] | None, model: FSDP,
@@ -628,11 +993,48 @@ def load_optimizer_checkpoint(payload: dict[str, Any] | None, model: FSDP,
     restore_rng_state(states[rank])
 
 
+def apply_fresh_group_warmup(
+    optimizer: torch.optim.Optimizer,
+    group_names: set[str],
+    update_number: int,
+    start_step: int,
+    warmup_steps: int,
+    max_scale: float = 1.0,
+) -> float:
+    """Ramp newly unfrozen groups without reducing the mature RGB groups."""
+    if not 0.0 < max_scale <= 1.0:
+        raise ValueError("fresh-group maximum LR scale must be in (0,1]")
+    if warmup_steps <= 0:
+        factor = max_scale
+    else:
+        progress = int(update_number) - int(start_step)
+        if progress <= 0:
+            raise ValueError("fresh-group warm-up requires an update after the phase start")
+        factor = max_scale * min(1.0, progress / int(warmup_steps))
+    found: set[str] = set()
+    for group in optimizer.param_groups:
+        name = str(group.get("name"))
+        if name in group_names:
+            group["lr"] = float(group["lr"]) * factor
+            found.add(name)
+    if found != group_names:
+        raise RuntimeError(f"fresh optimizer groups missing: {sorted(group_names - found)}")
+    return factor
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--resume")
+    parser.add_argument(
+        "--finetune-from",
+        help="strictly load model/RNG and selected AdamW moments into a new optimizer phase",
+    )
+    parser.add_argument(
+        "--init-model-weights",
+        help="start a new trajectory from model weights only; permits only new RGB-pyramid parameters",
+    )
     parser.add_argument("--checkpoint-dir", help="fast local checkpoint directory; defaults to output-dir")
     parser.add_argument("--durable-checkpoint", help="best-effort asynchronous replica path for latest checkpoint")
     parser.add_argument("--steps", type=int)
@@ -664,7 +1066,11 @@ def main() -> None:
     parser.add_argument("--lazy-vae-pipeline", action="store_true",
                         help="warm a short prefix, then encode future clips beside training")
     parser.add_argument("--pipeline-lookahead-steps", type=int, default=16)
+    parser.add_argument("--source-rgb-lr-multiplier", type=float)
     args = parser.parse_args()
+    initialization_modes = [args.resume, args.finetune_from, args.init_model_weights]
+    if sum(value is not None for value in initialization_modes) > 1:
+        parser.error("--resume, --finetune-from, and --init-model-weights are mutually exclusive")
     if args.lazy_vae_cache and args.lazy_vae_pipeline:
         parser.error("--lazy-vae-cache and --lazy-vae-pipeline are mutually exclusive")
     if args.pipeline_lookahead_steps < 1:
@@ -672,6 +1078,10 @@ def main() -> None:
     for value in (signal.SIGINT, signal.SIGTERM, signal.SIGUSR1):
         signal.signal(value, stop_signal)
     config = yaml.safe_load(Path(args.config).read_text())
+    if args.source_rgb_lr_multiplier is not None:
+        config["source_rgb_learning_rate_multiplier"] = float(
+            args.source_rgb_lr_multiplier
+        )
     rank, world, local, device = initialize_distributed()
     validate_config(
         config, world, args.allow_two_gpu_gate, args.allow_four_gpu_experiment,
@@ -683,6 +1093,49 @@ def main() -> None:
     output = Path(args.output_dir).resolve()
     checkpoint_dir = Path(args.checkpoint_dir).resolve() if args.checkpoint_dir else output
     durable_checkpoint = Path(args.durable_checkpoint).resolve() if args.durable_checkpoint else None
+    initial_model_weights = (
+        Path(args.init_model_weights).resolve() if args.init_model_weights else None
+    )
+    finetune_from = Path(args.finetune_from).resolve() if args.finetune_from else None
+    if finetune_from is not None:
+        if not finetune_from.is_file():
+            raise FileNotFoundError(finetune_from)
+        if (checkpoint_dir / "latest.pt").is_file():
+            raise ValueError(
+                "fine-tune initialization refuses an existing implicit resume checkpoint"
+            )
+        config["finetune_from"] = str(finetune_from)
+    initial_model_global_step = int(config.get("initial_model_global_step", 0))
+    initial_model_restore_optimizer = bool(
+        config.get("initial_model_restore_optimizer", False)
+    )
+    initial_model_clips_seen = {
+        key: int(value)
+        for key, value in config.get("initial_model_clips_seen", {}).items()
+    }
+    if initial_model_global_step < 0:
+        raise ValueError("initial_model_global_step must be non-negative")
+    if initial_model_global_step and initial_model_weights is None:
+        raise ValueError("initial_model_global_step requires --init-model-weights")
+    if initial_model_restore_optimizer and not initial_model_global_step:
+        raise ValueError(
+            "initial_model_restore_optimizer requires a positive initial model step"
+        )
+    if initial_model_global_step and set(initial_model_clips_seen) != set(DATASET_NAMES):
+        raise ValueError(
+            "initial_model_clips_seen must contain all three datasets"
+        )
+    if initial_model_weights is not None:
+        if not bool(config.get("source_rgb_pyramid", False)):
+            raise ValueError("--init-model-weights is reserved for the new source RGB route")
+        if not initial_model_weights.is_file():
+            raise FileNotFoundError(initial_model_weights)
+        implicit_resume = checkpoint_dir / "latest.pt"
+        if implicit_resume.is_file():
+            raise ValueError(
+                f"weights-only initialization refuses existing implicit resume: {implicit_resume}"
+            )
+        config["initial_model_weights"] = str(initial_model_weights)
     if rank == 0:
         output.mkdir(parents=True, exist_ok=True)
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -702,18 +1155,27 @@ def main() -> None:
     # contended HDD before model construction; full checkpoint validation still
     # occurs once in load_checkpoint below.
     metadata = [None]
-    if rank == 0 and resume.is_file():
+    planning_checkpoint = finetune_from if finetune_from is not None else resume
+    if rank == 0 and finetune_from is not None:
+        # A fine-tune source is immutable but its parent trajectory may continue
+        # updating train_status.json. Plan from the checkpoint-bound expected
+        # step, then validate the actual full checkpoint after model construction.
+        metadata[0] = int(config.get("finetune_expected_global_step", -1))
+        if metadata[0] < 0:
+            raise ValueError("fine-tune planning requires finetune_expected_global_step")
+    elif rank == 0 and planning_checkpoint.is_file():
         status_path = Path(config.get(
-            "resume_status_path", resume.parent / "train_status.json"
+            "resume_status_path", planning_checkpoint.parent / "train_status.json"
         ))
         if not status_path.is_file():
             raise FileNotFoundError(
-                f"resume planning sidecar missing: {status_path}; refusing a second full checkpoint read"
+                f"checkpoint planning sidecar missing: {status_path}; "
+                "refusing a second full checkpoint read"
             )
         status = json.loads(status_path.read_text())
         metadata[0] = int(status["completed_steps"])
     dist.broadcast_object_list(metadata, src=0)
-    planned_start = int(metadata[0] or 0)
+    planned_start = int(metadata[0] or initial_model_global_step)
     if planned_start >= target_steps:
         raise ValueError(f"checkpoint step {planned_start} already reaches target {target_steps}")
     lazy_counts = None
@@ -776,10 +1238,20 @@ def main() -> None:
     # nonzero ranks at their construction weights and is not an exact resume.
     # Fresh runs still require and load the native Wan checkpoint.
     load_wan_pretrained = not resume.is_file()
+    if initial_model_weights is not None or finetune_from is not None:
+        load_wan_pretrained = False
     if rank == 0 and not load_wan_pretrained:
+        if initial_model_weights is not None:
+            load_event = "wan_pretrained_load_skipped_for_initial_weights"
+            load_checkpoint = initial_model_weights
+        elif finetune_from is not None:
+            load_event = "wan_pretrained_load_skipped_for_finetune"
+            load_checkpoint = finetune_from
+        else:
+            load_event = "wan_pretrained_load_skipped_for_full_resume"
+            load_checkpoint = resume
         print(json.dumps({
-            "event": "wan_pretrained_load_skipped_for_full_resume",
-            "resume": str(resume),
+            "event": load_event, "checkpoint": str(load_checkpoint),
         }), flush=True)
     model = build_real_model(
         config, device, load_wan_pretrained=load_wan_pretrained,
@@ -802,15 +1274,138 @@ def main() -> None:
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
         raise RuntimeError(f"non-Wan readout parameters {non_wan_count:,} != expected {expected_non_wan:,}")
+    initial_payload: dict[str, Any] | None = None
+    initial_rng_states: list[Any] = []
+    finetune_payload: dict[str, Any] | None = None
+    finetune_state: dict[str, Any] | None = None
+    finetune_rng_states: list[Any] = []
     resume_payload: dict[str, Any] | None = None
     resume_state: dict[str, Any] | None = None
     resume_rng_states: list[Any] = []
+    if initial_model_weights is not None:
+        initial_payload = load_initial_model_weights(
+            initial_model_weights,
+            model,
+            rank,
+            expected_global_step=initial_model_global_step,
+            expected_clips_seen=initial_model_clips_seen,
+            expected_schedule={
+                key: config.get(key) for key in (
+                    "learning_rate",
+                    "geometry_learning_rate",
+                    "backbone_learning_rate",
+                    "warmup_steps",
+                    "schedule_horizon_steps",
+                    "schedule_extension_start_step",
+                    "schedule_extension_horizon_steps",
+                )
+            },
+            restore_optimizer=initial_model_restore_optimizer,
+        )
+        if initial_model_restore_optimizer:
+            initial_metadata = [(
+                int(initial_payload["training_state"].get("world_size", world)),
+                initial_payload["training_state"].get("rng_states", []),
+            ) if rank == 0 else None]
+            dist.broadcast_object_list(initial_metadata, src=0)
+            saved_world, initial_rng_states = initial_metadata[0]
+            if saved_world != world:
+                raise ValueError(
+                    f"initial optimizer world-size mismatch: "
+                    f"checkpoint={saved_world}, current={world}"
+                )
+            if len(initial_rng_states) != world:
+                raise ValueError("initial checkpoint lacks one RNG state per rank")
+    if finetune_from is not None:
+        allow_new_rgb_32 = bool(config.get(
+            "finetune_allow_new_source_rgb_fusion_32", False,
+        ))
+        finetune_payload, finetune_state, finetune_rng_states = load_unwrapped_model_checkpoint(
+            finetune_from, model, rank, world,
+            allowed_missing_prefixes=(
+                ("decoder.upsampler.source_fusions.32.",)
+                if allow_new_rgb_32 else ()
+            ),
+        )
+        expected_step = int(config.get("finetune_expected_global_step", -1))
+        if expected_step < 0 or int(finetune_state["global_step"]) != expected_step:
+            raise RuntimeError(
+                f"fine-tune source step {finetune_state['global_step']} != expected {expected_step}"
+            )
+        expected_clips = {
+            key: int(value)
+            for key, value in config.get("finetune_expected_clips_seen", {}).items()
+        }
+        source_clips = {
+            key: int(value) for key, value in finetune_state["clips_seen"].items()
+        }
+        if expected_clips != source_clips:
+            raise RuntimeError(
+                f"fine-tune source clip counters {source_clips} != expected {expected_clips}"
+            )
     if resume.is_file():
         resume_payload, resume_state, resume_rng_states = load_unwrapped_model_checkpoint(
             resume, model, rank, world,
         )
 
     groups = parameter_groups(model, config)
+    parameter_names = {id(parameter): name for name, parameter in model.named_parameters()}
+    current_group_names = {
+        str(group["name"]): [parameter_names[id(parameter)] for parameter in group["params"]]
+        for group in groups
+    }
+    trainable_names = [name for names in current_group_names.values() for name in names]
+    trainable_count = sum(
+        parameter.numel() for group in groups for parameter in group["params"]
+    )
+    trainable_mode = str(config.get("trainable_mode"))
+    if trainable_mode == "source_rgb_only":
+        prefixes = (
+            "decoder.upsampler.source_rgb_encoder.",
+            "decoder.upsampler.source_fusions.",
+        )
+        invalid = [name for name in trainable_names if not name.startswith(prefixes)]
+        expected_trainable = int(config.get("expected_source_rgb_trainable_parameters", -1))
+        if invalid or trainable_count != expected_trainable:
+            raise RuntimeError(
+                "source-RGB freeze audit failed: "
+                f"invalid={invalid[:8]}, count={trainable_count}, expected={expected_trainable}"
+            )
+    elif trainable_mode == "source_rgb_plus_wan_decoder":
+        adapter_ids = {id(value) for value in model.backbone.adapter_parameters}
+        bypassed_ids = {id(value) for value in model.backbone.bypassed_parameters}
+        expected_joint = {
+            name for name, parameter in model.named_parameters()
+            if (
+                name.startswith("decoder.")
+                or (
+                    name.startswith("backbone.")
+                    and id(parameter) not in adapter_ids
+                    and id(parameter) not in bypassed_ids
+                )
+            )
+        }
+        actual_joint = set(trainable_names)
+        if actual_joint != expected_joint:
+            raise RuntimeError(
+                "joint Wan+decoder freeze audit failed: "
+                f"missing={sorted(expected_joint - actual_joint)[:8]}, "
+                f"unexpected={sorted(actual_joint - expected_joint)[:8]}"
+            )
+    if rank == 0:
+        print(json.dumps({
+            "event": "trainable_parameter_groups",
+            "mode": str(config.get("trainable_mode")),
+            "trainable_parameters": trainable_count,
+            "groups": {
+                name: {
+                    "parameters": len(current_group_names[name]),
+                    "lr": float(group["lr"]),
+                    "weight_decay": float(group.get("weight_decay", config["weight_decay"])),
+                }
+                for name, group in ((str(value["name"]), value) for value in groups)
+            },
+        }), flush=True)
     dtype = precision_dtype(config["precision"])
     if str(config.get("trainable_mode", "full")) == "lora":
         auto_wrap = wan_block_auto_wrap_policy
@@ -826,8 +1421,56 @@ def main() -> None:
         limit_all_gathers=True, forward_prefetch=False,
     )
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config["weight_decay"]))
-    start_step = 0
+    start_step = initial_model_global_step
     clips_seen = {name: 0 for name in DATASET_NAMES}
+    if initial_model_global_step:
+        clips_seen.update(initial_model_clips_seen)
+    if initial_model_restore_optimizer:
+        load_extended_optimizer_checkpoint(
+            initial_payload,
+            fsdp,
+            optimizer,
+            initial_rng_states,
+            current_group_names,
+            rank,
+        )
+        del initial_payload
+    if finetune_state is not None:
+        if bool(config.get("finetune_restore_trainable_optimizer", False)):
+            load_finetune_optimizer_checkpoint(
+                finetune_payload,
+                fsdp,
+                optimizer,
+                finetune_rng_states,
+                current_group_names,
+                rank,
+                allow_fresh_non_rgb=(
+                    str(config.get("trainable_mode")) == "source_rgb_plus_wan_decoder"
+                ),
+                allowed_fresh_rgb_prefixes=(
+                    ("decoder.upsampler.source_fusions.32.",)
+                    if bool(config.get("finetune_allow_new_source_rgb_fusion_32", False))
+                    else ()
+                ),
+            )
+        else:
+            restore_rng_state(finetune_rng_states[rank])
+        start_step = int(finetune_state["global_step"])
+        clips_seen.update({
+            key: int(value) for key, value in finetune_state["clips_seen"].items()
+        })
+        del finetune_payload
+        if rank == 0:
+            print(json.dumps({
+                "event": "finetune_state_loaded", "step": start_step,
+                "world_size": world,
+                "optimizer": (
+                    "filtered_trainable_state"
+                    if bool(config.get("finetune_restore_trainable_optimizer", False))
+                    else "fresh"
+                ),
+                "rng_states": len(finetune_rng_states),
+            }), flush=True)
     if resume_state is not None:
         load_optimizer_checkpoint(
             resume_payload, fsdp, optimizer, resume_rng_states, rank,
@@ -850,11 +1493,13 @@ def main() -> None:
     accumulation = int(config["gradient_accumulation"])
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
+    use_source_rgb = bool(config.get("source_rgb_pyramid", False))
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     ensure_dataset_diagnostics = bool(
         config.get("diagnostic_ensure_dataset_coverage", False)
     )
     last_diagnostic_cycle: dict[str, int] = {}
+    completed_diagnostic_cycles: set[int] = set()
     extension_start = config.get("schedule_extension_start_step")
     extension_horizon = config.get("schedule_extension_horizon_steps")
     checkpoint_steps = {int(value) for value in config.get("checkpoint_steps", [])}
@@ -889,9 +1534,16 @@ def main() -> None:
                         step_dataset, candidate, candidate_sources,
                         min_targets=required_targets,
                     )
-                    return (candidate, source, xyz, valid), time.perf_counter() - task_started
                 except ValueError as error:
                     last_error = error
+                    continue
+                # RGB failures are data-contract errors, not a reason to change
+                # the deterministic geometry fallback clip/source.
+                source_rgb = (
+                    step_dataset.source_rgb(candidate, source)
+                    if use_source_rgb else None
+                )
+                return (candidate, source, xyz, valid, source_rgb), time.perf_counter() - task_started
             raise ValueError(
                 f"dataset has no clip/source with K={required_targets} eligible targets"
             ) from last_error
@@ -954,11 +1606,14 @@ def main() -> None:
                 target_counts = []
                 for (_planned_index, _source, rng), future in group:
                     wait_started = time.perf_counter()
-                    (index, source, xyz_all, valid_all), task_seconds = future.result()
+                    (index, source, xyz_all, valid_all, source_rgb_np), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
                     targets = sample_eligible_targets(valid_all, k, rng)
-                    batch_values.append((index, source, targets, xyz_all[targets], valid_all[targets]))
+                    batch_values.append((
+                        index, source, targets, xyz_all[targets], valid_all[targets],
+                        source_rgb_np,
+                    ))
                     target_counts.append(len(targets))
                 if len(set(target_counts)) != 1:
                     raise ValueError(
@@ -972,6 +1627,19 @@ def main() -> None:
                     for value in batch_values
                 ])
                 valid_np = np.stack([value[4] for value in batch_values])
+                source_rgb_t = None
+                if use_source_rgb:
+                    source_rgb_np = np.stack([value[5] for value in batch_values])
+                    if source_rgb_np.shape != (len(batch_values), 256, 256, 3) \
+                            or source_rgb_np.dtype != np.uint8:
+                        raise RuntimeError(
+                            f"source RGB batch must be uint8 [B,256,256,3], got "
+                            f"{source_rgb_np.dtype} {source_rgb_np.shape}"
+                        )
+                    source_rgb_t = torch.from_numpy(source_rgb_np).permute(0, 3, 1, 2).to(
+                        device, dtype=dtype, non_blocking=True,
+                    )
+                    source_rgb_t = source_rgb_t / 127.5 - 1.0
                 latent = torch.from_numpy(latents_np).to(device, dtype=dtype, non_blocking=True)
                 source_t = torch.tensor([
                     [value[1]] * len(value[2]) for value in batch_values
@@ -984,7 +1652,9 @@ def main() -> None:
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
-                    prediction, _, _ = fsdp(latent, source_t, target_t, condition)
+                    prediction, _, _ = fsdp(
+                        latent, source_t, target_t, condition, source_rgb_t,
+                    )
                     loss = masked_pair_smooth_l1(
                         prediction.float(), xyz.float(), valid,
                         beta=float(config.get("smooth_l1_beta", 0.05)),
@@ -999,12 +1669,17 @@ def main() -> None:
                     update_epe += float(epe[valid].sum())
                     valid_points += int(valid.sum())
                 pair_count += sum(target_counts)
-                for _index, source, targets, _xyz, _valid in batch_values:
+                for _index, source, targets, _xyz, _valid, _source_rgb in batch_values:
                     source_hist[source] += 1
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
                         gap_hist[abs(int(target_index) - source)] += 1
-            gradient_norm = fsdp.clip_grad_norm_(float(config["gradient_clip"]))
+            if str(config.get("trainable_mode")) == "source_rgb_only":
+                gradient_norm = clip_optimizer_grad_norm_(
+                    optimizer, float(config["gradient_clip"]), device,
+                )
+            else:
+                gradient_norm = fsdp.clip_grad_norm_(float(config["gradient_clip"]))
             if not torch.isfinite(gradient_norm):
                 raise FloatingPointError(f"non-finite gradient norm at step={step + 1}")
             lr_factor = apply_cosine_schedule(
@@ -1015,6 +1690,14 @@ def main() -> None:
                 None if extension_start is None else int(extension_start),
                 None if extension_horizon is None else int(extension_horizon),
             )
+            fresh_group_warmup_factor = apply_fresh_group_warmup(
+                optimizer,
+                {"wan_backbone", "dense_decoder"},
+                step + 1,
+                start_step,
+                int(config.get("joint_fresh_group_warmup_steps", 0)),
+                float(config.get("joint_fresh_group_max_lr_scale", 1.0)),
+            ) if str(config.get("trainable_mode")) == "source_rgb_plus_wan_decoder" else 1.0
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
             completed = step + 1
             clips_seen[name] += world * accumulation * microbatch_per_gpu
@@ -1042,16 +1725,39 @@ def main() -> None:
                 dist.all_reduce(timing_max, op=dist.ReduceOp.MAX)
                 for histogram in (source_hist, target_hist, gap_hist):
                     dist.all_reduce(histogram, op=dist.ReduceOp.SUM)
+                rgb_alpha_names = list(fsdp.module.decoder.upsampler.source_fusions)
+                if rgb_alpha_names:
+                    rgb_alpha_stats = torch.stack([
+                        torch.stack((
+                            fusion.alpha.detach().double().sum(),
+                            torch.as_tensor(
+                                fusion.alpha.numel(), device=device, dtype=torch.float64,
+                            ),
+                        ))
+                        for fusion in fsdp.module.decoder.upsampler.source_fusions.values()
+                    ])
+                    dist.all_reduce(rgb_alpha_stats, op=dist.ReduceOp.SUM)
+                else:
+                    rgb_alpha_stats = torch.empty((0, 2), device=device, dtype=torch.float64)
             if rank == 0 and diagnostic:
                 global_loss, global_epe_sum, global_valid, global_pairs = scalars.tolist()
+                dataset_loss = global_loss / world
+                raw_epe_m = global_epe_sum / max(global_valid, 1)
                 weights = fsdp.module.backbone.layer_weights().detach().float().cpu().tolist()
+                rgb_alphas = {
+                    scale_name: float(rgb_alpha_stats[index, 0] / rgb_alpha_stats[index, 1])
+                    for index, scale_name in enumerate(rgb_alpha_names)
+                }
                 payload = {
-                    "global_step": completed, "train/loss": global_loss / world,
-                    "train/raw_epe_m": global_epe_sum / max(global_valid, 1),
+                    "global_step": completed, "train/loss": dataset_loss,
+                    f"train/loss_by_dataset/{name}": dataset_loss,
+                    "train/raw_epe_m": raw_epe_m,
+                    f"train/raw_epe_m_by_dataset/{name}": raw_epe_m,
                     "train/dataset": DATASET_NAMES.index(name), "train/pairs": int(global_pairs),
                     "train/clips_seen_total": sum(clips_seen.values()),
                     **{f"train/clips_seen_{key}": value for key, value in clips_seen.items()},
                     **{f"train/layer_weight_{layer}": weight for layer, weight in zip(config["wan_hidden_layers"], weights)},
+                    **{f"train/source_rgb_alpha_{scale_name}": value for scale_name, value in rgb_alphas.items()},
                     "system/world_size": world, "system/peak_cuda_memory_gib": peak,
                     "system/step_seconds": time.perf_counter() - step_started,
                     "system/geometry_wait_seconds_max_rank": float(timing_max[0]),
@@ -1061,6 +1767,7 @@ def main() -> None:
                     "system/geometry_prefetch_workers": prefetch_workers,
                     "system/diagnostic_dataset_coverage": int(ensure_dataset_diagnostics),
                     "system/elapsed_seconds": elapsed, "train/lr_factor": lr_factor,
+                    "train/fresh_group_warmup_factor": fresh_group_warmup_factor,
                     "train/gradient_norm": float(gradient_norm),
                     **{f"sampling/source_{index}": int(value) for index, value in enumerate(source_hist.tolist())},
                     **{f"sampling/target_{index}": int(value) for index, value in enumerate(target_hist.tolist())},
@@ -1069,6 +1776,19 @@ def main() -> None:
                 print(json.dumps(payload), flush=True)
                 if run is not None and completed > args.wandb_log_after_step:
                     run.log(payload, step=completed)
+                diagnostic_cycle = step // 20
+                if diagnostic_cycle not in completed_diagnostic_cycles and all(
+                    last_diagnostic_cycle.get(dataset_name) == diagnostic_cycle
+                    for dataset_name in DATASET_NAMES
+                ):
+                    completed_diagnostic_cycles.add(diagnostic_cycle)
+                    print(json.dumps({
+                        "event": "diagnostic_dataset_cycle_complete",
+                        "cycle": diagnostic_cycle,
+                        "global_step": completed,
+                        "datasets": list(DATASET_NAMES),
+                        "metrics": ["loss", "raw_epe_m"],
+                    }), flush=True)
             local_stop = _STOP or elapsed >= graceful_seconds
             stop_tensor = torch.tensor(int(local_stop), device=device)
             dist.all_reduce(stop_tensor, op=dist.ReduceOp.MAX)
@@ -1127,6 +1847,12 @@ def main() -> None:
             "clips_seen": clips_seen, "non_wan_parameters": non_wan_count,
             "targets_per_source": k, "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,
             "elapsed_seconds": time.perf_counter() - started,
+            "source_rgb_pyramid": use_source_rgb,
+            "trainable_mode": str(config.get("trainable_mode")),
+            "trainable_parameters": trainable_count,
+            "initial_model_weights": (
+                str(initial_model_weights) if initial_model_weights is not None else None
+            ),
             "lazy_vae_cache": bool(args.lazy_vae_cache),
             "lazy_vae_pipeline": bool(args.lazy_vae_pipeline),
             "lazy_vae_rank0": lazy_counts,

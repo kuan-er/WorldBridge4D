@@ -63,16 +63,34 @@ def main() -> None:
     model.eval()
     latent = torch.from_numpy(dataset.clean_latent(args.index))[None].to(device, dtype=dtype)
     condition = condition.to(device, dtype=dtype)
+    source_rgb = None
+    if bool(config.get("source_rgb_pyramid", False)):
+        source_rgb_np = dataset.source_rgb(args.index, args.source)
+        if source_rgb_np.shape != (256, 256, 3) or source_rgb_np.dtype != np.uint8:
+            raise RuntimeError(
+                f"source RGB must be uint8 [256,256,3], got "
+                f"{source_rgb_np.dtype} {source_rgb_np.shape}"
+            )
+        source_rgb = torch.from_numpy(source_rgb_np)[None].permute(0, 3, 1, 2).to(
+            device, dtype=dtype,
+        )
+        source_rgb = source_rgb / 127.5 - 1.0
     outputs = []
     with torch.inference_mode(), torch.autocast(device_type=device.type, dtype=dtype, enabled=device.type == "cuda"):
         # Encode the video once with the dataset-specific prompt, then chunk
         # only target-dependent decoder work across all requested targets.
         z4d = model.backbone(latent, condition)
+        source_pyramid = (
+            model.decoder.encode_source_rgb(source_rgb)
+            if source_rgb is not None else None
+        )
         for start in range(0, len(targets), args.target_chunk):
             chunk = targets[start:start + args.target_chunk]
             source_tensor = torch.full((1, len(chunk)), args.source, device=device, dtype=torch.long)
             target_tensor = torch.tensor(chunk, device=device, dtype=torch.long)[None]
-            prediction = model.decoder(z4d, source_tensor, target_tensor).normalized_xyz
+            prediction = model.decoder(
+                z4d, source_tensor, target_tensor, source_pyramid=source_pyramid,
+            ).normalized_xyz
             outputs.append(prediction.float().cpu())
     normalized = torch.cat(outputs, dim=1)[0]
     mean = torch.as_tensor(checkpoint["coordinate_mean"], dtype=torch.float32).reshape(1, 3, 1, 1)
