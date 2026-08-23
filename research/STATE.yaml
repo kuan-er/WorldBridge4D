@@ -1,6 +1,5 @@
-current_task: T-20260823064208-540496
-active_hypotheses:
-  - H023
+current_task: null
+active_hypotheses: []
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -871,10 +870,16 @@ h023_package_refactor:
   invariants: [state_dict_attribute_paths, checkpoint_format, optimizer_groups, exact_resume, sampling, schedule, objective]
   validation:
     package_run: R-20260823065821-11ebe9
+    final_validation_run: R-20260823070140-04d672
+    tests_passed: 70
+    compileall: passed
+    shell_syntax: passed
+    cli_smoke: passed
+    diff_check: passed
     checkpoint_run: R-20260823070018-21183f
     checkpoint_global_step: 100000
     checkpoint_state_entries: 1055
     model_parameters: 1613397325
     trainable_parameters: 1594887819
     strict_model_load: passed
-updated_at: 2026-08-23T07:02:00Z
+updated_at: 2026-08-23T07:03:00Z
