@@ -1029,4 +1029,19 @@ h023_exhaustive_validation_evaluation:
     completed_clips_before_fix: 21
     failure: source_with_zero_valid_points_cannot_fit_sim3
     resolution: retain_null_pair_metrics_and_mark_source_sim3_insufficient
-updated_at: 2026-08-23T10:39:00Z
+  kubric_complete:
+    run: R-20260823102833-3d727b
+    clips: 147
+    valid_source_target_pairs: 64827
+    raw_macro_epe_m: 0.7238735040576187
+    sim3_macro_epe_m: 0.48028830139482104
+    valid_points: 4248502272
+    summary: /data/WorldBridge4D-runs/evaluation-step100000/kubric/summary.json
+  kubric_worst_render:
+    status: queued_step100000_replacement
+    reason: historical_step95000_checkpoint_no_longer_exists
+    selection: top_raw_epe_sources_with_unique_validation_clips
+    count: 4
+    output_root: /tmp/worldbridge4d-worst-trajectory-renders-step95000
+    tests_passed: 79
+updated_at: 2026-08-23T13:40:00Z
