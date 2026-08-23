@@ -145,8 +145,5 @@ def build_real_model(
         source_rgb_fusion_32=bool(config.get("source_rgb_fusion_32", False)),
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
-    model.configure_trainable(
-        str(config.get("trainable_mode", "full")),
-        int(config.get("trainable_blocks", 2)),
-    )
+    model.configure_trainable(str(config.get("trainable_mode", "full")))
     return model

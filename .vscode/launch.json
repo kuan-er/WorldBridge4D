@@ -14,7 +14,7 @@
                 "PYTHONPATH": "${workspaceFolder}/src",
                 "CUDA_VISIBLE_DEVICES": "0,1",
                 "PYTHONUNBUFFERED": "1",
-                "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+                "OMP_NUM_THREADS": "1"
             },
             "args": [
                 "--standalone",
@@ -30,7 +30,6 @@
                 "/data/WorldBridge4D-persistent/checkpoints/worldbridge4d-source-rgb-fusion32-cap0p1-step100000/checkpoint-0100000.pt",
                 "--steps",
                 "100001",
-                "--allow-two-gpu-gate",
                 "--lazy-vae-cache",
                 "--disable-wandb",
                 "--no-checkpoint"

@@ -5,9 +5,8 @@
 # 将大文件暂存到高速盘，最后用 torchrun 启动训练。模型构建、训练循环、
 # loss、反向传播和 checkpoint 内容都在 worldbridge.trainer 中。
 #
-# 两卡启动示例（配置中的 batch/K 等参数仍由 YAML 决定）：
-#   GPUS=0,1 NPROC=2 CONFIG=/path/to/config.yaml OUTPUT=/path/to/output \
-#     bash scripts/run_fsdp.sh
+# 两卡启动示例（物理 GPU 固定为 0/1，batch/K 等参数由 YAML 决定）：
+#   CONFIG=/path/to/config.yaml OUTPUT=/path/to/output bash scripts/run_fsdp.sh
 #
 # 启动顺序：环境变量 -> fresh/resume 选择 -> 数据/缓存检查 -> 输入暂存
 #          -> 拼接 Python 参数 -> torchrun。
@@ -22,11 +21,10 @@ CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"  # 本次运行读写 checkpoint 的
 DURABLE_CHECKPOINT="${DURABLE_CHECKPOINT:-}"  # 可选：每次保存后异步复制到这个持久化路径。
 RESUME_CHECKPOINT="${RESUME_CHECKPOINT:-}"  # 可选：显式指定恢复文件；优先于 CHECKPOINT_DIR/latest.pt。
 WANDB_LOG_AFTER_STEP="${WANDB_LOG_AFTER_STEP:--1}"  # 仅记录大于该 step 的指标；-1 表示从头记录。
-POST_RESUME_CHECKSUM_MARKER="${POST_RESUME_CHECKSUM_MARKER:-}"  # 可选：严格恢复后异步计算断点 SHA-256，并写 marker。
 
 # ---------- GPU 拓扑与训练长度 ----------
-GPUS="${GPUS:-0,1}"  # 默认物理 GPU 编号，可由环境覆盖。
-NPROC="${NPROC:-2}"  # 当前生产训练固定为两个 ranks。
+GPUS="0,1"  # 项目物理 GPU allowlist 固定为 0、1。
+NPROC="2"  # 当前生产训练固定为两个 ranks。
 STEPS="${STEPS:-}"  # 可选：覆盖 YAML 中的目标总 step；不是“再训练多少步”。
 
 # ---------- latent 生成模式（两者互斥） ----------
@@ -34,30 +32,13 @@ LAZY_VAE_CACHE="${LAZY_VAE_CACHE:-0}"  # 1：启动 FSDP 前补齐本次计划�
 LAZY_VAE_PIPELINE="${LAZY_VAE_PIPELINE:-0}"  # 1：训练时由后台流水线按需生成 latent。
 PIPELINE_LOOKAHEAD_STEPS="${PIPELINE_LOOKAHEAD_STEPS:-16}"  # 后台流水线最多提前准备多少个 step。
 
-# ---------- 实验模式与启动安全开关 ----------
-ALLOW_FOUR_GPU_EXPERIMENT="${ALLOW_FOUR_GPU_EXPERIMENT:-0}"  # 允许四卡实验 batch 模式；不等于正式协议。
-ALLOW_ARBITRARY_WORLD="${ALLOW_ARBITRARY_WORLD:-0}"  # 允许已注册的非标准 world size，主要用于容量实验。
+# ---------- 启动安全开关 ----------
 FRESH_START="${FRESH_START:-0}"  # 1：强制全新轨迹；发现旧状态或 checkpoint 时拒绝启动。
 STAGE_INPUTS="${STAGE_INPUTS:-1}"  # 1：把模型/恢复断点暂存到 STAGING_ROOT，减少慢盘争用。
 STAGING_ROOT="${STAGING_ROOT:-/data/WorldBridge4D-persistent/worldbridge4d_staging/checkpoints}"
 
 # EXTRA 收集最终传给 Python 训练入口的可选参数。
 EXTRA=()
-# 将 shell 环境开关翻译成训练入口的显式命令行参数。两卡模式只用于
-# 已注册的 gate/实验协议，Python 侧仍会继续检查 batch、K 和 world size。
-if [[ "$NPROC" == "2" ]]; then
-  EXTRA+=(--allow-two-gpu-gate)
-fi
-if [[ "$ALLOW_FOUR_GPU_EXPERIMENT" == "1" ]]; then
-  if [[ "$NPROC" != "4" ]]; then
-    echo "ALLOW_FOUR_GPU_EXPERIMENT=1 requires NPROC=4" >&2
-    exit 2
-  fi
-  EXTRA+=(--allow-four-gpu-experiment)
-fi
-if [[ "$ALLOW_ARBITRARY_WORLD" == "1" ]]; then
-  EXTRA+=(--allow-arbitrary-world)
-fi
 if [[ -n "$STEPS" ]]; then
   EXTRA+=(--steps "$STEPS")
 fi
@@ -153,10 +134,6 @@ if [[ -n "$RESUME" ]]; then
 fi
 EXTRA+=(--checkpoint-dir "$CHECKPOINT_DIR")
 EXTRA+=(--wandb-log-after-step "$WANDB_LOG_AFTER_STEP")
-if [[ -n "$POST_RESUME_CHECKSUM_MARKER" ]]; then
-  [[ -n "$RESUME" ]] || { echo "post-resume checksum requires a resume checkpoint" >&2; exit 2; }
-  EXTRA+=(--post-resume-checksum-marker "$POST_RESUME_CHECKSUM_MARKER")
-fi
 if [[ -n "$DURABLE_CHECKPOINT" ]]; then
   EXTRA+=(--durable-checkpoint "$DURABLE_CHECKPOINT")
 fi
@@ -167,8 +144,7 @@ fi
 # 因而退出码和终止信号可以直接传递给外层调度器。
 export CUDA_VISIBLE_DEVICES="$GPUS"
 export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
-# expandable_segments 可降低动态 decoder batch 带来的 CUDA 内存碎片。
-export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 exec torchrun --standalone --nproc-per-node="$NPROC" \
   "$ROOT/scripts/train.py" \
   --config "$CONFIG" --output-dir "$OUTPUT" "${EXTRA[@]}"

@@ -57,18 +57,10 @@ precision: bf16
 trainable_mode: source_rgb_plus_wan_decoder
 source_rgb_separate_optimizer_group: true
 source_rgb_learning_rate_multiplier: 10.0
-expected_source_rgb_trainable_parameters: 813832
-finetune_restore_trainable_optimizer: true
-finetune_allow_new_source_rgb_fusion_32: true
-# Restore every mature Wan/decoder/RGB AdamW moment; only the seven new
-# zero-init 32px fusion tensors start fresh. Keep Wan/old decoder at 10% cap.
+# Preserve the selected production policy: source RGB uses 10x LR while the
+# mature Wan and decoder groups remain capped at 10% of their scheduled LR.
 joint_fresh_group_warmup_steps: 0
 joint_fresh_group_max_lr_scale: 0.1
-finetune_expected_global_step: 93381
-finetune_expected_clips_seen:
-  kubric: 261464
-  pointodyssey: 224112
-  dynamic_replica: 261472
 fsdp: full_shard
 fsdp_min_num_params: 5000000
 microbatch_per_gpu: 2

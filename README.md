@@ -40,7 +40,7 @@ PYTHONPATH=src python scripts/prepare_data.py check-environment --require-cuda
 按当前配置启动/恢复普通两卡训练：
 
 ```bash
-GPUS=0,1 NPROC=2 LAZY_VAE_CACHE=1 STAGE_INPUTS=0 \
+LAZY_VAE_CACHE=1 STAGE_INPUTS=0 \
 CONFIG=configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml \
 OUTPUT=/data/WorldBridge4D-runs/worldbridge4d_256_source_rgb \
   bash scripts/run_fsdp.sh

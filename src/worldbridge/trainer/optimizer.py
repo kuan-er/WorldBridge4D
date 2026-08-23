@@ -5,29 +5,8 @@ from typing import Any
 
 import numpy as np
 import torch
-import torch.distributed as dist
 
 from ..models.worldbridge import DenseQueryWanModel
-
-def apply_linear_warmup(optimizer: torch.optim.Optimizer, update_number: int,
-                        warmup_steps: int) -> float:
-    """Scale every optimizer group linearly up to its configured base LR.
-
-    ``update_number`` is one-based: the first optimizer update uses
-    ``1 / warmup_steps`` of each group's base LR.  The base LR is stored on the
-    optimizer group so the Wan and decoder groups retain their independent
-    configured rates.
-    """
-    update_number, warmup_steps = int(update_number), int(warmup_steps)
-    if update_number < 1:
-        raise ValueError("update_number must be positive")
-    if warmup_steps < 0:
-        raise ValueError("warmup_steps must be non-negative")
-    factor = 1.0 if warmup_steps == 0 else min(1.0, update_number / warmup_steps)
-    for group in optimizer.param_groups:
-        base_lr = float(group.setdefault("_base_lr", group["lr"]))
-        group["lr"] = base_lr * factor
-    return factor
 
 def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[dict[str, Any]]:
     named = list(model.named_parameters())
@@ -87,46 +66,6 @@ def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[
         raise ValueError("model has no trainable parameters")
     return groups
 
-
-def optimizer_trainable_count(groups: list[dict[str, Any]]) -> int:
-    return sum(parameter.numel() for group in groups for parameter in group["params"])
-
-def clip_optimizer_grad_norm_(
-    optimizer: torch.optim.Optimizer, max_norm: float, device: torch.device,
-) -> torch.Tensor:
-    """Collectively clip optimizer-owned sharded gradients on every rank.
-
-    With ``use_orig_params=True`` a small trainable suffix can reside entirely
-    on one rank while another rank has no local gradients. FSDP's convenience
-    clipper returns early on the empty rank, which leaves the owner blocked in
-    its collective. This helper always participates in one all-reduce.
-    """
-    max_norm = float(max_norm)
-    if max_norm <= 0:
-        raise ValueError("gradient clip norm must be positive")
-    local_squared = torch.zeros((), device=device, dtype=torch.float64)
-    gradients = []
-    seen: set[int] = set()
-    for group in optimizer.param_groups:
-        for parameter in group["params"]:
-            if id(parameter) in seen:
-                continue
-            seen.add(id(parameter))
-            gradient = parameter.grad
-            if gradient is None:
-                continue
-            gradients.append(gradient)
-            local_squared += gradient.detach().double().square().sum()
-    dist.all_reduce(local_squared, op=dist.ReduceOp.SUM)
-    total_norm = local_squared.sqrt()
-    coefficient = torch.clamp(
-        torch.as_tensor(max_norm, device=device, dtype=torch.float64)
-        / (total_norm + 1e-6),
-        max=1.0,
-    )
-    for gradient in gradients:
-        gradient.mul_(coefficient.to(dtype=gradient.dtype))
-    return total_norm.float()
 
 def apply_fresh_group_warmup(
     optimizer: torch.optim.Optimizer,

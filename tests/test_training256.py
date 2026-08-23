@@ -144,9 +144,8 @@ def test_inference_condition_is_dataset_specific_and_checksum_verified(tmp_path)
 def test_resume_planning_uses_status_sidecar_not_full_checkpoint_load():
     source = trainer_source()
     planning = source[source.index("# Cache planning needs only"):source.index("planned_start =")]
-    assert 'config.get("finetune_expected_global_step", -1)' in planning
-    assert '"resume_status_path", planning_checkpoint.parent / "train_status.json"' in planning
-    assert "finetune_status_path" not in planning
+    assert '"resume_status_path", resume.parent / "train_status.json"' in planning
+    assert "finetune" not in planning
     assert "torch.load" not in planning
 
 
@@ -171,288 +170,6 @@ def test_full_resume_skips_redundant_native_wan_weights(monkeypatch, tmp_path):
     source = trainer_source()
     assert "load_wan_pretrained = not resume.is_file()" in source
     assert "load_wan_pretrained=load_wan_pretrained" in source
-
-
-def test_audited_model_migration_permits_only_new_32px_fusion():
-    from worldbridge.trainer.fsdp_checkpoint import load_model_state_for_resume
-
-    class TinyModel(nn.Module):
-        def __init__(self, extended: bool):
-            super().__init__()
-            self.old = nn.Linear(2, 2)
-            self.decoder = nn.Module()
-            self.decoder.upsampler = nn.Module()
-            self.decoder.upsampler.source_fusions = nn.ModuleDict()
-            if extended:
-                self.decoder.upsampler.source_fusions["32"] = nn.Linear(2, 2)
-
-    old = TinyModel(extended=False)
-    extended = TinyModel(extended=True)
-    missing = load_model_state_for_resume(
-        extended, old.state_dict(),
-        ("decoder.upsampler.source_fusions.32.",),
-    )
-    assert set(missing) == {
-        "decoder.upsampler.source_fusions.32.weight",
-        "decoder.upsampler.source_fusions.32.bias",
-    }
-    with pytest.raises(RuntimeError, match="structural checkpoint migration mismatch"):
-        load_model_state_for_resume(
-            extended, {"old.weight": old.old.weight.detach().clone()},
-            ("decoder.upsampler.source_fusions.32.",),
-        )
-
-
-def test_weights_only_initialization_permits_only_new_rgb_modules(tmp_path):
-    from worldbridge.trainer.fsdp_checkpoint import load_initial_model_weights
-
-    class TinyRGBModel(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.shared = nn.Linear(3, 4)
-            self.decoder = nn.Module()
-            self.decoder.upsampler = nn.Module()
-            self.decoder.upsampler.source_rgb_encoder = nn.Linear(2, 2)
-            self.decoder.upsampler.source_fusions = nn.ModuleDict({"64": nn.Linear(2, 2)})
-
-    model = TinyRGBModel()
-    original = {name: value.detach().clone() for name, value in model.state_dict().items()}
-    old_state = {
-        name: value for name, value in original.items()
-        if not name.startswith((
-            "decoder.upsampler.source_rgb_encoder.",
-            "decoder.upsampler.source_fusions.",
-        ))
-    }
-    checkpoint = tmp_path / "old.pt"
-    torch.save({"model": old_state}, checkpoint)
-    with torch.no_grad():
-        model.shared.weight.zero_()
-    load_initial_model_weights(checkpoint, model, rank=0)
-    torch.testing.assert_close(model.shared.weight, original["shared.weight"])
-    torch.testing.assert_close(
-        model.decoder.upsampler.source_rgb_encoder.weight,
-        original["decoder.upsampler.source_rgb_encoder.weight"],
-    )
-
-
-def test_weights_only_continuation_validates_step_counters_and_lr_schedule(tmp_path):
-    from worldbridge.trainer.fsdp_checkpoint import load_initial_model_weights
-
-    class TinyRGBModel(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.shared = nn.Linear(2, 2)
-            self.decoder = nn.Module()
-            self.decoder.upsampler = nn.Module()
-            self.decoder.upsampler.source_rgb_encoder = nn.Linear(2, 2)
-            self.decoder.upsampler.source_fusions = nn.ModuleDict({"64": nn.Linear(2, 2)})
-
-    model = TinyRGBModel()
-    old_state = {
-        name: value for name, value in model.state_dict().items()
-        if "source_rgb_encoder" not in name and "source_fusions" not in name
-    }
-    schedule = {
-        "learning_rate": 3e-4,
-        "schedule_extension_start_step": 56_503,
-        "schedule_extension_horizon_steps": 150_000,
-    }
-    clips = {"kubric": 238_000, "pointodyssey": 204_000, "dynamic_replica": 238_000}
-    checkpoint = tmp_path / "step85000.pt"
-    torch.save({
-        "model": old_state,
-        "config": schedule,
-        "training_state": {"global_step": 85_000, "clips_seen": clips},
-    }, checkpoint)
-    load_initial_model_weights(
-        checkpoint, model, rank=0, expected_global_step=85_000,
-        expected_clips_seen=clips, expected_schedule=schedule,
-    )
-    with pytest.raises(RuntimeError, match="initial model step"):
-        load_initial_model_weights(
-            checkpoint, model, rank=0, expected_global_step=84_999,
-            expected_clips_seen=clips, expected_schedule=schedule,
-        )
-    with pytest.raises(RuntimeError, match="LR schedule mismatch"):
-        load_initial_model_weights(
-            checkpoint, model, rank=0, expected_global_step=85_000,
-            expected_clips_seen=clips,
-            expected_schedule={**schedule, "learning_rate": 1e-4},
-        )
-
-
-def test_optimizer_state_extension_restores_old_and_leaves_only_rgb_fresh():
-    from worldbridge.trainer.fsdp_checkpoint import extend_optimizer_state_for_rgb
-
-    source = {
-        "state": {
-            "backbone.weight": {"step": torch.tensor(85_000)},
-            "decoder.old.weight": {"step": torch.tensor(85_000)},
-        },
-        "param_groups": [
-            {"name": "wan_backbone", "params": ["backbone.weight"], "lr": 1e-5},
-            {"name": "geometry_adapter", "params": [], "lr": 9e-5},
-            {"name": "dense_decoder", "params": ["decoder.old.weight"], "lr": 9e-5},
-        ],
-    }
-    current = {
-        "wan_backbone": ["backbone.weight"],
-        "geometry_adapter": [],
-        "dense_decoder": [
-            "decoder.old.weight",
-            "decoder.upsampler.source_rgb_encoder.stem.weight",
-            "decoder.upsampler.source_fusions.64.alpha",
-        ],
-    }
-    merged, added = extend_optimizer_state_for_rgb(source, current)
-    assert merged["state"] is source["state"]
-    assert added == current["dense_decoder"][1:]
-    assert merged["param_groups"][2]["params"] == current["dense_decoder"]
-    assert set(merged["state"]) == {"backbone.weight", "decoder.old.weight"}
-    with pytest.raises(RuntimeError, match="invalid_added"):
-        extend_optimizer_state_for_rgb(
-            source,
-            {**current, "dense_decoder": ["decoder.old.weight", "decoder.unexpected"]},
-        )
-
-
-def test_collective_rgb_grad_clipper_handles_local_gradients_and_empty_rank(monkeypatch):
-    from worldbridge.trainer.distributed import clip_optimizer_grad_norm_
-
-    monkeypatch.setattr(torch.distributed, "all_reduce", lambda value, op=None: value)
-    parameter = nn.Parameter(torch.tensor([3.0, 4.0]))
-    optimizer = torch.optim.AdamW([parameter])
-    parameter.grad = torch.tensor([3.0, 4.0])
-    norm = clip_optimizer_grad_norm_(optimizer, 1.0, torch.device("cpu"))
-    assert float(norm) == pytest.approx(5.0)
-    torch.testing.assert_close(parameter.grad, torch.tensor([0.6, 0.8]), atol=1e-6, rtol=0)
-    parameter.grad = None
-    assert float(clip_optimizer_grad_norm_(optimizer, 1.0, torch.device("cpu"))) == 0.0
-
-
-def test_source_rgb_only_freezes_every_old_parameter_and_splits_decay_groups():
-    class TinyBackbone(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.old = nn.Linear(2, 2)
-            self.adapter_parameters = []
-            self.bypassed_parameters = []
-
-    class TinyDecoder(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.old = nn.Linear(2, 2)
-            self.upsampler = nn.Module()
-            self.upsampler.source_rgb_encoder = nn.Sequential(
-                nn.Conv2d(3, 4, 1, bias=True), nn.GroupNorm(1, 4),
-            )
-            fusion = nn.Module()
-            fusion.projection = nn.Conv2d(4, 4, 1, bias=True)
-            fusion.alpha = nn.Parameter(torch.zeros(1))
-            self.upsampler.source_fusions = nn.ModuleDict({"64": fusion})
-
-    model = DenseQueryWanModel(TinyBackbone(), TinyDecoder())
-    model.configure_trainable("source_rgb_only")
-    trainable = {
-        name: parameter for name, parameter in model.named_parameters()
-        if parameter.requires_grad
-    }
-    assert trainable
-    assert all(name.startswith((
-        "decoder.upsampler.source_rgb_encoder.",
-        "decoder.upsampler.source_fusions.",
-    )) for name in trainable)
-    assert not model.backbone.old.weight.requires_grad
-    assert not model.decoder.old.weight.requires_grad
-
-    groups = parameter_groups(model, {
-        "learning_rate": 3e-4, "weight_decay": 1e-4,
-        "source_rgb_separate_optimizer_group": True,
-        "source_rgb_learning_rate_multiplier": 3.0,
-    })
-    assert [group["name"] for group in groups] == [
-        "source_rgb_decay", "source_rgb_no_decay",
-    ]
-    assert all(group["lr"] == pytest.approx(9e-4) for group in groups)
-    assert groups[0]["weight_decay"] == pytest.approx(1e-4)
-    assert groups[1]["weight_decay"] == 0.0
-    assert all(parameter.ndim > 1 for parameter in groups[0]["params"])
-    assert all(parameter.ndim <= 1 for parameter in groups[1]["params"])
-
-
-def test_rgb_only_optimizer_filter_retains_moments_and_new_group_options():
-    from worldbridge.trainer.fsdp_checkpoint import filter_optimizer_state_for_trainable
-
-    encoder = "decoder.upsampler.source_rgb_encoder.stem.weight"
-    alpha = "decoder.upsampler.source_fusions.64.alpha"
-    source = {
-        "state": {
-            encoder: {"step": torch.tensor(90_000)},
-            alpha: {"step": torch.tensor(90_000)},
-            "decoder.old.weight": {"step": torch.tensor(90_000)},
-        },
-        "param_groups": [],
-    }
-    current = [
-        {"name": "source_rgb_decay", "params": [encoder], "lr": 9e-4, "weight_decay": 1e-4},
-        {"name": "source_rgb_no_decay", "params": [alpha], "lr": 9e-4, "weight_decay": 0.0},
-    ]
-    filtered, fresh = filter_optimizer_state_for_trainable(source, current)
-    assert set(filtered["state"]) == {encoder, alpha}
-    assert filtered["param_groups"] == current
-    assert fresh == []
-    with pytest.raises(RuntimeError, match="non-RGB"):
-        filter_optimizer_state_for_trainable(
-            source, [{"name": "bad", "params": ["decoder.old.weight"]}],
-        )
-
-
-def test_joint_optimizer_filter_restores_rgb_and_initializes_old_modules_fresh():
-    from worldbridge.trainer.fsdp_checkpoint import filter_optimizer_state_for_trainable
-
-    encoder = "decoder.upsampler.source_rgb_encoder.stem.weight"
-    alpha = "decoder.upsampler.source_fusions.64.alpha"
-    wan = "backbone.dit.blocks.0.attn.weight"
-    decoder = "decoder.cross_attention.weight"
-    source = {
-        "state": {
-            encoder: {"step": torch.tensor(92_000)},
-            alpha: {"step": torch.tensor(92_000)},
-        },
-        "param_groups": [],
-    }
-    current = [
-        {"name": "wan_backbone", "params": [wan], "lr": 5e-5},
-        {"name": "dense_decoder", "params": [decoder], "lr": 3e-4},
-        {"name": "source_rgb_decay", "params": [encoder], "lr": 3e-3},
-        {"name": "source_rgb_no_decay", "params": [alpha], "lr": 3e-3},
-    ]
-    filtered, fresh = filter_optimizer_state_for_trainable(
-        source, current, allow_fresh_non_rgb=True,
-    )
-    assert set(filtered["state"]) == {encoder, alpha}
-    assert fresh == [wan, decoder]
-    assert filtered["param_groups"] == current
-    with pytest.raises(RuntimeError, match="lacks RGB"):
-        filter_optimizer_state_for_trainable(
-            {"state": {alpha: source["state"][alpha]}, "param_groups": []},
-            current,
-            allow_fresh_non_rgb=True,
-        )
-
-    alpha32 = "decoder.upsampler.source_fusions.32.alpha"
-    extended_groups = [dict(group) for group in current]
-    extended_groups[-1] = {
-        **extended_groups[-1],
-        "params": [*extended_groups[-1]["params"], alpha32],
-    }
-    migrated, fresh = filter_optimizer_state_for_trainable(
-        source, extended_groups, allow_fresh_non_rgb=True,
-        allowed_fresh_rgb_prefixes=("decoder.upsampler.source_fusions.32.",),
-    )
-    assert set(migrated["state"]) == {encoder, alpha}
-    assert fresh == [wan, decoder, alpha32]
 
 
 def test_source_rgb_32_fusion_is_zero_init_and_precedes_upsampling():
@@ -531,8 +248,7 @@ def test_full_resume_loads_rank0_model_before_fsdp_sync():
         source.index("def load_unwrapped_model_checkpoint"):
         source.index("def load_optimizer_checkpoint")
     ]
-    assert 'model, payload["model"], allowed_missing_prefixes' in helper
-    assert "model.load_state_dict(state, strict=True)" in source
+    assert 'model.load_state_dict(payload["model"], strict=True)' in helper
     assert "fsdp_state_context" not in helper
 
     trainer = trainer_source()
@@ -732,115 +448,25 @@ def test_kubric_mmap_conversion_is_exact_atomic_and_resumable(tmp_path):
     assert mtimes == {path: path.stat().st_mtime_ns for path in destination.glob("*.npy")}
 
 
-def test_experimental_k_modes_require_explicit_world_size_flags():
-    import worldbridge.trainer.trainer as train
+def test_production_protocol_rejects_historical_capacity_modes():
+    import yaml
+    from worldbridge.trainer.config import validate_config
 
-    base = {
-        "image_size": 256, "clip_length": 21, "latent_spatial_size": 32,
-        "query_dim": 1536, "embedding_dim": 768, "num_cross_attn_layers": 5,
-        "num_heads": 12, "geometry_dim": 512, "geometry_spatial_size": 32,
-        "motion_slots": 8, "gradient_accumulation": 2, "microbatch_per_gpu": 1,
-        "wan_hidden_layers": [13, 14, 15, 29],
-        "layer_gate_initial_logits": [0.0, 0.0, 0.0, -1.0986122887],
-        "targets_per_source": 21,
-    }
-    train.validate_config(base, world=2, allow_two_gpu=True)
-    batched = {**base, "gradient_accumulation": 1, "microbatch_per_gpu": 2}
-    train.validate_config(batched, world=2, allow_two_gpu=True)
-    matched_k10 = {
-        **base, "targets_per_source": 10,
-        "gradient_accumulation": 2, "microbatch_per_gpu": 2,
-    }
-    train.validate_config(matched_k10, world=2, allow_two_gpu=True)
-    k16_b2_a2 = {**matched_k10, "targets_per_source": 16}
-    train.validate_config(k16_b2_a2, world=2, allow_two_gpu=True)
-    train.validate_config(
-        {**k16_b2_a2, "targets_per_source": 19},
-        world=2, allow_two_gpu=True,
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml"
     )
-    train.validate_config(
-        {
-            **k16_b2_a2,
-            "geometry_prefetch_depth": 4,
-            "geometry_prefetch_workers": 8,
-            "datasets": {"kubric": {
-                "geometry_sample_cache_size": 32,
-                "geometry_mmap_max_open_shards": 90,
-            }},
-        },
-        world=2, allow_two_gpu=True,
-    )
-    with pytest.raises(ValueError, match="geometry_prefetch_depth"):
-        train.validate_config(
-            {**k16_b2_a2, "geometry_prefetch_depth": 0},
-            world=2, allow_two_gpu=True,
-        )
-    with pytest.raises(ValueError, match="geometry_prefetch_workers"):
-        train.validate_config(
-            {**k16_b2_a2, "geometry_prefetch_workers": 33},
-            world=2, allow_two_gpu=True,
-        )
-    with pytest.raises(ValueError, match="geometry_sample_cache_size"):
-        train.validate_config(
-            {**k16_b2_a2, "datasets": {"kubric": {"geometry_sample_cache_size": 0}}},
-            world=2, allow_two_gpu=True,
-        )
-    with pytest.raises(ValueError, match="geometry_mmap_max_open_shards"):
-        train.validate_config(
-            {**k16_b2_a2, "datasets": {"kubric": {"geometry_mmap_max_open_shards": 0}}},
-            world=2, allow_two_gpu=True,
-        )
-    k16_four_gpu = {
-        **k16_b2_a2, "gradient_accumulation": 1,
-    }
-    train.validate_config(
-        k16_four_gpu, world=4, allow_two_gpu=False,
-        allow_four_gpu_experiment=True,
-    )
-    with pytest.raises(ValueError, match="explicit compatible"):
-        train.validate_config(matched_k10, world=4, allow_two_gpu=False)
-    with pytest.raises(ValueError, match="explicit compatible"):
-        train.validate_config(batched, world=4, allow_two_gpu=False)
-    with pytest.raises(ValueError, match="one of"):
-        train.validate_config(base, world=4, allow_two_gpu=False)
-    with pytest.raises(ValueError, match="one of"):
-        train.validate_config(
-            {**k16_four_gpu, "targets_per_source": 21}, world=4,
-            allow_two_gpu=False, allow_four_gpu_experiment=True,
-        )
-    with pytest.raises(ValueError, match="requires exactly 4 ranks"):
-        train.validate_config(
-            k16_four_gpu, world=2, allow_two_gpu=True,
-            allow_four_gpu_experiment=True,
-        )
-    extended = {
-        **k16_b2_a2,
-        "targets_per_source": 19,
-        "warmup_steps": 1000,
-        "schedule_horizon_steps": 100000,
-        "schedule_extension_start_step": 56000,
-        "schedule_extension_horizon_steps": 150000,
-        "max_steps": 150000,
-        "diagnostic_ensure_dataset_coverage": True,
-    }
-    train.validate_config(extended, world=2, allow_two_gpu=True)
-    # A selected endpoint may stop before the preserved LR horizon. This keeps
-    # the 100k checkpoint canonical while allowing an explicit exact resume.
-    train.validate_config(
-        {**extended, "max_steps": 100000}, world=2, allow_two_gpu=True,
-    )
-    with pytest.raises(ValueError, match="extension"):
-        train.validate_config(
-            {**extended, "schedule_extension_horizon_steps": 90000},
-            world=2, allow_two_gpu=True,
-        )
-    with pytest.raises(ValueError, match="max_steps"):
-        train.validate_config(
-            {**extended, "max_steps": 150001}, world=2, allow_two_gpu=True,
-        )
+    config = yaml.safe_load(path.read_text())
+    validate_config(config, world=2)
+    with pytest.raises(ValueError, match="exactly 2 ranks"):
+        validate_config(config, world=4)
+    with pytest.raises(ValueError, match="gradient_accumulation=2"):
+        validate_config({**config, "microbatch_per_gpu": 1}, world=2)
+    with pytest.raises(ValueError, match="targets_per_source=19"):
+        validate_config({**config, "targets_per_source": 16}, world=2)
 
 
-def test_source_rgb_fusion32_step100k_config_is_resumable_structural_migration():
+def test_source_rgb_fusion32_step100k_config_is_strictly_resumable():
     import yaml
     from worldbridge.trainer.config import validate_config
 
@@ -851,15 +477,7 @@ def test_source_rgb_fusion32_step100k_config_is_resumable_structural_migration()
     config = yaml.safe_load(path.read_text())
     assert config["source_rgb_fusion_scales"] == [32, 64, 128, 256]
     assert config["source_rgb_fusion_32"] is True
-    assert config["finetune_allow_new_source_rgb_fusion_32"] is True
-    assert config["finetune_expected_global_step"] == 93_381
-    assert config["finetune_expected_clips_seen"] == {
-        "kubric": 261_464,
-        "pointodyssey": 224_112,
-        "dynamic_replica": 261_472,
-    }
     assert config["expected_non_wan_parameters"] == 194_400_525
-    assert config["expected_source_rgb_trainable_parameters"] == 813_832
     assert config["joint_fresh_group_warmup_steps"] == 0
     assert config["joint_fresh_group_max_lr_scale"] == 0.1
     assert config["max_steps"] == config["selected_checkpoint_step"] == 100_000
@@ -869,84 +487,7 @@ def test_source_rgb_fusion32_step100k_config_is_resumable_structural_migration()
     )
     assert config["checkpoint_steps"] == [100_000]
     assert config["checkpoint_every_after"] == 5_000
-    validate_config(config, world=2, allow_two_gpu=True)
-
-
-def _handoff_original_config():
-    return {
-        "targets_per_source": 19,
-        "microbatch_per_gpu": 2,
-        "gradient_accumulation": 2,
-        "warmup_steps": 1000,
-        "schedule_horizon_steps": 100000,
-        "max_steps": 100000,
-        "checkpoint_steps": [55000, 60000, 100000],
-        "datasets": {"kubric": {}, "pointodyssey": {}, "dynamic_replica": {}},
-        "tracking": {"tags": ["k19"]},
-    }
-
-
-def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_controls(tmp_path):
-    from worldbridge.trainer.commands.handoff import build_extended_config
-
-    config = build_extended_config(
-        _handoff_original_config(), 56435, 150000, tmp_path / "train_status.json",
-    )
-    assert config["targets_per_source"] == 19
-    assert config["microbatch_per_gpu"] == config["gradient_accumulation"] == 2
-    assert config["schedule_horizon_steps"] == 100000
-    assert config["schedule_extension_start_step"] == 56435
-    assert config["schedule_extension_horizon_steps"] == config["max_steps"] == 150000
-    assert config["geometry_prefetch_workers"] == 4
-    assert config["geometry_prefetch_depth"] == 2
-    assert config["diagnostic_ensure_dataset_coverage"] is True
-    assert config["datasets"]["kubric"]["geometry_sample_cache_size"] == 16
-    assert config["datasets"]["kubric"]["geometry_mmap_max_open_shards"] == 90
-    assert config["checkpoint_steps"] == [60000, 100000, 150000]
-
-
-def test_gpu14_handoff_preparer_freezes_and_verifies_complete_checkpoint(tmp_path):
-    from worldbridge.trainer.commands.handoff import (
-        finalize_checksum_marker, prepare, verify_marker,
-    )
-
-    source = tmp_path / "latest.pt"
-    status = tmp_path / "train_status.json"
-    clips = {"kubric": 10, "pointodyssey": 20, "dynamic_replica": 30}
-    torch.save({
-        "format": 3,
-        "model": {"weight": torch.ones(1)},
-        "optimizer": {"state": {0: {"step": torch.tensor(1)}}},
-        "config": _handoff_original_config(),
-        "training_state": {
-            "global_step": 56435, "world_size": 2,
-            "rng_states": [{"rank": 0}, {"rank": 1}], "clips_seen": clips,
-        },
-    }, source)
-    status.write_text(json.dumps({
-        "completed_steps": 56435, "world_size": 2, "clips_seen": clips,
-    }))
-    value = prepare(
-        source, status, tmp_path / "handoff", tmp_path / "fast-checkpoints", 150000,
-    )
-    marker = verify_marker(Path(value["marker"]))
-    assert marker["completed_step"] == 56435
-    assert Path(marker["checkpoint"]).stat().st_ino == source.stat().st_ino
-    assert Path(marker["config"]).is_file()
-    assert json.loads(Path(marker["resume_status"]).read_text())["completed_steps"] == 56435
-
-    deferred = prepare(
-        source, status, tmp_path / "deferred-handoff",
-        tmp_path / "deferred-fast-checkpoints", 150000, defer_checksum=True,
-    )
-    deferred_marker = Path(deferred["marker"])
-    assert verify_marker(deferred_marker, verify_checksum=False)["checksum_state"] == "deferred"
-    with pytest.raises(ValueError, match="not complete"):
-        verify_marker(deferred_marker)
-    completed = finalize_checksum_marker(deferred_marker)
-    assert completed["checksum_state"] == "complete"
-    assert len(completed["checkpoint_sha256"]) == 64
-    assert verify_marker(deferred_marker)["checkpoint_sha256"] == completed["checkpoint_sha256"]
+    validate_config(config, world=2)
 
 
 def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
@@ -1039,8 +580,11 @@ def test_fsdp_launcher_uses_current_config_and_package_commands():
     assert "configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml" in launcher
     assert "STAGING_ROOT=\"${STAGING_ROOT:-/data/WorldBridge4D-persistent/" in launcher
     assert "STAGING_ROOT=\"${STAGING_ROOT:-/tmp/" not in launcher
-    assert 'GPUS="${GPUS:-0,1}"' in launcher
-    assert 'NPROC="${NPROC:-2}"' in launcher
+    assert 'GPUS="0,1"' in launcher
+    assert 'NPROC="2"' in launcher
+    assert "allow-two-gpu-gate" not in launcher
+    assert "ALLOW_FOUR_GPU_EXPERIMENT" not in launcher
+    assert "ALLOW_ARBITRARY_WORLD" not in launcher
     assert 'CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"' in launcher
     assert '--durable-checkpoint "$DURABLE_CHECKPOINT"' in launcher
     assert "scripts/prepare_data.py\" cache-roots" in launcher
@@ -1048,7 +592,7 @@ def test_fsdp_launcher_uses_current_config_and_package_commands():
     assert '"$ROOT/scripts/train.py"' in launcher
 
 
-def test_post_resume_checksum_starts_only_after_strict_optimizer_restore():
+def test_strict_optimizer_restore_precedes_training_loop():
     import inspect
     from worldbridge.models.factory import build_real_model
 
@@ -1058,9 +602,9 @@ def test_post_resume_checksum_starts_only_after_strict_optimizer_restore():
     source = trainer_source()
     restore = source.index("load_optimizer_checkpoint(", source.index("def main()"))
     loaded = source.index('"event": "resume_state_loaded"', restore)
-    checksum = source.index("launch_post_resume_checksum(", loaded)
-    loop = source.index("for step in range(start_step, target_steps):", checksum)
-    assert restore < loaded < checksum < loop
+    loop = source.index("for step in range(start_step, target_steps):", loaded)
+    assert restore < loaded < loop
+    assert "launch_post_resume_checksum" not in source
 
 
 def test_three_dataset_cycle_has_exact_ratio_and_is_resume_pure():

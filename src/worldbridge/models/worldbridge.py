@@ -24,7 +24,7 @@ class DenseQueryWanModel(nn.Module):
         output = self.decoder(z4d, source, target, source_rgb=source_rgb)
         return output.normalized_xyz, z4d, output
 
-    def configure_trainable(self, mode: str = "full", last_blocks: int = 2) -> None:
+    def configure_trainable(self, mode: str = "full") -> None:
         mode = str(mode)
         for parameter in self.parameters():
             parameter.requires_grad_(True)
@@ -32,22 +32,6 @@ class DenseQueryWanModel(nn.Module):
         for parameter in bypassed:
             parameter.requires_grad_(False)
         if mode == "full":
-            return
-        if mode == "decoder_only":
-            for parameter in self.backbone.parameters():
-                parameter.requires_grad_(False)
-            return
-        if mode == "source_rgb_only":
-            for parameter in self.parameters():
-                parameter.requires_grad_(False)
-            encoder = self.decoder.upsampler.source_rgb_encoder
-            fusions = self.decoder.upsampler.source_fusions
-            if encoder is None or not fusions:
-                raise ValueError("source_rgb_only requires an enabled source RGB pyramid")
-            for parameter in encoder.parameters():
-                parameter.requires_grad_(True)
-            for parameter in fusions.parameters():
-                parameter.requires_grad_(True)
             return
         if mode == "source_rgb_plus_wan_decoder":
             for parameter in self.parameters():
@@ -64,34 +48,5 @@ class DenseQueryWanModel(nn.Module):
                 raise ValueError(
                     "source_rgb_plus_wan_decoder requires an enabled source RGB pyramid"
                 )
-            return
-        if mode == "geometry_adapter":
-            adapter = list(getattr(self.backbone, "adapter_parameters", []))
-            if not adapter:
-                raise ValueError("geometry_adapter mode requires a structured geometry backbone")
-            for parameter in self.backbone.parameters():
-                parameter.requires_grad_(False)
-            for parameter in adapter:
-                parameter.requires_grad_(True)
-            return
-        if mode == "last_blocks":
-            for parameter in self.backbone.parameters():
-                parameter.requires_grad_(False)
-            dit = getattr(self.backbone, "dit", None)
-            if dit is None or not hasattr(dit, "blocks"):
-                raise ValueError("last_blocks mode requires a Wan-like backbone.dit.blocks")
-            for parameter in getattr(self.backbone, "adapter_parameters", []):
-                parameter.requires_grad_(True)
-            for block in dit.blocks[-int(last_blocks):]:
-                for parameter in block.parameters():
-                    parameter.requires_grad_(True)
-            if not bypassed:
-                for name in ("norm_out", "proj_out", "scale_shift_table"):
-                    module_or_parameter = getattr(dit, name, None)
-                    if isinstance(module_or_parameter, nn.Parameter):
-                        module_or_parameter.requires_grad_(True)
-                    elif isinstance(module_or_parameter, nn.Module):
-                        for parameter in module_or_parameter.parameters():
-                            parameter.requires_grad_(True)
             return
         raise ValueError(f"unknown trainable_mode={mode!r}")
