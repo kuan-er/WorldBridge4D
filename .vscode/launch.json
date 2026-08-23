@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "真实 FSDP 单步（GPU 0,1）",
+            "name": "加载 100k CKPT 的 FSDP 单步（GPU 0,1）",
             "type": "debugpy",
             "request": "launch",
             "module": "torch.distributed.run",
@@ -26,8 +26,10 @@
                 "/data/WorldBridge4D-runs/debug-fsdp-one-step",
                 "--checkpoint-dir",
                 "/data/WorldBridge4D-runs/debug-fsdp-one-step",
+                "--resume",
+                "/data/WorldBridge4D-persistent/checkpoints/worldbridge4d-source-rgb-fusion32-cap0p1-step100000/checkpoint-0100000.pt",
                 "--steps",
-                "1",
+                "100001",
                 "--allow-two-gpu-gate",
                 "--lazy-vae-cache",
                 "--disable-wandb",
