@@ -12,7 +12,7 @@ import yaml
 from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_inference_text_condition
 from ..data.constants import DATASET_NAMES
-from ..data.factory import load_training_dataset
+from ..data.factory import load_dataset
 from .metrics import align_sim3_to_ground_truth
 
 PERSISTENT_RUN_ROOT = Path("/data/WorldBridge4D-runs")
@@ -89,7 +89,9 @@ def main() -> None:
     # Inference may consume the complete immutable shard tier or the audited
     # per-clip lazy tier. Missing data still fails when clean_latent() reads the
     # requested index; this flag only avoids rejecting a valid lazy-only cache.
-    dataset = load_training_dataset(config, args.dataset, allow_missing_latents=True)
+    dataset = load_dataset(
+        config, args.dataset, split="train", allow_missing_latents=True,
+    )
     if not 0 <= args.index < len(dataset):
         raise IndexError(f"index {args.index} outside {args.dataset} split of size {len(dataset)}")
     device = torch.device(args.device)
