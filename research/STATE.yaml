@@ -860,7 +860,12 @@ h023_package_refactor:
   status: implementation_and_checkpoint_compatibility_passed
   task: T-20260823064208-540496
   baseline_run: R-20260823064217-9e6e24
-  canonical_packages: [models, data, trainer, evaluation, utils]
+  canonical_packages:
+    - models
+    - data
+    - trainer
+    - evaluation
+    - utils
   trainer_class: worldbridge.trainer.WorldBridgeTrainer
   thin_clis:
     - scripts/train.py
@@ -868,8 +873,22 @@ h023_package_refactor:
     - scripts/evaluate.py
     - scripts/prepare_data.py
     - scripts/run_fsdp.sh
-  compatibility_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
-  invariants: [state_dict_attribute_paths, checkpoint_format, optimizer_groups, exact_resume, sampling, schedule, objective]
+  compatibility_modules:
+    - dense4d
+    - dense4d_runtime
+    - training256
+    - wan
+    - geometry
+    - pointodyssey
+    - dynamic_replica
+  invariants:
+    - state_dict_attribute_paths
+    - checkpoint_format
+    - optimizer_groups
+    - exact_resume
+    - sampling
+    - schedule
+    - objective
   validation:
     package_run: R-20260823065821-11ebe9
     final_validation_run: R-20260823070140-04d672
@@ -890,7 +909,9 @@ h023_package_refactor:
     stable_baseline_task: T-20260823071157-9eecf3
     start_checkpoint_step: 100000
     end_checkpoint_step: 100002
-    physical_gpus: [0, 1]
+    physical_gpus:
+      - 0
+      - 1
     world_size: 2
     pairs_per_step: 152
     pre_refactor_run: R-20260823072302-09a18d
@@ -909,17 +930,26 @@ h023_package_refactor:
     sampling_lr_counters_rgb_alpha: exact_match
     peak_memory_gib_all_runs: 75.29922
     first_weight_max_abs_difference:
-      pre_refactor_vs_refactored: 4.76837158203125e-07
-      pre_refactor_vs_pre_refactor_repeat: 4.76837158203125e-07
-    conclusion: refactor adds no detectable numerical drift beyond the original training stack's non-bitwise CUDA/FSDP replay variability
+      pre_refactor_vs_refactored: 4.76837158203125e-7
+      pre_refactor_vs_pre_refactor_repeat: 4.76837158203125e-7
+    conclusion: refactor adds no detectable numerical drift beyond the original
+      training stack's non-bitwise CUDA/FSDP replay variability
 h023_script_consolidation:
   status: complete_validation_passed
   task: T-20260823073939-687ee7
   entrypoint_count: 5
-  entrypoints: [train.py, infer.py, evaluate.py, prepare_data.py, run_fsdp.sh]
+  entrypoints:
+    - train.py
+    - infer.py
+    - evaluate.py
+    - prepare_data.py
+    - run_fsdp.sh
   preparation_subcommands: 19
   historical_gpu14_watcher: removed
-  implementation_ownership: [worldbridge.data.commands, worldbridge.trainer.commands, worldbridge.utils.commands]
+  implementation_ownership:
+    - worldbridge.data.commands
+    - worldbridge.trainer.commands
+    - worldbridge.utils.commands
   validation_run: R-20260823075231-63d7e1
   tests_passed: 70
   all_entrypoint_and_subcommand_help: passed
@@ -938,7 +968,13 @@ h023_persistent_runtime_caches:
   runtime_inventory_audit: passed
   root: /data/WorldBridge4D-persistent/worldbridge4d-cache
   source_rgb_root: /data/WorldBridge4D-persistent/worldbridge4d-rgb-uint8-256
-  configured_caches: [source_rgb, kubric_geometry, pointodyssey_annotations, pointodyssey_depth, dynamic_replica_depth, dynamic_replica_trajectories]
+  configured_caches:
+    - source_rgb
+    - kubric_geometry
+    - pointodyssey_annotations
+    - pointodyssey_depth
+    - dynamic_replica_depth
+    - dynamic_replica_trajectories
   tmp_symlink_dependency: removed
   observed_inventory:
     kubric_geometry_clips: 5737
@@ -949,8 +985,16 @@ h023_persistent_runtime_caches:
 h023_legacy_facade_removal:
   status: complete_validation_passed
   task: T-20260823081332-bcf490
-  removed_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
-  canonical_root_modules: [__init__]
+  removed_modules:
+    - dense4d
+    - dense4d_runtime
+    - training256
+    - wan
+    - geometry
+    - pointodyssey
+    - dynamic_replica
+  canonical_root_modules:
+    - __init__
   text_conditions_module: worldbridge.data.text_conditions
   load_empty_condition_alias: removed
   tests_passed: 70
@@ -984,7 +1028,9 @@ h023_step100000_three_dataset_inference:
     targets: all_21
     target_chunk: 2
     sim3: joint_dataset_gt_default
-  devices: [0, 1]
+  devices:
+    - 0
+    - 1
   output_root: /data/WorldBridge4D-runs/inference-step100000
   initial_kubric_run: R-20260823090812-5b2890
   initial_kubric_result: failed_lazy_only_cache_rejected_before_model_load
@@ -1010,19 +1056,29 @@ h023_step100000_three_dataset_inference:
       rmse_before_m: 0.2218493382696255
       rmse_after_m: 0.21816117704398316
       sha256: 61283f1c6625f209bcf6354ba10eda2aee4617d3410753239137bebfaed11294
-  artifact_shape: [21, 3, 256, 256]
+  artifact_shape:
+    - 21
+    - 3
+    - 256
+    - 256
   finite_raw_and_aligned: true
 h023_exhaustive_validation_evaluation:
   status: implementation_complete_validation_latents_pending
   task: T-20260823091808-48c86a
   split: validation
-  clips: {kubric: 147, pointodyssey: 1620, dynamic_replica: 672}
+  clips:
+    kubric: 147
+    pointodyssey: 1620
+    dynamic_replica: 672
   sources_per_clip: 21
   targets_per_source: 21
   source_target_pairs: 1075599
   pair_metric: mean_valid_point_epe_m
   sim3_scope: one_joint_transform_per_clip_source_over_all_targets
-  outputs: [per_clip_resumable_json, dataset_summary, source_target_21x21_matrix]
+  outputs:
+    - per_clip_resumable_json
+    - dataset_summary
+    - source_target_21x21_matrix
   persistent_output_root: /data/WorldBridge4D-runs/evaluation-step100000
   tests_passed: 77
   pointodyssey_resume:
@@ -1054,4 +1110,4 @@ h023_exhaustive_validation_evaluation:
       - R-20260823104419-797a1f
       - R-20260823104456-10aba5
       - R-20260823144244-b704f2
-updated_at: 2026-08-23T15:10:03.155Z
+updated_at: 2026-08-23T16:54:41.705Z
