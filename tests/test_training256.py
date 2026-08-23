@@ -822,6 +822,62 @@ def test_source_selection_requires_exact_target_capacity():
         )
 
 
+def test_geometry_prefetcher_preserves_order_and_deterministic_sampling():
+    from worldbridge.data.constants import DATASET_NAMES
+    from worldbridge.trainer.batching import GeometryPrefetcher
+
+    class Dataset:
+        rows = []
+
+        def __len__(self):
+            return 4
+
+        def source_all_targets(self, index, source):
+            xyz = np.full((21, 3, 1, 1), index + source, np.float32)
+            valid = np.ones((21, 1, 1), bool)
+            return xyz, valid
+
+        def source_rgb(self, index, source):
+            return np.full((2, 2, 3), index + source, np.uint8)
+
+    datasets = {name: Dataset() for name in DATASET_NAMES}
+    values = []
+    prefetchers = [
+        GeometryPrefetcher(
+            datasets, seed=17, rank=0, accumulation=1,
+            microbatch_per_gpu=2, targets_per_source=19,
+            use_source_rgb=True, start_step=5, target_steps=8,
+            depth=2, workers=1,
+        )
+        for _ in range(2)
+    ]
+    try:
+        for prefetcher in prefetchers:
+            prefetcher.refill()
+            run_values = []
+            for step in range(5, 8):
+                planned = prefetcher.pop(step)
+                geometry = [future.result()[0] for future in planned.geometry_futures]
+                targets = [
+                    sample_eligible_targets(value[3], 19, plan[2]).tolist()
+                    for plan, value in zip(planned.sample_plans, geometry)
+                ]
+                run_values.append((
+                    planned.step, planned.dataset_name, planned.clip_indices,
+                    [(value[0], value[1]) for value in geometry], targets,
+                ))
+            values.append(run_values)
+    finally:
+        for prefetcher in prefetchers:
+            prefetcher.close()
+
+    assert values[0] == values[1]
+    source = trainer_source()
+    assert "def timed_geometry" not in source
+    assert "def plan_step" not in source
+    assert "def refill_plans" not in source
+
+
 def test_pair_loss_ignores_empty_pair_instead_of_treating_it_as_zero():
     prediction = torch.zeros(1, 2, 3, 1, 1)
     target = torch.ones_like(prediction)

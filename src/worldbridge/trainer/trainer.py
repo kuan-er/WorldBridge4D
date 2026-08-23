@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import argparse
-from collections import deque
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 import json
 from pathlib import Path
@@ -23,10 +21,11 @@ import yaml
 
 from ..data.constants import DATASET_NAMES
 from ..data.factory import load_training_datasets, prepare_training_indexes
-from ..data.sampling import deterministic_sample_plan, sample_eligible_targets, source_with_eligible_targets
+from ..data.sampling import sample_eligible_targets
 from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_dataset_text_conditions
 from ..utils.io import atomic_json
+from .batching import GeometryPrefetcher
 from .config import validate_config
 from .distributed import initialize_distributed
 from .fsdp_checkpoint import (
@@ -40,7 +39,7 @@ from .lazy_vae import (
 )
 from .objective import masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
-from .schedulers import apply_cosine_schedule, dataset_for_step, training_diagnostic_due
+from .schedulers import apply_cosine_schedule, training_diagnostic_due
 from .tracking import init_wandb, load_stats
 
 _STOP = False
@@ -313,78 +312,31 @@ def main() -> None:
     prefetch_workers = int(config.get(
         "geometry_prefetch_workers", min(4, accumulation * microbatch_per_gpu * 2),
     ))
-    pool = ThreadPoolExecutor(
-        max_workers=prefetch_workers,
-        thread_name_prefix="three-dataset-geometry",
+    prefetcher = GeometryPrefetcher(
+        datasets,
+        seed=seed,
+        rank=rank,
+        accumulation=accumulation,
+        microbatch_per_gpu=microbatch_per_gpu,
+        targets_per_source=k,
+        use_source_rgb=use_source_rgb,
+        start_step=start_step,
+        target_steps=target_steps,
+        depth=prefetch_depth,
+        workers=prefetch_workers,
     )
     optimizer.zero_grad(set_to_none=True)
     try:
-        slots_per_rank = accumulation * microbatch_per_gpu
-
-        def timed_geometry(step_dataset, index: int, permutation: np.ndarray,
-                           required_targets: int, fallback_seed: int):
-            task_started = time.perf_counter()
-            candidates = [int(index)]
-            fallback_rng = np.random.default_rng(int(fallback_seed))
-            fallback_order = fallback_rng.permutation(len(step_dataset))
-            candidates.extend(int(value) for value in fallback_order if int(value) != int(index))
-            last_error = None
-            for candidate_number, candidate in enumerate(candidates):
-                candidate_sources = permutation if candidate_number == 0 else fallback_rng.permutation(21)
-                try:
-                    source, xyz, valid = source_with_eligible_targets(
-                        step_dataset, candidate, candidate_sources,
-                        min_targets=required_targets,
-                    )
-                except ValueError as error:
-                    last_error = error
-                    continue
-                # RGB failures are data-contract errors, not a reason to change
-                # the deterministic geometry fallback clip/source.
-                source_rgb = (
-                    step_dataset.source_rgb(candidate, source)
-                    if use_source_rgb else None
-                )
-                return (candidate, source, xyz, valid, source_rgb), time.perf_counter() - task_started
-            raise ValueError(
-                f"dataset has no clip/source with K={required_targets} eligible targets"
-            ) from last_error
-
-        def plan_step(step: int):
-            """Plan one update and submit its deterministic geometry futures."""
-            step_name = dataset_for_step(step, seed)
-            step_dataset = datasets[step_name]
-            step_plans = [deterministic_sample_plan(
-                step_dataset, step_name, seed, step, slot, rank, slots_per_rank
-            ) for slot in range(slots_per_rank)]
-            step_futures = [pool.submit(
-                timed_geometry, step_dataset, index,
-                np.random.default_rng(np.random.SeedSequence([seed, step, slot, rank, 771])).permutation(21),
-                k,
-                int(np.random.SeedSequence([seed, step, slot, rank, 772]).generate_state(1)[0]),
-            ) for slot, (index, _source, _rng) in enumerate(step_plans)]
-            return step_name, step_dataset, step_plans, step_futures
-
-        # Depth=2 preserves the previous current+next-step submission policy.
-        # The optimized route uses four in-flight steps without adding workers.
-        pending = deque()
-        next_plan_step = start_step
-
-        def refill_plans() -> None:
-            nonlocal next_plan_step
-            while len(pending) < prefetch_depth and next_plan_step < target_steps:
-                pending.append((next_plan_step, *plan_step(next_plan_step)))
-                next_plan_step += 1
-
-        refill_plans()
+        prefetcher.refill()
         for step in range(start_step, target_steps):
-            planned_step, name, dataset, plans, futures = pending.popleft()
-            if planned_step != step:
-                raise RuntimeError(f"prefetch plan order mismatch: {planned_step} != {step}")
-            refill_plans()
+            planned = prefetcher.pop(step)
+            name = planned.dataset_name
+            dataset = planned.dataset
+            plans = planned.sample_plans
+            futures = planned.geometry_futures
             if pipeline is not None:
                 pipeline.wait_for(
-                    dataset, name, [index for index, _source, _rng in plans],
+                    dataset, name, planned.clip_indices,
                     float(config.get("pipeline_wait_timeout_seconds", 3600)),
                 )
             update_loss = 0.0
@@ -629,7 +581,7 @@ def main() -> None:
             if bool(stop_tensor.item()):
                 break
     finally:
-        pool.shutdown(wait=True)
+        prefetcher.close()
         if pipeline is not None:
             pipeline.close()
             lazy_counts = pipeline.snapshot()
