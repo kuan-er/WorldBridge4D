@@ -1,5 +1,5 @@
-current_task: T-20260823090727-b81517
-active_hypotheses: [H023]
+current_task: null
+active_hypotheses: []
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -974,7 +974,7 @@ h023_default_sim3_inference:
   cli_help: passed
   diff_check: passed
 h023_step100000_three_dataset_inference:
-  status: scheduled
+  status: complete_artifacts_verified
   task: T-20260823090727-b81517
   checkpoint_step: 100000
   checkpoint_sha256: 3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2
@@ -990,4 +990,26 @@ h023_step100000_three_dataset_inference:
   initial_kubric_result: failed_lazy_only_cache_rejected_before_model_load
   fix: inference_allows_lazy_only_latent_tier_and_fails_on_requested_cache_miss
   fix_tests_passed: 73
-updated_at: 2026-08-23T09:12:00Z
+  successful_runs:
+    kubric: R-20260823090947-f41fee
+    pointodyssey: R-20260823090956-0cdbc8
+    dynamic_replica: R-20260823091007-a50d23
+  results:
+    kubric:
+      scale: 0.9973505088341077
+      rmse_before_m: 1.8403765692041187
+      rmse_after_m: 1.8379107176178069
+      sha256: 0f0ba96ea58f859c483c4b43d820affcf10f9f07afe8587d1c08905d0d8da6b1
+    pointodyssey:
+      scale: 0.9088529441090288
+      rmse_before_m: 0.9558807842972527
+      rmse_after_m: 0.9353527499584039
+      sha256: c6ca2ab5c499336071e3ff73362153df886f51e0673f63015a272bdb2679149f
+    dynamic_replica:
+      scale: 1.0207717754615304
+      rmse_before_m: 0.2218493382696255
+      rmse_after_m: 0.21816117704398316
+      sha256: 61283f1c6625f209bcf6354ba10eda2aee4617d3410753239137bebfaed11294
+  artifact_shape: [21, 3, 256, 256]
+  finite_raw_and_aligned: true
+updated_at: 2026-08-23T09:14:00Z
