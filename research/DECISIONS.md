@@ -5,6 +5,7 @@
 - Promote the H023 source-RGB pyramid with 32/64/128/256px decoder fusions as the production route. Keep source-RGB groups at the selected 10× multiplier, cap Wan and the mature decoder at 0.1× of their legacy group learning rates, and keep the geometry adapter frozen.
 - The causal N=16 screen established that matched source RGB is used: versus alpha-zero, aggregate EPE improved by 4.31%/1.52%/1.03% on Kubric/PointOdyssey/Dynamic Replica; versus wrong RGB, it improved by 7.27%/2.15%/3.10%. The added 32px path is retained for trajectory continuity but is not claimed to solve boundaries; boundary ablation found most local value at 64/128px.
 - The immutable step-100,000 checkpoint has exact clip counters 280,000/240,000/280,000, full model/AdamW/two-rank RNG state, SHA-256 `3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2`, and durable artifact `artifact://H023/R-20260822143915-eec343/checkpoint/3181a255d48687f1`. Weights remain outside Git.
+- Step 100,000 is the final production endpoint; no default continuation to 150,000 remains. The canonical config stops at 100,000 but preserves the original 150k LR horizon as schedule provenance, so a future explicit strict `--resume` can restore AdamW, counters, and per-rank RNG and continue without an LR discontinuity.
 - Boundary-weighted loss, pointwise XYZ residual, guided final upsample, and target-RGB cross-attention remain experiments and are not part of this promotion.
 
 ## 2026-08-10 — Canonical defaults use all-target supervision and full DiT fine-tuning

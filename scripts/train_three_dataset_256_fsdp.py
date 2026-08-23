@@ -270,8 +270,12 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
             raise ValueError(
                 "schedule extension must satisfy warmup < start < original horizon < extended horizon"
             )
-        if int(config.get("max_steps", extension_horizon)) != extension_horizon:
-            raise ValueError("extended schedule horizon must equal max_steps")
+        max_steps = int(config.get("max_steps", extension_horizon))
+        if not extension_start < max_steps <= extension_horizon:
+            raise ValueError(
+                "max_steps must be after the schedule extension start and no later "
+                "than its horizon"
+            )
 
 
 def wan_block_auto_wrap_policy(

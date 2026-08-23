@@ -805,7 +805,7 @@ h023_current_route_cleanup:
   diff_check: passed
   live_training_modified: false
 h023_source_rgb_step100k_promotion:
-  status: selected_for_main
+  status: selected_final_endpoint_resumable
   task: T-20260823053649-d2c68c
   source_run: R-20260822143915-eec343
   architecture: source_rgb_pyramid_fusions_32_64_128_256
@@ -824,7 +824,16 @@ h023_source_rgb_step100k_promotion:
   causal_epe_improvement_percent:
     versus_alpha_zero: {kubric: 4.31, pointodyssey: 1.52, dynamic_replica: 1.03}
     versus_wrong_rgb: {kubric: 7.27, pointodyssey: 2.15, dynamic_replica: 3.10}
-  exact_config: configs/worldbridge4d_256_source_rgb_fusion32_cap0p1_gpu01_to150000.yaml
+  exact_config: configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml
+  final_endpoint: 100000
+  default_continuation: disabled
+  resume_policy:
+    optimizer: full_adamw_restored
+    counters: restored
+    rng_states: two_rank_restored
+    schedule_extension_horizon_steps: 150000
+    schedule_horizon_reason: preserve_exact_lr_curve_for_optional_explicit_continuation
+    constraints: same_model_optimizer_groups_and_world_size_two
   excluded_experiments: [target_rgb_cross_attention, boundary_weighted_loss, pointwise_xyz_residual, rgb_guided_final_upsample]
   integration_validation:
     run: R-20260823054032-9eca51
@@ -832,4 +841,4 @@ h023_source_rgb_step100k_promotion:
     compileall: passed
     shell_syntax: passed
     diff_check: passed
-updated_at: 2026-08-23T05:45:00Z
+updated_at: 2026-08-23T05:55:00Z

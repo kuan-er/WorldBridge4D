@@ -804,20 +804,29 @@ def test_experimental_k_modes_require_explicit_world_size_flags():
         "diagnostic_ensure_dataset_coverage": True,
     }
     train.validate_config(extended, world=2, allow_two_gpu=True)
+    # A selected endpoint may stop before the preserved LR horizon. This keeps
+    # the 100k checkpoint canonical while allowing an explicit exact resume.
+    train.validate_config(
+        {**extended, "max_steps": 100000}, world=2, allow_two_gpu=True,
+    )
     with pytest.raises(ValueError, match="extension"):
         train.validate_config(
             {**extended, "schedule_extension_horizon_steps": 90000},
             world=2, allow_two_gpu=True,
         )
+    with pytest.raises(ValueError, match="max_steps"):
+        train.validate_config(
+            {**extended, "max_steps": 150001}, world=2, allow_two_gpu=True,
+        )
 
 
-def test_source_rgb_fusion32_to150k_config_is_strict_structural_migration():
+def test_source_rgb_fusion32_step100k_config_is_resumable_structural_migration():
     import yaml
     from scripts.train_three_dataset_256_fsdp import validate_config
 
     path = (
         Path(__file__).resolve().parents[1]
-        / "configs/worldbridge4d_256_source_rgb_fusion32_cap0p1_gpu01_to150000.yaml"
+        / "configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml"
     )
     config = yaml.safe_load(path.read_text())
     assert config["source_rgb_fusion_scales"] == [32, 64, 128, 256]
@@ -833,7 +842,12 @@ def test_source_rgb_fusion32_to150k_config_is_strict_structural_migration():
     assert config["expected_source_rgb_trainable_parameters"] == 813_832
     assert config["joint_fresh_group_warmup_steps"] == 0
     assert config["joint_fresh_group_max_lr_scale"] == 0.1
-    assert config["max_steps"] == 150_000
+    assert config["max_steps"] == config["selected_checkpoint_step"] == 100_000
+    assert config["schedule_extension_horizon_steps"] == 150_000
+    assert config["selected_checkpoint_sha256"] == (
+        "3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2"
+    )
+    assert config["checkpoint_steps"] == [100_000]
     assert config["checkpoint_every_after"] == 5_000
     validate_config(config, world=2, allow_two_gpu=True)
 

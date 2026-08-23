@@ -1,4 +1,8 @@
-# Add zero-init 32px source RGB fusion at step 93,381 and continue to 150,000.
+# Selected production trajectory: add zero-init 32px source RGB fusion at
+# step 93,381 and stop at the validated step-100,000 checkpoint. The 150k
+# schedule horizon below records the LR curve that produced step 100k and lets
+# an operator explicitly resume full optimizer state with --steps >100000;
+# it is not the default training target.
 image_size: 256
 clip_length: 21
 latent_spatial_size: 32
@@ -78,8 +82,14 @@ warmup_steps: 1000
 lr_schedule: cosine
 schedule_horizon_steps: 100000
 schedule_extension_start_step: 56503
+# Preserve the exact continuous LR schedule used to produce the selected 100k
+# checkpoint. max_steps is the canonical endpoint; the longer schedule horizon
+# exists only so a later explicit --resume/--steps continuation has no LR jump.
 schedule_extension_horizon_steps: 150000
-max_steps: 150000
+max_steps: 100000
+selected_checkpoint_step: 100000
+selected_checkpoint_sha256: 3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2
+selected_checkpoint_artifact: artifact://H023/R-20260822143915-eec343/checkpoint/3181a255d48687f1
 gradient_clip: 1.0
 smooth_l1_beta: 0.05
 gradient_checkpointing: true
@@ -88,8 +98,6 @@ geometry_seed: 20260812
 decoder_seed: 424242
 checkpoint_steps:
 - 100000
-- 125000
-- 150000
 checkpoint_every_after: 5000
 checkpoint_keep_last: 2
 diagnostic_every_steps: 5
@@ -128,7 +136,7 @@ datasets:
 tracking:
   enabled: true
   project: worldbridge4d
-  group: worldbridge4d-256-source-rgb-fusion32-cap0p1-gpu01-to150k
+  group: worldbridge4d-256-source-rgb-fusion32-step100k
   tags:
   - h023
   - source-rgb-pyramid
@@ -140,6 +148,8 @@ tracking:
   - filtered-rgb-adam-state
   - selected-lr10x
   - joint-phase
+  - selected-step100k
+  - full-state-resumable
   - rgb-moments-restored
   - wan-decoder-moments-fresh
   - b2-k19-a2
