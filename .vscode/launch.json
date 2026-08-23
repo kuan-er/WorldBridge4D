@@ -2,53 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python：调试当前文件",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
-        {
-            "name": "学习 1：Tiny Decoder（CPU）",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            },
-            "args": [
-                "-s",
-                "-q",
-                "tests/test_package_layout.py::test_refactored_decoder_forward_constructs_typed_output"
-            ]
-        },
-        {
-            "name": "学习 2：Structured Backbone（CPU）",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            },
-            "args": [
-                "-s",
-                "-q",
-                "tests/test_training256.py::test_256_latent_contract_and_explicit_prompt_reaches_mapping"
-            ]
-        },
-        {
-            "name": "学习 3：真实 FSDP 单步（GPU 0,1）",
+            "name": "真实 FSDP 单步（GPU 0,1）",
             "type": "debugpy",
             "request": "launch",
             "module": "torch.distributed.run",
