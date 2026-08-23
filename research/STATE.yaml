@@ -826,4 +826,10 @@ h023_source_rgb_step100k_promotion:
     versus_wrong_rgb: {kubric: 7.27, pointodyssey: 2.15, dynamic_replica: 3.10}
   exact_config: configs/worldbridge4d_256_source_rgb_fusion32_cap0p1_gpu01_to150000.yaml
   excluded_experiments: [target_rgb_cross_attention, boundary_weighted_loss, pointwise_xyz_residual, rgb_guided_final_upsample]
+  integration_validation:
+    run: R-20260823054032-9eca51
+    tests_passed: 65
+    compileall: passed
+    shell_syntax: passed
+    diff_check: passed
 updated_at: 2026-08-23T05:45:00Z
