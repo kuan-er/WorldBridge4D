@@ -4,7 +4,6 @@
 
 ## 当前训练契约
 
-- 物理 GPU：`1,4`，2 ranks
 - 数据：Kubric MOVi-F、PointOdyssey、Dynamic Replica
 - 输入 latent：`[B,16,6,32,32]`
 - Wan hidden readout：`[13,14,15,29]`，初始权重 `0.3/0.3/0.3/0.1`
