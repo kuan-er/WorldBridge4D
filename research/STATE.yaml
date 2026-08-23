@@ -1,5 +1,5 @@
-current_task: T-20260823091808-48c86a
-active_hypotheses: [H023]
+current_task: null
+active_hypotheses: []
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -1038,10 +1038,20 @@ h023_exhaustive_validation_evaluation:
     valid_points: 4248502272
     summary: /data/WorldBridge4D-runs/evaluation-step100000/kubric/summary.json
   kubric_worst_render:
-    status: queued_step100000_replacement
+    status: cancelled_before_start_by_user
     reason: historical_step95000_checkpoint_no_longer_exists
     selection: top_raw_epe_sources_with_unique_validation_clips
     count: 4
     output_root: /tmp/worldbridge4d-worst-trajectory-renders-step95000
     tests_passed: 79
-updated_at: 2026-08-23T13:40:00Z
+  cancellation:
+    requested_by_user: true
+    reason: GPUs unresponsive
+    pointodyssey_clips_persisted: 720
+    dynamic_replica_clips_persisted: 406
+    kubric_clips_complete: 147
+    terminated_runs:
+      - R-20260823104419-797a1f
+      - R-20260823104456-10aba5
+      - R-20260823144244-b704f2
+updated_at: 2026-08-23T15:10:00Z
