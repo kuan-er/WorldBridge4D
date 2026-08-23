@@ -986,4 +986,8 @@ h023_step100000_three_dataset_inference:
     sim3: joint_dataset_gt_default
   devices: [0, 1]
   output_root: /data/WorldBridge4D-runs/inference-step100000
-updated_at: 2026-08-23T09:10:00Z
+  initial_kubric_run: R-20260823090812-5b2890
+  initial_kubric_result: failed_lazy_only_cache_rejected_before_model_load
+  fix: inference_allows_lazy_only_latent_tier_and_fails_on_requested_cache_miss
+  fix_tests_passed: 73
+updated_at: 2026-08-23T09:12:00Z
