@@ -10,22 +10,41 @@ import pytest
 import torch
 from torch import nn
 
-from worldbridge.dense4d import (
+from worldbridge.models import (
     DenseQueryDecoder, DenseQueryWanModel, DenseUpsampler2D, GatedSourceFusion,
-    WanHiddenGeometryBackbone, masked_pair_smooth_l1,
+    WanHiddenGeometryBackbone,
 )
-from worldbridge.dense4d_runtime import parameter_groups
-from worldbridge.training256 import (
-    CachedExternalDataset, KubricGeometryMmapStore, LazyLatentCache, MOViF256Dataset,
-    RGBUInt8ShardStore, apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
-    deterministic_sample_plan, extended_cosine_learning_rate_factor,
-    sample_eligible_targets, source_with_eligible_targets, training_diagnostic_due,
+from worldbridge.models.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
+from worldbridge.trainer.objective import masked_pair_smooth_l1
+from worldbridge.trainer.optimizer import parameter_groups
+from worldbridge.data.cache import KubricGeometryMmapStore, LazyLatentCache, RGBUInt8ShardStore
+from worldbridge.data.datasets import CachedExternalDataset, MOViF256Dataset
+from worldbridge.data.sampling import (
+    deterministic_sample_plan, sample_eligible_targets, source_with_eligible_targets,
 )
-from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
+from worldbridge.trainer.schedulers import (
+    apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
+    extended_cosine_learning_rate_factor, training_diagnostic_due,
+)
 from worldbridge.text_conditions import load_inference_text_condition
-from scripts.create_wan_text_conditions import (
+from worldbridge.data.commands.text_conditions import (
     PROMPTS, TASK_INSTRUCTION, completed_cache, native_encoder,
 )
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
+
+def trainer_source() -> str:
+    return (REPOSITORY_ROOT / "src/worldbridge/trainer/trainer.py").read_text()
+
+
+def checkpoint_source() -> str:
+    return (REPOSITORY_ROOT / "src/worldbridge/trainer/fsdp_checkpoint.py").read_text()
+
+
+def tracking_source() -> str:
+    return (REPOSITORY_ROOT / "src/worldbridge/trainer/tracking.py").read_text()
 
 
 class TinyExplicitConditionMapping(nn.Module):
@@ -123,7 +142,7 @@ def test_inference_condition_is_dataset_specific_and_checksum_verified(tmp_path)
 
 
 def test_resume_planning_uses_status_sidecar_not_full_checkpoint_load():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     planning = source[source.index("# Cache planning needs only"):source.index("planned_start =")]
     assert 'config.get("finetune_expected_global_step", -1)' in planning
     assert '"resume_status_path", planning_checkpoint.parent / "train_status.json"' in planning
@@ -149,13 +168,13 @@ def test_full_resume_skips_redundant_native_wan_weights(monkeypatch, tmp_path):
             load_pretrained_weights=True,
         )
 
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     assert "load_wan_pretrained = not resume.is_file()" in source
     assert "load_wan_pretrained=load_wan_pretrained" in source
 
 
 def test_audited_model_migration_permits_only_new_32px_fusion():
-    from scripts.train_three_dataset_256_fsdp import load_model_state_for_resume
+    from worldbridge.trainer.fsdp_checkpoint import load_model_state_for_resume
 
     class TinyModel(nn.Module):
         def __init__(self, extended: bool):
@@ -185,7 +204,7 @@ def test_audited_model_migration_permits_only_new_32px_fusion():
 
 
 def test_weights_only_initialization_permits_only_new_rgb_modules(tmp_path):
-    from scripts.train_three_dataset_256_fsdp import load_initial_model_weights
+    from worldbridge.trainer.fsdp_checkpoint import load_initial_model_weights
 
     class TinyRGBModel(nn.Module):
         def __init__(self):
@@ -218,7 +237,7 @@ def test_weights_only_initialization_permits_only_new_rgb_modules(tmp_path):
 
 
 def test_weights_only_continuation_validates_step_counters_and_lr_schedule(tmp_path):
-    from scripts.train_three_dataset_256_fsdp import load_initial_model_weights
+    from worldbridge.trainer.fsdp_checkpoint import load_initial_model_weights
 
     class TinyRGBModel(nn.Module):
         def __init__(self):
@@ -264,7 +283,7 @@ def test_weights_only_continuation_validates_step_counters_and_lr_schedule(tmp_p
 
 
 def test_optimizer_state_extension_restores_old_and_leaves_only_rgb_fresh():
-    from scripts.train_three_dataset_256_fsdp import extend_optimizer_state_for_rgb
+    from worldbridge.trainer.fsdp_checkpoint import extend_optimizer_state_for_rgb
 
     source = {
         "state": {
@@ -299,7 +318,7 @@ def test_optimizer_state_extension_restores_old_and_leaves_only_rgb_fresh():
 
 
 def test_collective_rgb_grad_clipper_handles_local_gradients_and_empty_rank(monkeypatch):
-    from scripts.train_three_dataset_256_fsdp import clip_optimizer_grad_norm_
+    from worldbridge.trainer.distributed import clip_optimizer_grad_norm_
 
     monkeypatch.setattr(torch.distributed, "all_reduce", lambda value, op=None: value)
     parameter = nn.Parameter(torch.tensor([3.0, 4.0]))
@@ -363,7 +382,7 @@ def test_source_rgb_only_freezes_every_old_parameter_and_splits_decay_groups():
 
 
 def test_rgb_only_optimizer_filter_retains_moments_and_new_group_options():
-    from scripts.train_three_dataset_256_fsdp import filter_optimizer_state_for_trainable
+    from worldbridge.trainer.fsdp_checkpoint import filter_optimizer_state_for_trainable
 
     encoder = "decoder.upsampler.source_rgb_encoder.stem.weight"
     alpha = "decoder.upsampler.source_fusions.64.alpha"
@@ -390,7 +409,7 @@ def test_rgb_only_optimizer_filter_retains_moments_and_new_group_options():
 
 
 def test_joint_optimizer_filter_restores_rgb_and_initializes_old_modules_fresh():
-    from scripts.train_three_dataset_256_fsdp import filter_optimizer_state_for_trainable
+    from worldbridge.trainer.fsdp_checkpoint import filter_optimizer_state_for_trainable
 
     encoder = "decoder.upsampler.source_rgb_encoder.stem.weight"
     alpha = "decoder.upsampler.source_fusions.64.alpha"
@@ -457,7 +476,7 @@ def test_source_rgb_32_fusion_is_zero_init_and_precedes_upsampling():
 
 
 def test_fresh_group_warmup_ramps_joint_groups_only():
-    from scripts.train_three_dataset_256_fsdp import apply_fresh_group_warmup
+    from worldbridge.trainer.optimizer import apply_fresh_group_warmup
 
     values = [nn.Parameter(torch.zeros(1)) for _ in range(3)]
     optimizer = torch.optim.AdamW([
@@ -507,7 +526,7 @@ def test_source_rgb_plus_wan_decoder_freezes_only_geometry_and_bypassed_backbone
 
 
 def test_full_resume_loads_rank0_model_before_fsdp_sync():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = checkpoint_source()
     helper = source[
         source.index("def load_unwrapped_model_checkpoint"):
         source.index("def load_optimizer_checkpoint")
@@ -516,7 +535,8 @@ def test_full_resume_loads_rank0_model_before_fsdp_sync():
     assert "model.load_state_dict(state, strict=True)" in source
     assert "fsdp_state_context" not in helper
 
-    main = source[source.index("def main()") :]
+    trainer = trainer_source()
+    main = trainer[trainer.index("def main()") :]
     model_load = main.index("load_unwrapped_model_checkpoint(")
     fsdp_wrap = main.index("fsdp = FSDP(")
     optimizer_load = main.index("load_optimizer_checkpoint(")
@@ -525,13 +545,13 @@ def test_full_resume_loads_rank0_model_before_fsdp_sync():
 
 
 def test_wandb_resume_can_skip_already_published_steps():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     assert '"--wandb-log-after-step", type=int, default=-1' in source
     assert "completed > args.wandb_log_after_step" in source
 
 
 def test_wandb_logs_loss_and_raw_epe_as_separate_dataset_series():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = tracking_source() + trainer_source()
     assert 'run.define_metric("train/loss_by_dataset/*"' in source
     assert 'run.define_metric("train/raw_epe_m_by_dataset/*"' in source
     assert 'f"train/loss_by_dataset/{name}": dataset_loss' in source
@@ -540,14 +560,14 @@ def test_wandb_logs_loss_and_raw_epe_as_separate_dataset_series():
 
 
 def test_checkpoint_publishes_matching_planning_sidecar():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     assert 'atomic_json(checkpoint_dir / "train_status.json", checkpoint_status)' in source
     assert 'atomic_json(output / "train_status.json", checkpoint_status)' in source
 
 
 def test_staging_is_checksum_verified_reusable_and_wires_runtime_paths(tmp_path):
     import yaml
-    from scripts.stage_three_dataset_256_inputs import stage_training_inputs
+    from worldbridge.trainer.commands.stage_inputs import stage_training_inputs
 
     wan = tmp_path / "wan"; wan.mkdir()
     dit = wan / "diffusion_pytorch_model.safetensors"; dit.write_bytes(b"dit-weights")
@@ -576,7 +596,7 @@ def test_staging_is_checksum_verified_reusable_and_wires_runtime_paths(tmp_path)
 
 
 def test_inference_script_encodes_backbone_once_before_target_chunks():
-    source = (Path(__file__).resolve().parents[1] / "scripts/infer_three_dataset_256.py").read_text()
+    source = (REPOSITORY_ROOT / "src/worldbridge/evaluation/inference.py").read_text()
     assert "z4d = model.backbone(latent, condition)" in source
     assert "model.decoder.encode_source_rgb(source_rgb)" in source
     assert "z4d, source_tensor, target_tensor, source_pyramid=source_pyramid" in source
@@ -617,7 +637,7 @@ def test_200m_decoder_exact_parameter_count_component():
 
 
 def test_required_latents_respect_true_microbatch_slots():
-    from scripts.train_three_dataset_256_fsdp import required_latent_indices
+    from worldbridge.trainer.lazy_vae import required_latent_indices
 
     class Dataset:
         rows = []
@@ -635,7 +655,7 @@ def test_required_latents_respect_true_microbatch_slots():
 
 
 def test_pipeline_work_is_global_unique_balanced_and_needed_step_ordered():
-    from scripts.train_three_dataset_256_fsdp import pipeline_work_for_rank
+    from worldbridge.trainer.lazy_vae import pipeline_work_for_rank
 
     gathered = [
         [(9, "kubric", 1), (3, "pointodyssey", 4), (7, "kubric", 1)],
@@ -655,7 +675,7 @@ def test_pipeline_work_is_global_unique_balanced_and_needed_step_ordered():
 
 
 def test_offline_lazy_cache_hash_owner_balances_fully_overlapping_plans():
-    from scripts.train_three_dataset_256_fsdp import lazy_latent_owner
+    from worldbridge.trainer.lazy_vae import lazy_latent_owner
 
     for name in ("kubric", "pointodyssey", "dynamic_replica"):
         counts = [0, 0]
@@ -665,7 +685,7 @@ def test_offline_lazy_cache_hash_owner_balances_fully_overlapping_plans():
 
 
 def test_kubric_mmap_conversion_is_exact_atomic_and_resumable(tmp_path):
-    from scripts.convert_kubric_geometry_to_mmap import convert
+    from worldbridge.data.commands.convert_kubric_mmap import convert
 
     source = tmp_path / "compact"
     destination = tmp_path / "mmap"
@@ -713,7 +733,7 @@ def test_kubric_mmap_conversion_is_exact_atomic_and_resumable(tmp_path):
 
 
 def test_experimental_k_modes_require_explicit_world_size_flags():
-    import scripts.train_three_dataset_256_fsdp as train
+    import worldbridge.trainer.trainer as train
 
     base = {
         "image_size": 256, "clip_length": 21, "latent_spatial_size": 32,
@@ -822,7 +842,7 @@ def test_experimental_k_modes_require_explicit_world_size_flags():
 
 def test_source_rgb_fusion32_step100k_config_is_resumable_structural_migration():
     import yaml
-    from scripts.train_three_dataset_256_fsdp import validate_config
+    from worldbridge.trainer.config import validate_config
 
     path = (
         Path(__file__).resolve().parents[1]
@@ -867,7 +887,7 @@ def _handoff_original_config():
 
 
 def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_controls(tmp_path):
-    from scripts.prepare_three_dataset_256_gpu14_handoff import build_extended_config
+    from worldbridge.trainer.commands.handoff import build_extended_config
 
     config = build_extended_config(
         _handoff_original_config(), 56435, 150000, tmp_path / "train_status.json",
@@ -886,7 +906,7 @@ def test_gpu14_handoff_config_preserves_protocol_and_changes_only_registered_con
 
 
 def test_gpu14_handoff_preparer_freezes_and_verifies_complete_checkpoint(tmp_path):
-    from scripts.prepare_three_dataset_256_gpu14_handoff import (
+    from worldbridge.trainer.commands.handoff import (
         finalize_checksum_marker, prepare, verify_marker,
     )
 
@@ -930,7 +950,7 @@ def test_gpu14_handoff_preparer_freezes_and_verifies_complete_checkpoint(tmp_pat
 
 
 def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
-    from scripts.train_three_dataset_256_fsdp import prune_periodic_checkpoints
+    from worldbridge.trainer.fsdp_checkpoint import prune_periodic_checkpoints
 
     for step in (1000, 2000, 5000):
         (tmp_path / f"checkpoint-{step:07d}.pt").write_bytes(b"checkpoint")
@@ -944,7 +964,7 @@ def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
 
 
 def test_latest_checkpoint_is_atomic_same_inode_link(tmp_path):
-    from scripts.train_three_dataset_256_fsdp import update_latest_checkpoint
+    from worldbridge.trainer.fsdp_checkpoint import update_latest_checkpoint
 
     first = tmp_path / "checkpoint-0000050.pt"; first.write_bytes(b"first")
     second = tmp_path / "checkpoint-0000100.pt"; second.write_bytes(b"second")
@@ -958,7 +978,7 @@ def test_latest_checkpoint_is_atomic_same_inode_link(tmp_path):
 
 
 def test_checkpoint_replica_is_ordered_atomic_and_supersedes_old_jobs(tmp_path):
-    from scripts.replicate_checkpoint import replicate_checkpoint
+    from worldbridge.trainer.commands.replicate_checkpoint import replicate_checkpoint
 
     source = tmp_path / "ssd" / "checkpoint-0000100.pt"
     source.parent.mkdir(); source.write_bytes(b"new-checkpoint")
@@ -981,7 +1001,7 @@ def test_checkpoint_replica_is_ordered_atomic_and_supersedes_old_jobs(tmp_path):
 def test_train_status_recovery_requires_complete_checkpoint_and_conflict_free_sidecar(
     tmp_path, monkeypatch,
 ):
-    from scripts.recover_three_dataset_256_train_status import recover_status
+    from worldbridge.trainer.commands.recover_status import recover_status
 
     checkpoint = tmp_path / "latest.pt"
     output = tmp_path / "train_status.json"
@@ -997,7 +1017,7 @@ def test_train_status_recovery_requires_complete_checkpoint_and_conflict_free_si
         },
     }
     monkeypatch.setattr(
-        "scripts.recover_three_dataset_256_train_status.torch.load",
+        "worldbridge.trainer.commands.recover_status.torch.load",
         lambda *_args, **_kwargs: payload,
     )
     checkpoint.write_bytes(b"checkpoint")
@@ -1013,48 +1033,29 @@ def test_train_status_recovery_requires_complete_checkpoint_and_conflict_free_si
         recover_status(checkpoint, output)
 
 
-def test_retained_launchers_use_current_config_and_persistent_staging():
+def test_fsdp_launcher_uses_current_config_and_package_commands():
     root = Path(__file__).resolve().parents[1]
-    generic = (root / "scripts/run_three_dataset_256_fsdp.sh").read_text()
-    precompute = (root / "scripts/run_precompute_latents_5gpu.sh").read_text()
-    for source in (generic, precompute):
-        assert "configs/worldbridge4d_gpu14_k19_150k.yaml" in source
-        assert "STAGING_ROOT=\"${STAGING_ROOT:-/data/WorldBridge4D-persistent/" in source
-        assert "STAGING_ROOT=\"${STAGING_ROOT:-/tmp/" not in source
-    assert 'GPUS="${GPUS:-1,4}"' in generic
-    assert 'NPROC="${NPROC:-2}"' in generic
-    assert 'CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"' in generic
-    assert '--durable-checkpoint "$DURABLE_CHECKPOINT"' in generic
-
-
-def test_gpu14_150k_watcher_is_pinned_audited_stable_and_resume_only():
-    root = Path(__file__).resolve().parents[1]
-    watcher = (root / "scripts/wait_resume_three_dataset_256_gpu14_150k.sh").read_text()
-    assert "--verify-marker" in watcher
-    assert 'GPUS=1,4' in watcher
-    assert 'NPROC=2' in watcher
-    assert 'STEPS=150000' in watcher
-    assert 'FRESH_START=0' in watcher
-    assert 'STABLE_SECONDS="${STABLE_SECONDS:-90}"' in watcher
-    assert 'MIN_FREE_MIB="${MIN_FREE_MIB:-76000}"' in watcher
-    assert 'query-compute-apps=pid' in watcher
-    assert 'STAGE_INPUTS=0' in watcher
-    assert 'POST_RESUME_CHECKSUM_MARKER="$MARKER"' in watcher
-    assert "stage_three_dataset_256_inputs.py" not in watcher
-    assert '--verify-marker "$MARKER" --skip-checksum' in watcher
-    assert 'WANDB_LOG_AFTER_STEP="$RESUME_STEP"' in watcher
-    assert " kill " not in watcher and "pkill" not in watcher
+    launcher = (root / "scripts/run_fsdp.sh").read_text()
+    assert "configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml" in launcher
+    assert "STAGING_ROOT=\"${STAGING_ROOT:-/data/WorldBridge4D-persistent/" in launcher
+    assert "STAGING_ROOT=\"${STAGING_ROOT:-/tmp/" not in launcher
+    assert 'GPUS="${GPUS:-0,1}"' in launcher
+    assert 'NPROC="${NPROC:-2}"' in launcher
+    assert 'CHECKPOINT_DIR="${CHECKPOINT_DIR:-$OUTPUT}"' in launcher
+    assert '--durable-checkpoint "$DURABLE_CHECKPOINT"' in launcher
+    assert "scripts/prepare_data.py\" cache-roots" in launcher
+    assert "scripts/prepare_data.py\" stage-inputs" in launcher
+    assert '"$ROOT/scripts/train.py"' in launcher
 
 
 def test_post_resume_checksum_starts_only_after_strict_optimizer_restore():
     import inspect
-    from worldbridge.dense4d_runtime import build_real_model
+    from worldbridge.models.factory import build_real_model
 
     parameter = inspect.signature(build_real_model).parameters["load_wan_pretrained"]
     assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
     assert parameter.default is True
-    root = Path(__file__).resolve().parents[1]
-    source = (root / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     restore = source.index("load_optimizer_checkpoint(", source.index("def main()"))
     loaded = source.index('"event": "resume_state_loaded"', restore)
     checksum = source.index("launch_post_resume_checksum(", loaded)
@@ -1082,7 +1083,10 @@ def test_small_256_index_maps_back_to_geometry_clip_ids(tmp_path, monkeypatch):
         def source_all_targets_with_visibility(self, index, source): return index, source, True
     class Latents:
         def __getitem__(self, index): return index
-    monkeypatch.setattr("worldbridge.training256.LatentShardStore", lambda *_args, **_kwargs: Latents())
+    monkeypatch.setattr(
+        "worldbridge.data.datasets.cached_external.LatentShardStore",
+        lambda *_args, **_kwargs: Latents(),
+    )
     dataset = CachedExternalDataset(Geometry(), tmp_path, "pointodyssey")
     assert len(dataset) == 1
     assert dataset.source_all_targets(0, 7) == (1, 7)
@@ -1090,7 +1094,7 @@ def test_small_256_index_maps_back_to_geometry_clip_ids(tmp_path, monkeypatch):
 
 
 def test_durable_cache_preflight_requires_backup_and_live_target(tmp_path):
-    from scripts.validate_three_dataset_256_cache_roots import validate_cache_roots
+    from worldbridge.data.commands.cache_roots import validate_cache_roots
 
     config = {"datasets": {}}
     for name in ("kubric", "pointodyssey", "dynamic_replica"):
@@ -1124,7 +1128,7 @@ def test_durable_cache_preflight_requires_backup_and_live_target(tmp_path):
 
 
 def test_durable_cache_count_audit_is_exact(tmp_path):
-    from scripts.validate_three_dataset_256_cache_roots import assert_expected_latent_files
+    from worldbridge.data.commands.cache_roots import assert_expected_latent_files
 
     roots = {}
     for name, count in (("kubric", 2), ("pointodyssey", 1), ("dynamic_replica", 0)):
@@ -1140,7 +1144,7 @@ def test_durable_cache_count_audit_is_exact(tmp_path):
 
 
 def test_kubric_compact_geometry_audit_requires_exact_atomic_outputs(tmp_path):
-    from scripts.compact_kubric_geometry import audit_outputs
+    from worldbridge.data.commands.compact_kubric import audit_outputs
 
     wanted = {2, 7}
     for index in wanted:

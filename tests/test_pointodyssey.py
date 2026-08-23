@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import numpy as np
 
-import worldbridge.pointodyssey as pointodyssey
-from worldbridge.pointodyssey import PointOdysseyDataset, T
+import worldbridge.data.datasets.pointodyssey as pointodyssey
+from worldbridge.data.datasets.pointodyssey import PointOdysseyDataset, T
 
 
 def test_raw_root_override_rebases_immutable_scene_references(tmp_path):
@@ -42,7 +42,7 @@ def test_source_anchor_requires_visibility_but_targets_only_require_validity(mon
     monkeypatch.setattr(
         pointodyssey,
         "_depth",
-        lambda _path: (np.ones((128, 128), np.float32), np.ones((128, 128), bool)),
+        lambda *_args: (np.ones((128, 128), np.float32), np.ones((128, 128), bool)),
     )
 
     _, valid, visible = dataset.source_all_targets_with_visibility(0, source=0)

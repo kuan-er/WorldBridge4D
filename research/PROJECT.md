@@ -12,16 +12,17 @@
 
 ## Code map
 
-- `scripts/train_three_dataset_256_fsdp.py`: 唯一训练循环和 exact resume
-- `scripts/run_three_dataset_256_fsdp.sh`: 通用 torchrun launcher
-- `scripts/wait_resume_three_dataset_256_gpu14_150k.sh`: 当前 GPU1/4 handoff
-- `src/worldbridge/training256.py`: 三数据集 schedule、adapter 装配、cache 与采样
-- `src/worldbridge/dense4d.py`: structured readout、decoder 和 loss
-- `src/worldbridge/dense4d_runtime.py`: real-Wan model/optimizer 构建
-- `src/worldbridge/wan.py`: Wan VAE/DiT adapter
+- `scripts/train.py`: 薄训练 CLI
+- `scripts/infer.py`, `evaluate.py`: 薄推理与评测 CLI
+- `scripts/prepare_data.py`: 数据、cache 与 checkpoint 维护的统一子命令入口
+- `scripts/run_fsdp.sh`: 通用 torchrun launcher
+- `src/worldbridge/models/`: structured representation、Wan backbone、decoder 与 source-RGB fusion
+- `src/worldbridge/data/`: 三数据集 adapter、geometry、cache、sampling 与 factory
+- `src/worldbridge/trainer/`: `WorldBridgeTrainer`、objective、optimizer、FSDP、checkpoint 与 exact resume
+- `src/worldbridge/evaluation/`: inference、counterfactual evaluator 与 metrics
+- `src/worldbridge/utils/`: atomic I/O 与 checksum helper
+- `src/worldbridge/{dense4d,dense4d_runtime,training256,wan}.py`: 旧 import 的兼容 re-export
 - `src/worldbridge/text_conditions.py`: dataset prompt condition 校验
-- `src/worldbridge/data.py`, `geometry.py`: Kubric native data/geometry
-- `src/worldbridge/pointodyssey.py`, `dynamic_replica.py`: 外部数据集 geometry
 - `configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml`: 最终 step-100k source-RGB production 配置及可恢复 schedule provenance
 - `configs/worldbridge4d_gpu14_k19_150k.yaml`: 历史无 source-RGB trajectory 配置快照
 

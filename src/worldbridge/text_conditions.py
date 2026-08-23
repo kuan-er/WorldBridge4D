@@ -8,8 +8,8 @@ from typing import Any
 
 import torch
 
-from .dense4d_runtime import load_text_condition
-from .training256 import DATASET_NAMES
+from .models.factory import load_text_condition
+from .data.constants import DATASET_NAMES
 
 
 def file_sha256(path: str | Path, chunk: int = 8 << 20) -> str:
