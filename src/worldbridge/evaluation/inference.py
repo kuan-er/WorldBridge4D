@@ -1,4 +1,4 @@
-"""Dataset-aware 256px inference with the corresponding formal Wan prompt."""
+"""Dataset-aware 256px inference with default dataset-GT Sim(3) alignment."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,37 @@ from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_inference_text_condition
 from ..data.constants import DATASET_NAMES
 from ..data.factory import load_training_dataset
+from .metrics import align_sim3_to_ground_truth
+
+PERSISTENT_RUN_ROOT = Path("/data/WorldBridge4D-runs")
+DEFAULT_OUTPUT_ROOT = PERSISTENT_RUN_ROOT / "inference-step100000"
+
+
+def inference_output_path(
+    dataset: str, index: int, source: int, targets: list[int],
+    *, output: str | None = None, output_root: str | Path = DEFAULT_OUTPUT_ROOT,
+) -> Path:
+    """Resolve every inference artifact under the persistent run root."""
+    if output is None:
+        target_label = "all" if targets == list(range(21)) else "t" + "-".join(
+            f"{target:02d}" for target in targets
+        )
+        path = Path(output_root) / (
+            f"{dataset}-index{int(index):06d}-source{int(source):02d}-{target_label}.pt"
+        )
+    else:
+        path = Path(output)
+    path = path.expanduser().resolve(strict=False)
+    persistent = PERSISTENT_RUN_ROOT.resolve(strict=False)
+    try:
+        path.relative_to(persistent)
+    except ValueError as exc:
+        raise ValueError(
+            f"inference output must be under persistent root {persistent}, got {path}"
+        ) from exc
+    if path.suffix != ".pt":
+        raise ValueError(f"inference output must use a .pt suffix, got {path}")
+    return path
 
 
 def atomic_save(path: Path, payload: dict) -> None:
@@ -31,7 +62,12 @@ def main() -> None:
     parser.add_argument("--source", type=int, required=True)
     parser.add_argument("--targets", type=int, nargs="*", default=list(range(21)))
     parser.add_argument("--target-chunk", type=int, default=2)
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--output")
+    parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
+    parser.add_argument(
+        "--no-sim3", action="store_true",
+        help="save metric predictions without dataset-GT Sim(3) alignment",
+    )
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
     if not 0 <= args.source < 21:
@@ -92,18 +128,36 @@ def main() -> None:
     normalized = torch.cat(outputs, dim=1)[0]
     mean = torch.as_tensor(checkpoint["coordinate_mean"], dtype=torch.float32).reshape(1, 3, 1, 1)
     scale = torch.as_tensor(checkpoint["coordinate_scale"], dtype=torch.float32).reshape(1, 3, 1, 1)
-    metric = normalized * scale + mean
-    output = Path(args.output)
+    metric_raw = normalized * scale + mean
+    if args.no_sim3:
+        metric = metric_raw
+        sim3: dict[str, object] = {
+            "enabled": False,
+            "method": "none",
+            "warning": "raw metric prediction; no dataset-ground-truth alignment",
+        }
+    else:
+        target_xyz, target_valid = dataset.source_all_targets(args.index, args.source)
+        target_xyz = torch.from_numpy(target_xyz[targets]).float()
+        target_valid = torch.from_numpy(target_valid[targets]).bool()
+        metric, sim3 = align_sim3_to_ground_truth(metric_raw, target_xyz, target_valid)
+    output = inference_output_path(
+        args.dataset, args.index, args.source, targets,
+        output=args.output, output_root=args.output_root,
+    )
     atomic_save(output, {
-        "normalized_xyz": normalized, "xyz_meters": metric,
+        "normalized_xyz": normalized,
+        "xyz_meters_raw": metric_raw,
+        "xyz_meters": metric,
+        "sim3": sim3,
         "source": args.source, "targets": targets, "dataset": args.dataset,
         "clip_index": args.index, "prompt_metadata": prompt_metadata,
         "checkpoint": str(Path(args.checkpoint).resolve()),
     })
     summary = {
-        "output": str(output.resolve()), "dataset": args.dataset, "index": args.index,
+        "output": str(output), "dataset": args.dataset, "index": args.index,
         "source": args.source, "targets": targets, "shape": list(metric.shape),
-        "prompt": prompt_metadata["prompt"],
+        "sim3": sim3, "prompt": prompt_metadata["prompt"],
     }
     output.with_suffix(output.suffix + ".json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))

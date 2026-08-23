@@ -958,4 +958,19 @@ h023_legacy_facade_removal:
   shell_syntax: passed
   canonical_import_audit: passed
   diff_check: passed
-updated_at: 2026-08-23T08:48:00Z
+h023_default_sim3_inference:
+  status: complete_validation_passed
+  task: T-20260823081332-bcf490
+  alignment: one_joint_proper_umeyama_sim3_per_requested_clip_source_targets
+  alignment_direction: prediction_to_dataset_ground_truth
+  default_enabled: true
+  disable_flag: --no-sim3
+  preserves_raw_prediction: xyz_meters_raw
+  aligned_prediction: xyz_meters
+  persistent_output_root: /data/WorldBridge4D-runs/inference-step100000
+  outside_persistent_root: rejected
+  tests_passed: 73
+  compileall: passed
+  cli_help: passed
+  diff_check: passed
+updated_at: 2026-08-23T09:05:00Z

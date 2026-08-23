@@ -53,8 +53,14 @@ OUTPUT=/data/WorldBridge4D-runs/worldbridge4d_256_source_rgb \
 PYTHONPATH=src python scripts/infer.py \
   --config configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml \
   --checkpoint /path/to/latest.pt --dataset pointodyssey \
-  --index 0 --source 0 --targets 0 1 2 --output /tmp/prediction.pt
+  --index 0 --source 0 --targets 0 1 2
 ```
+
+推理默认使用该数据集 GT 的有效点联合拟合一个 proper Sim(3)，并同时保存
+`xyz_meters_raw` 与对齐后的 `xyz_meters`。这是 GT 辅助的评测式推理；部署时可用
+`--no-sim3` 禁用。输出默认原子写入持久目录
+`/data/WorldBridge4D-runs/inference-step100000/`，显式 `--output` 或
+`--output-root` 也必须位于 `/data/WorldBridge4D-runs/` 下。
 
 数据准备、缓存脚本分组见 [`scripts/README.md`](scripts/README.md)，完整实现说明见 [`docs/WORLDBRIDGE4D_256_THREE_DATASET_IMPLEMENTATION.md`](docs/WORLDBRIDGE4D_256_THREE_DATASET_IMPLEMENTATION.md)。
 
