@@ -1,5 +1,5 @@
-current_task: null
-active_hypotheses: []
+current_task: T-20260823090727-b81517
+active_hypotheses: [H023]
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -973,4 +973,17 @@ h023_default_sim3_inference:
   compileall: passed
   cli_help: passed
   diff_check: passed
-updated_at: 2026-08-23T09:05:00Z
+h023_step100000_three_dataset_inference:
+  status: scheduled
+  task: T-20260823090727-b81517
+  checkpoint_step: 100000
+  checkpoint_sha256: 3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2
+  protocol:
+    clip_index: 0
+    source: 0
+    targets: all_21
+    target_chunk: 2
+    sim3: joint_dataset_gt_default
+  devices: [0, 1]
+  output_root: /data/WorldBridge4D-runs/inference-step100000
+updated_at: 2026-08-23T09:10:00Z
