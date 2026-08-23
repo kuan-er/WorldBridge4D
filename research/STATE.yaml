@@ -858,7 +858,7 @@ h023_source_rgb_step100k_promotion:
     shell_syntax: passed
     diff_check: passed
 h023_package_refactor:
-  status: implementation_complete_validation_pending
+  status: implementation_and_checkpoint_compatibility_passed
   task: T-20260823064208-540496
   baseline_run: R-20260823064217-9e6e24
   canonical_packages: [models, data, trainer, evaluation, utils]
@@ -869,4 +869,12 @@ h023_package_refactor:
     - scripts/eval_source_rgb_counterfactual_256.py
   compatibility_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
   invariants: [state_dict_attribute_paths, checkpoint_format, optimizer_groups, exact_resume, sampling, schedule, objective]
-updated_at: 2026-08-23T07:05:00Z
+  validation:
+    package_run: R-20260823065821-11ebe9
+    checkpoint_run: R-20260823070018-21183f
+    checkpoint_global_step: 100000
+    checkpoint_state_entries: 1055
+    model_parameters: 1613397325
+    trainable_parameters: 1594887819
+    strict_model_load: passed
+updated_at: 2026-08-23T07:02:00Z
