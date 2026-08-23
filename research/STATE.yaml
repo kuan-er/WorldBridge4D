@@ -1,5 +1,6 @@
-current_task: null
-active_hypotheses: []
+current_task: T-20260823071021-5cdbec
+active_hypotheses:
+  - H023
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -856,4 +857,4 @@ h023_source_rgb_step100k_promotion:
     compileall: passed
     shell_syntax: passed
     diff_check: passed
-updated_at: 2026-08-23T07:04:12.700Z
+updated_at: 2026-08-23T07:10:21.224Z
