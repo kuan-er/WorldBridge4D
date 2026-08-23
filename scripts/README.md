@@ -12,6 +12,7 @@
 - `stage_three_dataset_256_inputs.py`：大模型输入的校验暂存。
 - `validate_three_dataset_256_cache_roots.py`：latent cache fail-closed 预检。
 - `recover_three_dataset_256_train_status.py`：从完整 checkpoint 恢复缺失 sidecar。
+- `validate_checkpoint_compatibility.py`：构造当前 architecture 并 strict-load 完整 checkpoint，验证重构兼容性。
 
 ## 推理与条件
 

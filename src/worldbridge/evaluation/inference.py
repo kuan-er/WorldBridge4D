@@ -108,4 +108,3 @@ def main() -> None:
     output.with_suffix(output.suffix + ".json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     print("THREE_DATASET_256_INFERENCE_OK", flush=True)
-
