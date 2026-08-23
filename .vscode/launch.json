@@ -1,0 +1,84 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python：调试当前文件",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "学习 1：Tiny Decoder（CPU）",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "args": [
+                "-s",
+                "-q",
+                "tests/test_package_layout.py::test_refactored_decoder_forward_constructs_typed_output"
+            ]
+        },
+        {
+            "name": "学习 2：Structured Backbone（CPU）",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "args": [
+                "-s",
+                "-q",
+                "tests/test_training256.py::test_256_latent_contract_and_explicit_prompt_reaches_mapping"
+            ]
+        },
+        {
+            "name": "学习 3：真实 FSDP 单步（GPU 0,1）",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "torch.distributed.run",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "subProcess": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "CUDA_VISIBLE_DEVICES": "0,1",
+                "PYTHONUNBUFFERED": "1",
+                "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+            },
+            "args": [
+                "--standalone",
+                "--nproc-per-node=2",
+                "${workspaceFolder}/scripts/train.py",
+                "--config",
+                "${workspaceFolder}/configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml",
+                "--output-dir",
+                "/data/WorldBridge4D-runs/debug-fsdp-one-step",
+                "--checkpoint-dir",
+                "/data/WorldBridge4D-runs/debug-fsdp-one-step",
+                "--steps",
+                "1",
+                "--allow-two-gpu-gate",
+                "--lazy-vae-cache",
+                "--disable-wandb",
+                "--no-checkpoint"
+            ]
+        }
+    ]
+}
