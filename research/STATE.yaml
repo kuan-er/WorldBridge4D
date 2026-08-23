@@ -1,7 +1,5 @@
-current_task: T-20260822133136-b2efc8
-active_hypotheses:
-  - H028
-  - H023
+current_task: null
+active_hypotheses: []
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -809,21 +807,34 @@ h023_source_rgb_step100k_promotion:
   task: T-20260823053649-d2c68c
   source_run: R-20260822143915-eec343
   architecture: source_rgb_pyramid_fusions_32_64_128_256
-  protocol: {world_size: 2, microbatch_per_gpu: 2, accumulation: 2, targets_per_source: 19}
+  protocol:
+    world_size: 2
+    microbatch_per_gpu: 2
+    accumulation: 2
+    targets_per_source: 19
   optimization:
     trainable_mode: source_rgb_plus_wan_decoder
     geometry_adapter: frozen
-    source_rgb_lr_multiplier: 10.0
+    source_rgb_lr_multiplier: 10
     wan_and_mature_decoder_lr_scale: 0.1
   checkpoint:
     global_step: 100000
-    clips_seen: {kubric: 280000, pointodyssey: 240000, dynamic_replica: 280000}
+    clips_seen:
+      kubric: 280000
+      pointodyssey: 240000
+      dynamic_replica: 280000
     bytes: 9607899341
     sha256: 3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2
     artifact: artifact://H023/R-20260822143915-eec343/checkpoint/3181a255d48687f1
   causal_epe_improvement_percent:
-    versus_alpha_zero: {kubric: 4.31, pointodyssey: 1.52, dynamic_replica: 1.03}
-    versus_wrong_rgb: {kubric: 7.27, pointodyssey: 2.15, dynamic_replica: 3.10}
+    versus_alpha_zero:
+      kubric: 4.31
+      pointodyssey: 1.52
+      dynamic_replica: 1.03
+    versus_wrong_rgb:
+      kubric: 7.27
+      pointodyssey: 2.15
+      dynamic_replica: 3.1
   exact_config: configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml
   final_endpoint: 100000
   default_continuation: disabled
@@ -834,11 +845,15 @@ h023_source_rgb_step100k_promotion:
     schedule_extension_horizon_steps: 150000
     schedule_horizon_reason: preserve_exact_lr_curve_for_optional_explicit_continuation
     constraints: same_model_optimizer_groups_and_world_size_two
-  excluded_experiments: [target_rgb_cross_attention, boundary_weighted_loss, pointwise_xyz_residual, rgb_guided_final_upsample]
+  excluded_experiments:
+    - target_rgb_cross_attention
+    - boundary_weighted_loss
+    - pointwise_xyz_residual
+    - rgb_guided_final_upsample
   integration_validation:
     run: R-20260823054032-9eca51
     tests_passed: 65
     compileall: passed
     shell_syntax: passed
     diff_check: passed
-updated_at: 2026-08-23T05:55:00Z
+updated_at: 2026-08-23T06:03:23.144Z
