@@ -35,22 +35,13 @@ def test_production_cache_paths_use_persistent_storage():
     assert all(path.is_relative_to("/data/WorldBridge4D-persistent") for path in runtime_paths)
 
 
-def test_legacy_model_imports_are_identity_compatible():
-    from worldbridge.dense4d import DenseQueryDecoder as LegacyDecoder
-    from worldbridge.dense4d import DenseQueryWanModel as LegacyModel
-    from worldbridge.models import DenseQueryDecoder, DenseQueryWanModel
-
-    assert LegacyDecoder is DenseQueryDecoder
-    assert LegacyModel is DenseQueryWanModel
-
-
-def test_legacy_data_imports_are_identity_compatible():
-    from worldbridge.data import MOViFDataset
-    from worldbridge.training256 import MOViF256Dataset as LegacyMOViF256Dataset
-    from worldbridge.data.datasets import MOViF256Dataset
-
-    assert MOViFDataset.__module__ == "worldbridge.data.movif"
-    assert LegacyMOViF256Dataset is MOViF256Dataset
+def test_legacy_top_level_facades_are_removed():
+    package = Path(__file__).resolve().parents[1] / "src" / "worldbridge"
+    removed = {
+        "dense4d.py", "dense4d_runtime.py", "training256.py", "wan.py",
+        "geometry.py", "pointodyssey.py", "dynamic_replica.py",
+    }
+    assert not removed.intersection(path.name for path in package.glob("*.py"))
 
 
 def test_scripts_expose_exactly_five_thin_entrypoints():

@@ -28,7 +28,7 @@ scripts/run_fsdp.sh
        -> worldbridge.evaluation
 ```
 
-旧的 `dense4d.py`、`training256.py`、`dense4d_runtime.py` 等模块仅保留兼容导入；新代码应使用上述 package。
+旧的顶层 `dense4d.py`、`training256.py`、`dense4d_runtime.py`、数据集和 Wan 兼容模块已经删除；所有代码直接使用上述规范 package。
 
 ## 使用
 

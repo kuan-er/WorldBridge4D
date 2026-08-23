@@ -21,7 +21,7 @@
 - `src/worldbridge/trainer/`: `WorldBridgeTrainer`、objective、optimizer、FSDP、checkpoint 与 exact resume
 - `src/worldbridge/evaluation/`: inference、counterfactual evaluator 与 metrics
 - `src/worldbridge/utils/`: atomic I/O 与 checksum helper
-- `src/worldbridge/{dense4d,dense4d_runtime,training256,wan}.py`: 旧 import 的兼容 re-export
+- 顶层旧 import facade 已删除；当前实现仅使用上述规范 package
 - `src/worldbridge/text_conditions.py`: dataset prompt condition 校验
 - `configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml`: 最终 step-100k source-RGB production 配置及可恢复 schedule provenance
 - `configs/worldbridge4d_gpu14_k19_150k.yaml`: 历史无 source-RGB trajectory 配置快照

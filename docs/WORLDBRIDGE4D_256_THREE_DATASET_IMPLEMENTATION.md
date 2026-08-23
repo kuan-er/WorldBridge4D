@@ -28,7 +28,7 @@ worldbridge.trainer      objective、optimizer、FSDP、checkpoint、训练循�
 worldbridge.evaluation   inference、counterfactual evaluation、metrics
 ```
 
-旧的 `worldbridge.dense4d`、`dense4d_runtime`、`training256`、`wan` 等路径只保留兼容 re-export，不承载实现。
+旧的 `worldbridge.dense4d`、`dense4d_runtime`、`training256`、`wan` 以及顶层数据集兼容路径已经删除；实现只从规范 package 导入。
 
 ## Exact resume
 

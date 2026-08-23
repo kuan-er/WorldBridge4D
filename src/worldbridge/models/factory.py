@@ -35,9 +35,6 @@ def load_text_condition(path: str | Path) -> torch.Tensor:
     return value
 
 
-# Backwards-compatible alias for existing 128/empty-condition configurations.
-load_empty_condition = load_text_condition
-
 def encode_clean_video_latents(samples: Sequence[MOViSample], wan_root: str | Path,
                                device: torch.device | str) -> list[torch.Tensor]:
     """Frozen deterministic VAE means cached on CPU; no diffusion noise is added."""

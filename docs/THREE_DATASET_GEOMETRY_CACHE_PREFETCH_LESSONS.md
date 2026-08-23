@@ -205,9 +205,9 @@ free -h
 - 稳定窗口：56,550--56,575
 - 代码入口：
   - `scripts/train.py`
-  - `src/worldbridge/training256.py`
-  - `src/worldbridge/pointodyssey.py`
-  - `src/worldbridge/dynamic_replica.py`
+  - `src/worldbridge/data/factory.py`
+  - `src/worldbridge/data/datasets/pointodyssey.py`
+  - `src/worldbridge/data/datasets/dynamic_replica.py`
   - 历史 matched benchmark（已从当前工作树移除，可由 Git 恢复）
 
 上述数值来自共享主机上的一次生产运行，应视为该硬件和缓存状态下的可复现实证，而不是对所有机器的绝对吞吐承诺。

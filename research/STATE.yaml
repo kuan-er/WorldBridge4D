@@ -946,4 +946,15 @@ h023_persistent_runtime_caches:
     pointodyssey_depth_scenes: 109
     dynamic_replica_depth_streams: 435
     dynamic_replica_trajectory_streams: 435
-updated_at: 2026-08-23T08:22:00Z
+h023_legacy_facade_removal:
+  status: complete_validation_passed
+  task: T-20260823081332-bcf490
+  removed_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
+  canonical_root_modules: [__init__, text_conditions]
+  load_empty_condition_alias: removed
+  tests_passed: 70
+  compileall: passed
+  shell_syntax: passed
+  canonical_import_audit: passed
+  diff_check: passed
+updated_at: 2026-08-23T08:40:00Z
