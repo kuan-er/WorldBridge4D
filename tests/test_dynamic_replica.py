@@ -4,8 +4,8 @@ import json
 import numpy as np
 from safetensors.numpy import save_file
 
-import worldbridge.dynamic_replica as dynamic_replica
-from worldbridge.dynamic_replica import DynamicReplicaDataset, T
+import worldbridge.data.datasets.dynamic_replica as dynamic_replica
+from worldbridge.data.datasets.dynamic_replica import DynamicReplicaDataset, T
 
 
 def viewpoint() -> dict:

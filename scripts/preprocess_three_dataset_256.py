@@ -20,10 +20,10 @@ from safetensors.torch import save_file
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from worldbridge.data import MOViFDataset
-from worldbridge.dynamic_replica import DynamicReplicaDataset
-from worldbridge.pointodyssey import PointOdysseyDataset
-from worldbridge.training256 import MOViF256Dataset
-from worldbridge.wan import WAN_LATENT_SHAPE_256, WanVAEEncoder
+from worldbridge.data.datasets.dynamic_replica import DynamicReplicaDataset
+from worldbridge.data.datasets.pointodyssey import PointOdysseyDataset
+from worldbridge.data.datasets.movif256 import MOViF256Dataset
+from worldbridge.models.wan import WAN_LATENT_SHAPE_256, WanVAEEncoder
 
 
 def sha256(path: Path, chunk: int = 8 << 20) -> str:

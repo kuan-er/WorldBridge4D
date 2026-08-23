@@ -1,5 +1,6 @@
-current_task: null
-active_hypotheses: []
+current_task: T-20260823064208-540496
+active_hypotheses:
+  - H023
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -856,4 +857,16 @@ h023_source_rgb_step100k_promotion:
     compileall: passed
     shell_syntax: passed
     diff_check: passed
-updated_at: 2026-08-23T06:03:23.144Z
+h023_package_refactor:
+  status: implementation_complete_validation_pending
+  task: T-20260823064208-540496
+  baseline_run: R-20260823064217-9e6e24
+  canonical_packages: [models, data, trainer, evaluation, utils]
+  trainer_class: worldbridge.trainer.WorldBridgeTrainer
+  thin_clis:
+    - scripts/train_three_dataset_256_fsdp.py
+    - scripts/infer_three_dataset_256.py
+    - scripts/eval_source_rgb_counterfactual_256.py
+  compatibility_modules: [dense4d, dense4d_runtime, training256, wan, geometry, pointodyssey, dynamic_replica]
+  invariants: [state_dict_attribute_paths, checkpoint_format, optimizer_groups, exact_resume, sampling, schedule, objective]
+updated_at: 2026-08-23T07:05:00Z

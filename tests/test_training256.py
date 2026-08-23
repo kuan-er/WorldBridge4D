@@ -10,22 +10,41 @@ import pytest
 import torch
 from torch import nn
 
-from worldbridge.dense4d import (
+from worldbridge.models import (
     DenseQueryDecoder, DenseQueryWanModel, DenseUpsampler2D, GatedSourceFusion,
-    WanHiddenGeometryBackbone, masked_pair_smooth_l1,
+    WanHiddenGeometryBackbone,
 )
-from worldbridge.dense4d_runtime import parameter_groups
-from worldbridge.training256 import (
-    CachedExternalDataset, KubricGeometryMmapStore, LazyLatentCache, MOViF256Dataset,
-    RGBUInt8ShardStore, apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
-    deterministic_sample_plan, extended_cosine_learning_rate_factor,
-    sample_eligible_targets, source_with_eligible_targets, training_diagnostic_due,
+from worldbridge.models.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
+from worldbridge.trainer.objective import masked_pair_smooth_l1
+from worldbridge.trainer.optimizer import parameter_groups
+from worldbridge.data.cache import KubricGeometryMmapStore, LazyLatentCache, RGBUInt8ShardStore
+from worldbridge.data.datasets import CachedExternalDataset, MOViF256Dataset
+from worldbridge.data.sampling import (
+    deterministic_sample_plan, sample_eligible_targets, source_with_eligible_targets,
 )
-from worldbridge.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
+from worldbridge.trainer.schedulers import (
+    apply_cosine_schedule, dataset_for_step, deterministic_dataset_schedule,
+    extended_cosine_learning_rate_factor, training_diagnostic_due,
+)
 from worldbridge.text_conditions import load_inference_text_condition
 from scripts.create_wan_text_conditions import (
     PROMPTS, TASK_INSTRUCTION, completed_cache, native_encoder,
 )
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
+
+def trainer_source() -> str:
+    return (REPOSITORY_ROOT / "src/worldbridge/trainer/trainer.py").read_text()
+
+
+def checkpoint_source() -> str:
+    return (REPOSITORY_ROOT / "src/worldbridge/trainer/fsdp_checkpoint.py").read_text()
+
+
+def tracking_source() -> str:
+    return (REPOSITORY_ROOT / "src/worldbridge/trainer/tracking.py").read_text()
 
 
 class TinyExplicitConditionMapping(nn.Module):
@@ -123,7 +142,7 @@ def test_inference_condition_is_dataset_specific_and_checksum_verified(tmp_path)
 
 
 def test_resume_planning_uses_status_sidecar_not_full_checkpoint_load():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     planning = source[source.index("# Cache planning needs only"):source.index("planned_start =")]
     assert 'config.get("finetune_expected_global_step", -1)' in planning
     assert '"resume_status_path", planning_checkpoint.parent / "train_status.json"' in planning
@@ -149,7 +168,7 @@ def test_full_resume_skips_redundant_native_wan_weights(monkeypatch, tmp_path):
             load_pretrained_weights=True,
         )
 
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     assert "load_wan_pretrained = not resume.is_file()" in source
     assert "load_wan_pretrained=load_wan_pretrained" in source
 
@@ -507,7 +526,7 @@ def test_source_rgb_plus_wan_decoder_freezes_only_geometry_and_bypassed_backbone
 
 
 def test_full_resume_loads_rank0_model_before_fsdp_sync():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = checkpoint_source()
     helper = source[
         source.index("def load_unwrapped_model_checkpoint"):
         source.index("def load_optimizer_checkpoint")
@@ -516,7 +535,8 @@ def test_full_resume_loads_rank0_model_before_fsdp_sync():
     assert "model.load_state_dict(state, strict=True)" in source
     assert "fsdp_state_context" not in helper
 
-    main = source[source.index("def main()") :]
+    trainer = trainer_source()
+    main = trainer[trainer.index("def main()") :]
     model_load = main.index("load_unwrapped_model_checkpoint(")
     fsdp_wrap = main.index("fsdp = FSDP(")
     optimizer_load = main.index("load_optimizer_checkpoint(")
@@ -525,13 +545,13 @@ def test_full_resume_loads_rank0_model_before_fsdp_sync():
 
 
 def test_wandb_resume_can_skip_already_published_steps():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     assert '"--wandb-log-after-step", type=int, default=-1' in source
     assert "completed > args.wandb_log_after_step" in source
 
 
 def test_wandb_logs_loss_and_raw_epe_as_separate_dataset_series():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = tracking_source() + trainer_source()
     assert 'run.define_metric("train/loss_by_dataset/*"' in source
     assert 'run.define_metric("train/raw_epe_m_by_dataset/*"' in source
     assert 'f"train/loss_by_dataset/{name}": dataset_loss' in source
@@ -540,7 +560,7 @@ def test_wandb_logs_loss_and_raw_epe_as_separate_dataset_series():
 
 
 def test_checkpoint_publishes_matching_planning_sidecar():
-    source = (Path(__file__).resolve().parents[1] / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     assert 'atomic_json(checkpoint_dir / "train_status.json", checkpoint_status)' in source
     assert 'atomic_json(output / "train_status.json", checkpoint_status)' in source
 
@@ -576,7 +596,7 @@ def test_staging_is_checksum_verified_reusable_and_wires_runtime_paths(tmp_path)
 
 
 def test_inference_script_encodes_backbone_once_before_target_chunks():
-    source = (Path(__file__).resolve().parents[1] / "scripts/infer_three_dataset_256.py").read_text()
+    source = (REPOSITORY_ROOT / "src/worldbridge/evaluation/inference.py").read_text()
     assert "z4d = model.backbone(latent, condition)" in source
     assert "model.decoder.encode_source_rgb(source_rgb)" in source
     assert "z4d, source_tensor, target_tensor, source_pyramid=source_pyramid" in source
@@ -1048,13 +1068,12 @@ def test_gpu14_150k_watcher_is_pinned_audited_stable_and_resume_only():
 
 def test_post_resume_checksum_starts_only_after_strict_optimizer_restore():
     import inspect
-    from worldbridge.dense4d_runtime import build_real_model
+    from worldbridge.models.factory import build_real_model
 
     parameter = inspect.signature(build_real_model).parameters["load_wan_pretrained"]
     assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
     assert parameter.default is True
-    root = Path(__file__).resolve().parents[1]
-    source = (root / "scripts/train_three_dataset_256_fsdp.py").read_text()
+    source = trainer_source()
     restore = source.index("load_optimizer_checkpoint(", source.index("def main()"))
     loaded = source.index('"event": "resume_state_loaded"', restore)
     checksum = source.index("launch_post_resume_checksum(", loaded)
@@ -1082,7 +1101,10 @@ def test_small_256_index_maps_back_to_geometry_clip_ids(tmp_path, monkeypatch):
         def source_all_targets_with_visibility(self, index, source): return index, source, True
     class Latents:
         def __getitem__(self, index): return index
-    monkeypatch.setattr("worldbridge.training256.LatentShardStore", lambda *_args, **_kwargs: Latents())
+    monkeypatch.setattr(
+        "worldbridge.data.datasets.cached_external.LatentShardStore",
+        lambda *_args, **_kwargs: Latents(),
+    )
     dataset = CachedExternalDataset(Geometry(), tmp_path, "pointodyssey")
     assert len(dataset) == 1
     assert dataset.source_all_targets(0, 7) == (1, 7)

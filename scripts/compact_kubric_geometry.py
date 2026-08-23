@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from worldbridge.data import MOViFDataset
-from worldbridge.training256 import MOViF256Dataset
+from worldbridge.data.datasets.movif256 import MOViF256Dataset
 
 RAW_ROOT = "/dataset/nas0/yejun/MOVi-F/512x512"
 TRAIN_JSONL = Path(

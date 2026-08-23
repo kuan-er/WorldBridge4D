@@ -166,7 +166,7 @@ def main() -> None:
         return
     if not args.vae.is_file():
         raise FileNotFoundError(args.vae)
-    from worldbridge.wan import WanVAEEncoder
+    from worldbridge.models.wan import WanVAEEncoder
     device = torch.device(args.device)
     encoder = WanVAEEncoder(args.vae, device=device, dtype=torch.float32)
     pool = ThreadPoolExecutor(max_workers=args.io_workers)

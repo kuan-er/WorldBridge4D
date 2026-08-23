@@ -229,7 +229,7 @@ def file_artifact(kind: str, split: str | None, path: Path, root: Path, **extra:
 def build_latents(rows: list[dict[str, Any]], out: Path, checkpoint: Path, device: str, shard_size: int) -> list[dict[str, Any]]:
     import torch
     from safetensors.torch import save_file
-    from worldbridge.wan import WanVAEEncoder
+    from worldbridge.models.wan import WanVAEEncoder
     enc = WanVAEEncoder(checkpoint, device=torch.device(device), dtype=torch.float32)
     artifacts = []
     for base in range(0, len(rows), shard_size):

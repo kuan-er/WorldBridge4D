@@ -12,7 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from worldbridge.training256 import DATASET_NAMES, load_training_datasets
+from worldbridge.data import DATASET_NAMES, load_training_datasets
 
 WEIGHTS = {"kubric": 0.35, "pointodyssey": 0.30, "dynamic_replica": 0.35}
 

@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from validate_three_dataset_256_cache_roots import (
     assert_expected_latent_files, validate_cache_roots,
 )
-from worldbridge.training256 import DATASET_NAMES, load_training_datasets
+from worldbridge.data import DATASET_NAMES, load_training_datasets
 
 
 def _load_train_module() -> Any:

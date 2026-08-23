@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import numpy as np
 
-import worldbridge.pointodyssey as pointodyssey
-from worldbridge.pointodyssey import PointOdysseyDataset, T
+import worldbridge.data.datasets.pointodyssey as pointodyssey
+from worldbridge.data.datasets.pointodyssey import PointOdysseyDataset, T
 
 
 def test_raw_root_override_rebases_immutable_scene_references(tmp_path):

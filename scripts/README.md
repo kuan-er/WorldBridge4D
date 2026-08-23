@@ -4,7 +4,7 @@
 
 ## 训练与恢复
 
-- `train_three_dataset_256_fsdp.py`：模型构建、FSDP、训练循环、W&B、checkpoint/exact resume。
+- `train_three_dataset_256_fsdp.py`：薄 CLI；实际训练、FSDP、checkpoint/exact resume 位于 `worldbridge.trainer`。
 - `run_three_dataset_256_fsdp.sh`：统一 torchrun launcher。
 - `wait_resume_three_dataset_256_gpu14_150k.sh`：GPU1/4 K19/150k audited handoff。
 - `prepare_three_dataset_256_gpu14_handoff.py`：冻结并验证 handoff checkpoint/config/marker。
@@ -15,7 +15,8 @@
 
 ## 推理与条件
 
-- `infer_three_dataset_256.py`：三数据集 prompt-conditioned 推理。
+- `infer_three_dataset_256.py`：薄 CLI；三数据集 prompt-conditioned 推理位于 `worldbridge.evaluation.inference`。
+- `eval_source_rgb_counterfactual_256.py`：薄 CLI；source-RGB 因果评测位于 `worldbridge.evaluation.counterfactual`。
 - `create_wan_text_conditions.py`：生成并校验三个固定 UMT5 conditions。
 
 ## 数据准备与审计
