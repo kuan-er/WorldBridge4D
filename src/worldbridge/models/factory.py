@@ -10,7 +10,7 @@ import torch
 from ..data.movif import MOViSample
 from .backbones import CleanLatentBackbone, FeedForwardWanBackbone, WanHiddenGeometryBackbone
 from .decoder import DenseQueryDecoder
-from .wan import WAN_LATENT_SHAPE, WanDiTMapping, WanVAEEncoder, inject_wan_lora
+from .wan import WAN_LATENT_SHAPE, WanDiTMapping, WanVAEEncoder
 from .worldbridge import DenseQueryWanModel
 
 def precision_dtype(name: str) -> torch.dtype:
@@ -84,20 +84,6 @@ def build_real_model(
             truncate_after_block=config.get("wan_truncate_after_block"),
             load_pretrained_weights=load_wan_pretrained,
         )
-        mode = str(config.get("trainable_mode", "full"))
-        if mode == "lora":
-            for parameter in mapping.dit.parameters():
-                parameter.requires_grad_(False)
-            mapping.lora_modules = inject_wan_lora(
-                mapping.dit,
-                rank=int(config.get("lora_rank", 16)),
-                alpha=float(config.get("lora_alpha", config.get("lora_rank", 16))),
-                dropout=float(config.get("lora_dropout", 0.0)),
-                targets=tuple(config.get("lora_targets", (
-                    "to_q", "to_k", "to_v", "to_out.0",
-                    "ffn.net.0.proj", "ffn.net.2",
-                ))),
-            )
         if bool(config.get("gradient_checkpointing", True)):
             mapping.dit.enable_gradient_checkpointing()
         if readout == "wan_velocity":
@@ -159,22 +145,8 @@ def build_real_model(
         source_rgb_fusion_32=bool(config.get("source_rgb_fusion_32", False)),
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
-    mode = str(config.get("trainable_mode", "full"))
     model.configure_trainable(
-        "full" if mode == "lora" else mode,
+        str(config.get("trainable_mode", "full")),
         int(config.get("trainable_blocks", 2)),
     )
-    if mode == "lora":
-        for parameter in model.backbone.mapping.parameters():
-            parameter.requires_grad_(False)
-        for module in model.backbone.mapping.dit.modules():
-            if hasattr(module, "lora_A") and hasattr(module, "lora_B"):
-                for parameter in module.lora_A.parameters():
-                    parameter.requires_grad_(True)
-                for parameter in module.lora_B.parameters():
-                    parameter.requires_grad_(True)
-        for parameter in model.backbone.adapter_parameters:
-            parameter.requires_grad_(True)
-        for parameter in model.decoder.parameters():
-            parameter.requires_grad_(True)
     return model

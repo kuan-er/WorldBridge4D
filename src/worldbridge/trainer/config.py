@@ -48,11 +48,11 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
         )
     mode = str(config.get("trainable_mode", "full"))
     allowed_modes = {
-        "full", "lora", "source_rgb_only", "source_rgb_plus_wan_decoder",
+        "full", "source_rgb_only", "source_rgb_plus_wan_decoder",
     }
     if mode not in allowed_modes:
         raise ValueError(
-            "three-dataset training supports full, lora, and audited source-RGB phases"
+            "three-dataset training supports full and audited source-RGB phases"
         )
     if mode.startswith("source_rgb_"):
         if not bool(config.get("source_rgb_pyramid", False)):
@@ -70,12 +70,6 @@ def validate_config(config: dict[str, Any], world: int, allow_two_gpu: bool,
         max_scale = float(config.get("joint_fresh_group_max_lr_scale", 1.0))
         if not 0.0 < max_scale <= 1.0:
             raise ValueError("joint fresh-group maximum LR scale must be in (0,1]")
-    if mode == "lora":
-        if int(config.get("lora_rank", 0)) <= 0:
-            raise ValueError("lora_rank must be positive")
-        truncate = config.get("wan_truncate_after_block")
-        if truncate is not None and int(truncate) < max(config["wan_hidden_layers"]):
-            raise ValueError("Wan truncation cannot precede the highest readout layer")
     logits = np.asarray(config.get("layer_gate_initial_logits"), dtype=np.float64)
     expected_logits = np.array([0.0, 0.0, 0.0, -1.0986122887])
     if logits.shape != (4,) or not np.allclose(logits, expected_logits, atol=1e-10):
