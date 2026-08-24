@@ -17,6 +17,7 @@ from worldbridge.models import (
 from worldbridge.models.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
 from worldbridge.trainer.objective import masked_pair_smooth_l1
 from worldbridge.trainer.optimizer import parameter_groups
+from worldbridge.trainer.trainer import fsdp_auto_wrap_policy
 from worldbridge.data.cache import KubricGeometryMmapStore, LazyLatentCache, RGBUInt8ShardStore
 from worldbridge.data.datasets import CachedExternalDataset, MOViF256Dataset
 from worldbridge.data.sampling import (
@@ -290,6 +291,22 @@ def test_source_rgb_plus_wan_decoder_freezes_only_geometry_and_bypassed_backbone
     model.configure_trainable("decoder_only")
     assert all(not parameter.requires_grad for parameter in model.backbone.parameters())
     assert all(parameter.requires_grad for parameter in model.decoder.parameters())
+
+
+def test_fsdp_does_not_wrap_upsampler_custom_method_boundary():
+    upsampler = DenseUpsampler2D(
+        query_dim=8, channels=(8, 4), latent_size=(4, 4), output_size=(8, 8),
+    )
+    threshold = 5_000_000
+    assert fsdp_auto_wrap_policy(
+        upsampler, True, threshold + 1, min_num_params=threshold,
+    )
+    assert not fsdp_auto_wrap_policy(
+        upsampler, False, threshold + 1, min_num_params=threshold,
+    )
+    assert fsdp_auto_wrap_policy(
+        nn.Linear(2, 2), False, threshold + 1, min_num_params=threshold,
+    )
 
 
 def test_full_resume_loads_rank0_model_before_fsdp_sync():

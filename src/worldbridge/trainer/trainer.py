@@ -22,6 +22,7 @@ import yaml
 from ..data.constants import DATASET_NAMES
 from ..data.factory import load_training_datasets, prepare_training_indexes
 from ..data.sampling import sample_eligible_targets
+from ..models.decoder import DenseUpsampler2D
 from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_dataset_text_conditions
 from ..utils.io import atomic_json
@@ -43,6 +44,26 @@ from .schedulers import apply_cosine_schedule, training_diagnostic_due
 from .tracking import init_wandb, load_stats
 
 _STOP = False
+
+
+def fsdp_auto_wrap_policy(
+    module: torch.nn.Module, recurse: bool, nonwrapped_numel: int,
+    *, min_num_params: int,
+) -> bool:
+    """Size-wrap modules without wrapping the upsampler method boundary.
+
+    The pre-attention RGB path calls ``DenseUpsampler2D.encode_source_rgb``
+    from inside the decoder forward. Wrapping the upsampler itself would make
+    that custom method bypass FSDP's forward all-gather and expose a sharded
+    one-dimensional convolution weight. Its large children may still be
+    wrapped; the remaining parameters are gathered by the decoder's wrapper.
+    """
+    if isinstance(module, DenseUpsampler2D) and not recurse:
+        return False
+    return size_based_auto_wrap_policy(
+        module, recurse, nonwrapped_numel, min_num_params=min_num_params,
+    )
+
 
 def stop_signal(_signum: int, _frame: Any) -> None:
     global _STOP
@@ -316,7 +337,7 @@ def main() -> None:
             },
         }), flush=True)
     dtype = precision_dtype(config["precision"])
-    auto_wrap = lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
+    auto_wrap = lambda module, recurse, nonwrapped_numel: fsdp_auto_wrap_policy(
         module, recurse, nonwrapped_numel,
         min_num_params=int(config.get("fsdp_min_num_params", 5_000_000)),
     )
