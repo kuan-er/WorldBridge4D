@@ -29,8 +29,8 @@ from .batching import GeometryPrefetcher
 from .config import validate_config
 from .distributed import initialize_distributed
 from .fsdp_checkpoint import (
-    launch_durable_checkpoint_replica, load_optimizer_checkpoint,
-    load_unwrapped_model_checkpoint, prune_periodic_checkpoints,
+    launch_durable_checkpoint_replica, load_filtered_optimizer_checkpoint,
+    load_optimizer_checkpoint, load_unwrapped_model_checkpoint, prune_periodic_checkpoints,
     save_checkpoint, update_latest_checkpoint,
 )
 from .lazy_vae import (
@@ -53,6 +53,10 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--resume")
+    parser.add_argument(
+        "--finetune-from",
+        help="load an audited structural extension and retained optimizer moments",
+    )
     parser.add_argument("--checkpoint-dir", help="fast local checkpoint directory; defaults to output-dir")
     parser.add_argument("--durable-checkpoint", help="best-effort asynchronous replica path for latest checkpoint")
     parser.add_argument("--steps", type=int)
@@ -71,6 +75,8 @@ def main() -> None:
                         help="warm a short prefix, then encode future clips beside training")
     parser.add_argument("--pipeline-lookahead-steps", type=int, default=16)
     args = parser.parse_args()
+    if args.resume and args.finetune_from:
+        parser.error("--resume and --finetune-from are mutually exclusive")
     if args.lazy_vae_cache and args.lazy_vae_pipeline:
         parser.error("--lazy-vae-cache and --lazy-vae-pipeline are mutually exclusive")
     if args.pipeline_lookahead_steps < 1:
@@ -100,6 +106,7 @@ def main() -> None:
     )
     target_steps = int(args.steps if args.steps is not None else config["max_steps"])
     resume = Path(args.resume) if args.resume else (checkpoint_dir / "latest.pt")
+    finetune_from = Path(args.finetune_from) if args.finetune_from else None
     # Cache planning needs only the checkpoint step. Use the tiny atomically
     # written status sidecar rather than faulting the 9+ GiB checkpoint from a
     # contended HDD before model construction; full checkpoint validation still
@@ -107,7 +114,13 @@ def main() -> None:
     metadata = [None]
     if args.resume and not resume.is_file():
         raise FileNotFoundError(resume)
-    if rank == 0 and resume.is_file():
+    if finetune_from is not None and not finetune_from.is_file():
+        raise FileNotFoundError(finetune_from)
+    if rank == 0 and finetune_from is not None:
+        metadata[0] = int(config.get("finetune_expected_global_step", -1))
+        if metadata[0] < 0:
+            raise ValueError("structural fine-tune requires finetune_expected_global_step")
+    elif rank == 0 and resume.is_file():
         status_path = Path(config.get(
             "resume_status_path", resume.parent / "train_status.json"
         ))
@@ -181,11 +194,15 @@ def main() -> None:
     # broadcasts those exact weights. Loading only rank 0 after wrapping leaves
     # nonzero ranks at their construction weights and is not an exact resume.
     # Fresh runs still require and load the native Wan checkpoint.
-    load_wan_pretrained = not resume.is_file()
+    load_wan_pretrained = not resume.is_file() and finetune_from is None
     if rank == 0 and not load_wan_pretrained:
         print(json.dumps({
-            "event": "wan_pretrained_load_skipped_for_full_resume",
-            "checkpoint": str(resume),
+            "event": (
+                "wan_pretrained_load_skipped_for_structural_finetune"
+                if finetune_from is not None
+                else "wan_pretrained_load_skipped_for_full_resume"
+            ),
+            "checkpoint": str(finetune_from if finetune_from is not None else resume),
         }), flush=True)
     model = build_real_model(
         config, device, load_wan_pretrained=load_wan_pretrained,
@@ -208,10 +225,34 @@ def main() -> None:
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
         raise RuntimeError(f"non-Wan readout parameters {non_wan_count:,} != expected {expected_non_wan:,}")
+    finetune_payload: dict[str, Any] | None = None
+    finetune_state: dict[str, Any] | None = None
+    finetune_rng_states: list[Any] = []
+    if finetune_from is not None:
+        finetune_payload, finetune_state, finetune_rng_states = load_unwrapped_model_checkpoint(
+            finetune_from, model, rank, world,
+            allowed_missing_prefixes=("decoder.query_rgb_projection.",),
+        )
+        expected_step = int(config.get("finetune_expected_global_step", -1))
+        if int(finetune_state["global_step"]) != expected_step:
+            raise RuntimeError(
+                f"fine-tune source step {finetune_state['global_step']} != expected {expected_step}"
+            )
+        expected_clips = {
+            key: int(value)
+            for key, value in config.get("finetune_expected_clips_seen", {}).items()
+        }
+        actual_clips = {
+            key: int(value) for key, value in finetune_state["clips_seen"].items()
+        }
+        if actual_clips != expected_clips:
+            raise RuntimeError(
+                f"fine-tune source clip counters {actual_clips} != expected {expected_clips}"
+            )
     resume_payload: dict[str, Any] | None = None
     resume_state: dict[str, Any] | None = None
     resume_rng_states: list[Any] = []
-    if resume.is_file():
+    if resume.is_file() and finetune_from is None:
         resume_payload, resume_state, resume_rng_states = load_unwrapped_model_checkpoint(
             resume, model, rank, world,
         )
@@ -227,7 +268,19 @@ def main() -> None:
         parameter.numel() for group in groups for parameter in group["params"]
     )
     trainable_mode = str(config.get("trainable_mode"))
-    if trainable_mode == "source_rgb_plus_wan_decoder":
+    if trainable_mode == "decoder_only":
+        expected_decoder = {
+            name for name, _parameter in model.named_parameters()
+            if name.startswith("decoder.")
+        }
+        actual_decoder = set(trainable_names)
+        if actual_decoder != expected_decoder:
+            raise RuntimeError(
+                "decoder-only freeze audit failed: "
+                f"missing={sorted(expected_decoder - actual_decoder)[:8]}, "
+                f"unexpected={sorted(actual_decoder - expected_decoder)[:8]}"
+            )
+    elif trainable_mode == "source_rgb_plus_wan_decoder":
         adapter_ids = {id(value) for value in model.backbone.adapter_parameters}
         bypassed_ids = {id(value) for value in model.backbone.bypassed_parameters}
         expected_joint = {
@@ -276,6 +329,23 @@ def main() -> None:
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config["weight_decay"]))
     start_step = 0
     clips_seen = {name: 0 for name in DATASET_NAMES}
+    if finetune_state is not None:
+        load_filtered_optimizer_checkpoint(
+            finetune_payload, fsdp, optimizer, finetune_rng_states,
+            current_group_names, rank,
+            allowed_fresh_prefixes=("decoder.query_rgb_projection.",),
+        )
+        start_step = int(finetune_state["global_step"])
+        clips_seen.update({
+            key: int(value) for key, value in finetune_state["clips_seen"].items()
+        })
+        del finetune_payload
+        if rank == 0:
+            print(json.dumps({
+                "event": "structural_finetune_state_loaded", "step": start_step,
+                "world_size": world, "optimizer": "filtered_restored",
+                "rng_states": len(finetune_rng_states),
+            }), flush=True)
     if resume_state is not None:
         load_optimizer_checkpoint(
             resume_payload, fsdp, optimizer, resume_rng_states, rank,
@@ -439,14 +509,19 @@ def main() -> None:
                 None if extension_start is None else int(extension_start),
                 None if extension_horizon is None else int(extension_horizon),
             )
+            warmup_groups = (
+                {"wan_backbone", "dense_decoder"}
+                if str(config.get("trainable_mode")) == "source_rgb_plus_wan_decoder"
+                else ({"dense_decoder"} if str(config.get("trainable_mode")) == "decoder_only" else set())
+            )
             fresh_group_warmup_factor = apply_fresh_group_warmup(
                 optimizer,
-                {"wan_backbone", "dense_decoder"},
+                warmup_groups,
                 step + 1,
                 start_step,
                 int(config.get("joint_fresh_group_warmup_steps", 0)),
                 float(config.get("joint_fresh_group_max_lr_scale", 1.0)),
-            ) if str(config.get("trainable_mode")) == "source_rgb_plus_wan_decoder" else 1.0
+            ) if warmup_groups else 1.0
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
             completed = step + 1
             clips_seen[name] += world * accumulation * microbatch_per_gpu

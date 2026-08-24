@@ -11,7 +11,7 @@ from ..outputs import (
     DenseQueryOutput, StructuredZ4D, flatten_structured_z4d, flatten_z4d,
 )
 from ..wan import WAN_LATENT_SHAPE
-from .blocks import CrossAttentionBlock
+from .blocks import CrossAttentionBlock, _group_count
 from .upsampler import DenseUpsampler2D
 
 class DenseQueryDecoder(nn.Module):
@@ -27,7 +27,8 @@ class DenseQueryDecoder(nn.Module):
                  structured_pair_motion_zero_init: bool = False,
                  source_rgb_pyramid: bool = False,
                  source_rgb_channels: Sequence[int] = (32, 64, 128),
-                 source_rgb_fusion_32: bool = False):
+                 source_rgb_fusion_32: bool = False,
+                 pre_attention_rgb_query: bool = False):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.num_frames = int(num_frames)
@@ -78,6 +79,24 @@ class DenseQueryDecoder(nn.Module):
         if self.motion_pair_projection is not None and self.structured_pair_motion_zero_init:
             nn.init.zeros_(self.motion_pair_projection[-1].weight)
             nn.init.zeros_(self.motion_pair_projection[-1].bias)
+        self.pre_attention_rgb_query = bool(pre_attention_rgb_query)
+        if self.pre_attention_rgb_query:
+            if not source_rgb_pyramid:
+                raise ValueError("pre-attention RGB query requires the source RGB pyramid")
+            if self.query_grid_shape != (32, 32):
+                raise ValueError("pre-attention RGB query requires a 32x32 query grid")
+            rgb_channels = int(tuple(source_rgb_channels)[-1])
+            self.query_rgb_projection = nn.Sequential(
+                nn.GroupNorm(_group_count(rgb_channels), rgb_channels, affine=False),
+                nn.SiLU(),
+                nn.Conv2d(rgb_channels, self.query_dim, 1, bias=False),
+            )
+            # The migrated step-100k function is initially exact. Unlike the
+            # upsampler fusions this is an unconditional additive query
+            # residual: the projection itself learns when RGB should matter.
+            nn.init.zeros_(self.query_rgb_projection[-1].weight)
+        else:
+            self.query_rgb_projection = None
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         source = torch.as_tensor(source, dtype=torch.long, device=self.source_embedding.weight.device)
@@ -166,6 +185,16 @@ class DenseQueryDecoder(nn.Module):
                 raise ValueError(
                     f"motion slots {z4d.motion.shape[2]} != decoder slots {self.structured_motion_slots}"
                 )
+        if source_rgb is not None and source_pyramid is not None:
+            raise ValueError("pass source_rgb or source_pyramid, not both")
+        if self.pre_attention_rgb_query:
+            if source_pyramid is None:
+                if source_rgb is None:
+                    raise ValueError("pre-attention RGB query requires source appearance")
+                source_pyramid = self.encode_source_rgb(source_rgb)
+                source_rgb = None
+            if 32 not in source_pyramid:
+                raise ValueError("source RGB pyramid lacks the 32px feature")
         content = self.query_content(source, target)
         if content.shape[0] not in (1, dense.shape[0]):
             raise ValueError("query batch does not match Z4D batch")
@@ -179,6 +208,16 @@ class DenseQueryDecoder(nn.Module):
                 z4d, source, target, content.shape[1]
             )
             query = query + pair_motion[:, :, None, :]
+        if self.query_rgb_projection is not None:
+            rgb_query = self.query_rgb_projection(source_pyramid[32])
+            if rgb_query.shape != (
+                dense.shape[0], self.query_dim, *self.query_grid_shape,
+            ):
+                raise RuntimeError(
+                    f"RGB query projection has unexpected shape {tuple(rgb_query.shape)}"
+                )
+            rgb_query = rgb_query.flatten(2).transpose(1, 2)[:, None]
+            query = query + rgb_query.expand(-1, content.shape[1], -1, -1)
         memory, memory_coordinates = flatten_structured_z4d(z4d) if structured else flatten_z4d(z4d)
         for block in self.blocks:
             query = block(query, memory, self.query_coordinates, memory_coordinates)

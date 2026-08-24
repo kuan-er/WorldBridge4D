@@ -143,6 +143,7 @@ def build_real_model(
             "source_rgb_channels", (32, 64, 128)
         )),
         source_rgb_fusion_32=bool(config.get("source_rgb_fusion_32", False)),
+        pre_attention_rgb_query=bool(config.get("pre_attention_rgb_query", False)),
     ).to(device=device, dtype=dtype)
     model = DenseQueryWanModel(backbone, decoder)
     model.configure_trainable(str(config.get("trainable_mode", "full")))

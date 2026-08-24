@@ -33,6 +33,10 @@ class DenseQueryWanModel(nn.Module):
             parameter.requires_grad_(False)
         if mode == "full":
             return
+        if mode == "decoder_only":
+            for parameter in self.backbone.parameters():
+                parameter.requires_grad_(False)
+            return
         if mode == "source_rgb_plus_wan_decoder":
             for parameter in self.parameters():
                 parameter.requires_grad_(False)

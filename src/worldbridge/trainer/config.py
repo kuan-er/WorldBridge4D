@@ -42,12 +42,12 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             f"wan_hidden_layers must include the model's final block: {expected_hidden_layers}"
         )
     mode = str(config.get("trainable_mode", "full"))
-    allowed_modes = {"full", "source_rgb_plus_wan_decoder"}
+    allowed_modes = {"full", "source_rgb_plus_wan_decoder", "decoder_only"}
     if mode not in allowed_modes:
         raise ValueError(
-            "three-dataset training supports full and audited source-RGB phases"
+            "three-dataset training supports full and audited decoder phases"
         )
-    if mode == "source_rgb_plus_wan_decoder":
+    if mode in {"source_rgb_plus_wan_decoder", "decoder_only"}:
         if not bool(config.get("source_rgb_pyramid", False)):
             raise ValueError("source-RGB trainable modes require the RGB pyramid")
         if not bool(config.get("source_rgb_separate_optimizer_group", False)):
@@ -55,7 +55,12 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         multiplier = float(config.get("source_rgb_learning_rate_multiplier", 0.0))
         if multiplier != 10.0:
             raise ValueError("production source-RGB LR multiplier must be exactly 10")
-    if mode == "source_rgb_plus_wan_decoder":
+    if bool(config.get("pre_attention_rgb_query", False)):
+        if mode != "decoder_only":
+            raise ValueError("pre-attention RGB query requires decoder_only training")
+        if not bool(config.get("source_rgb_pyramid", False)):
+            raise ValueError("pre-attention RGB query requires source RGB")
+    if mode in {"source_rgb_plus_wan_decoder", "decoder_only"}:
         if int(config.get("joint_fresh_group_warmup_steps", 0)) < 0:
             raise ValueError("joint fresh-group warm-up steps must be non-negative")
         max_scale = float(config.get("joint_fresh_group_max_lr_scale", 1.0))
