@@ -574,6 +574,27 @@ def test_h027_pre_attention_rgb_query_finetune_contract():
     validate_config(config, world=2)
 
 
+def test_h027_step130k_exact_resume_contract():
+    import yaml
+    from worldbridge.trainer.config import validate_config
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "configs/h027_pre_attention_rgb_query_step130000.yaml"
+    )
+    config = yaml.safe_load(path.read_text())
+    assert config["pre_attention_rgb_query"] is True
+    assert "pre_attention_rgb_query_gate_max" not in config
+    assert config["trainable_mode"] == "decoder_only"
+    assert config["max_steps"] == 130_000
+    assert config["schedule_extension_horizon_steps"] == 150_000
+    assert config["checkpoint_steps"] == [110_000, 115_000, 120_000, 125_000, 130_000]
+    assert config["checkpoint_every_after"] == 5_000
+    assert config["checkpoint_keep_last"] == 5
+    assert config["resume_status_path"].endswith("resume_status_0105000.json")
+    validate_config(config, world=2)
+
+
 def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
     from worldbridge.trainer.fsdp_checkpoint import prune_periodic_checkpoints
 

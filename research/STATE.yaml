@@ -1,6 +1,7 @@
-current_task: T-20260825081127-22b853
+current_task: T-20260825130839-23281e
 active_hypotheses:
   - H029
+  - H027
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -1111,4 +1112,33 @@ h023_exhaustive_validation_evaluation:
       - R-20260823104419-797a1f
       - R-20260823104456-10aba5
       - R-20260823144244-b704f2
-updated_at: 2026-08-25T08:11:28.064Z
+h027_pre_attention_rgb_query_to130k:
+  status: preparing_exact_resume_after_user_override
+  task: T-20260825130839-23281e
+  source_checkpoint:
+    global_step: 105000
+    path: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step110000/checkpoint-0105000.pt
+    bytes: 3932667607
+    sha256: 2185b6dd31a672c90be3746e09092a16bab6cecc4e0b5bed469e7a9c98e97f41
+    artifact: artifact://H027/R-20260824224329-9c91cc/checkpoint/2185b6dd31a672c9
+  architecture: ungated_additive_pre_attention_rgb_query
+  protocol:
+    target_step: 130000
+    trainable_mode: decoder_only
+    wan_frozen: true
+    geometry_frozen: true
+    physical_gpus: [1, 5]
+    world_size: 2
+    microbatch_per_gpu: 2
+    accumulation: 2
+    targets_per_source: 19
+    seed: 20260812
+    schedule_horizon_steps: 150000
+    checkpoint_steps: [110000, 115000, 120000, 125000, 130000]
+    wandb_log_after_step: 105016
+    pointodyssey_auto_stop: false
+  tracking:
+    wandb_run_id: od2wlwrq
+    wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/od2wlwrq
+  output: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step130000
+updated_at: 2026-08-25T13:15:00Z
