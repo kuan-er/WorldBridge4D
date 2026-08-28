@@ -1,6 +1,5 @@
-current_task: T-20260825130839-23281e
-active_hypotheses:
-  - H027
+current_task: null
+active_hypotheses: []
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -1112,7 +1111,7 @@ h023_exhaustive_validation_evaluation:
       - R-20260823104456-10aba5
       - R-20260823144244-b704f2
 h027_pre_attention_rgb_query_to130k:
-  status: step130000_reached_checkpoint_registered_wandb_final_sync_pending
+  status: complete_step130000_checkpoint_registered_wandb_finished
   task: T-20260825130839-23281e
   runs:
     status_incompatible_dependency_failed_before_start: R-20260825131101-94c111
@@ -1175,4 +1174,9 @@ h027_pre_attention_rgb_query_to130k:
     projection_weight_rms: 0.021960
     analysis: /tmp/h027_step130000_analysis.json
     projection_analysis: /tmp/h027_step130000_projection.json
-updated_at: 2026-08-28T00:39:00Z
+  completion:
+    exit_code: 0
+    trainer_marker: THREE_DATASET_256_FSDP_OK
+    tracking_status: finished
+    wandb_uploaded: true
+updated_at: 2026-08-28T00:40:00Z
