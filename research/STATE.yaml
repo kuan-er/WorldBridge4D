@@ -1,6 +1,5 @@
 current_task: T-20260825130839-23281e
 active_hypotheses:
-  - H029
   - H027
 recent_results:
   - run_id: R-20260808164859-ac2cfe
@@ -1113,8 +1112,11 @@ h023_exhaustive_validation_evaluation:
       - R-20260823104456-10aba5
       - R-20260823144244-b704f2
 h027_pre_attention_rgb_query_to130k:
-  status: preparing_exact_resume_after_user_override
+  status: step130000_reached_checkpoint_registered_wandb_final_sync_pending
   task: T-20260825130839-23281e
+  runs:
+    status_incompatible_dependency_failed_before_start: R-20260825131101-94c111
+    exact_resume_to130000: R-20260825131155-846989
   source_checkpoint:
     global_step: 105000
     path: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step110000/checkpoint-0105000.pt
@@ -1141,4 +1143,36 @@ h027_pre_attention_rgb_query_to130k:
     wandb_run_id: od2wlwrq
     wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/od2wlwrq
   output: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step130000
-updated_at: 2026-08-25T13:15:00Z
+  final_checkpoint:
+    global_step: 130000
+    path: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step130000/checkpoint-0130000.pt
+    bytes: 3932667735
+    sha256: 9fadf33559bfd2402b2d3330c97d620f8d16d6d90820a223c07601ba504ba7b7
+    artifact: artifact://H027/R-20260825131155-846989/checkpoint/9fadf33559bfd240
+  final_training_window_evidence:
+    final400_vs_step105k_first400:
+      aggregate_loss_pct: -4.14
+      aggregate_epe_pct: -8.93
+      pointodyssey_loss_pct: -30.45
+      pointodyssey_epe_pct: -29.92
+    final1000_vs_step105k_first1000:
+      aggregate_loss_pct: -1.63
+      aggregate_epe_pct: -3.66
+      pointodyssey_loss_pct: -8.37
+      pointodyssey_epe_pct: -10.91
+    final5000_vs_step105k_first5000:
+      aggregate_loss_pct: -3.32
+      aggregate_epe_pct: -3.03
+      all_three_datasets_improved: true
+    final400_vs_h027_step100k_initial400:
+      aggregate_loss_pct: -11.76
+      aggregate_epe_pct: -10.52
+      pointodyssey_loss_pct: -21.02
+      pointodyssey_epe_pct: -14.57
+      all_three_datasets_improved: true
+    finite: true
+    peak_cuda_memory_gib: 70.564
+    projection_weight_rms: 0.021960
+    analysis: /tmp/h027_step130000_analysis.json
+    projection_analysis: /tmp/h027_step130000_projection.json
+updated_at: 2026-08-28T00:39:00Z
