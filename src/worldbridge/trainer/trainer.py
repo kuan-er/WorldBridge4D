@@ -38,6 +38,7 @@ from .lazy_vae import (
     LazyVAEPipeline, lazy_latent_owner, pipeline_work_for_rank, required_latent_indices,
     required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
 )
+from .cycle import camera_batch, pixel_cycle_loss
 from .objective import masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .schedulers import apply_cosine_schedule, training_diagnostic_due
@@ -386,6 +387,13 @@ def main() -> None:
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     use_source_rgb = bool(config.get("source_rgb_pyramid", False))
+    cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
+    cycle_dataset_names = tuple(str(name) for name in config.get(
+        "cycle_reprojection_datasets", ["kubric"],
+    ))
+    cycle_weight = float(config.get("cycle_reprojection_weight", 0.0))
+    cycle_pixel_stride = int(config.get("cycle_reprojection_pixel_stride", 1))
+    cycle_huber_delta = float(config.get("cycle_reprojection_huber_delta", 0.01))
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     ensure_dataset_diagnostics = bool(
         config.get("diagnostic_ensure_dataset_coverage", False)
@@ -411,6 +419,8 @@ def main() -> None:
         microbatch_per_gpu=microbatch_per_gpu,
         targets_per_source=k,
         use_source_rgb=use_source_rgb,
+        cycle_enabled=cycle_enabled,
+        cycle_dataset_names=cycle_dataset_names,
         start_step=start_step,
         target_steps=target_steps,
         depth=prefetch_depth,
@@ -434,6 +444,9 @@ def main() -> None:
             update_epe = 0.0
             valid_points = 0
             pair_count = 0
+            cycle_loss_sum = 0.0
+            cycle_pixel_error_sum = 0.0
+            cycle_valid_points = 0
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
@@ -451,13 +464,16 @@ def main() -> None:
                 target_counts = []
                 for (_planned_index, _source, rng), future in group:
                     wait_started = time.perf_counter()
-                    (index, source, xyz_all, valid_all, source_rgb_np), task_seconds = future.result()
+                    (
+                        index, source, xyz_all, valid_all, source_rgb_np,
+                        visible_all, camera,
+                    ), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
                     targets = sample_eligible_targets(valid_all, k, rng)
                     batch_values.append((
                         index, source, targets, xyz_all[targets], valid_all[targets],
-                        source_rgb_np,
+                        source_rgb_np, visible_all, camera, valid_all,
                     ))
                     target_counts.append(len(targets))
                 if len(set(target_counts)) != 1:
@@ -495,26 +511,106 @@ def main() -> None:
                 xyz = torch.from_numpy(normalized_np).to(device, non_blocking=True)
                 valid = torch.from_numpy(valid_np).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
+                cycle_batch = cycle_enabled and name in cycle_dataset_names
+                cycle_pair_indices = cycle_targets = None
+                cycle_source_t = cycle_target_t = cycle_source_rgb_t = None
+                cycle_source_valid = cycle_target_valid = cycle_target_visible = None
+                cycle_cameras = None
+                if cycle_batch:
+                    cycle_pair_indices = np.asarray([
+                        int(np.argmax(np.abs(value[2] - value[1])))
+                        for value in batch_values
+                    ], dtype=np.int64)
+                    cycle_targets = np.asarray([
+                        int(value[2][pair_index])
+                        for value, pair_index in zip(batch_values, cycle_pair_indices)
+                    ], dtype=np.int64)
+                    if any(value[6] is None or value[7] is None for value in batch_values):
+                        raise RuntimeError("cycle-enabled batch is missing visibility or camera metadata")
+                    reverse_rgb_np = np.stack([
+                        dataset.source_rgb(value[0], target_index)
+                        for value, target_index in zip(batch_values, cycle_targets)
+                    ])
+                    cycle_source_t = torch.from_numpy(cycle_targets[:, None]).to(
+                        device, dtype=torch.long, non_blocking=True,
+                    )
+                    cycle_target_t = source_t[:, :1]
+                    cycle_source_rgb_t = torch.from_numpy(reverse_rgb_np).permute(0, 3, 1, 2).to(
+                        device, dtype=dtype, non_blocking=True,
+                    ) / 127.5 - 1.0
+                    cycle_source_valid = torch.from_numpy(np.stack([
+                        value[8][value[1]] & value[6][value[1]]
+                        for value in batch_values
+                    ])).to(device, non_blocking=True)
+                    cycle_target_valid = torch.from_numpy(np.stack([
+                        value[8][target_index]
+                        for value, target_index in zip(batch_values, cycle_targets)
+                    ])).to(device, non_blocking=True)
+                    cycle_target_visible = torch.from_numpy(np.stack([
+                        value[6][target_index]
+                        for value, target_index in zip(batch_values, cycle_targets)
+                    ])).to(device, non_blocking=True)
+                    cycle_cameras = camera_batch(
+                        [value[7] for value in batch_values], device, torch.float32,
+                    )
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
-                    prediction, _, _ = fsdp(
+                    prediction, z4d, _ = fsdp(
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
                     loss = masked_pair_smooth_l1(
                         prediction.float(), xyz.float(), valid,
                         beta=float(config.get("smooth_l1_beta", 0.05)),
                     ) / accumulation
+                    cycle_value = prediction.new_zeros(())
+                    cycle_points = prediction.new_zeros(())
+                    cycle_pixel_error = prediction.new_zeros(())
+                    if cycle_batch:
+                        batch_indices = torch.arange(
+                            prediction.shape[0], device=device,
+                        )
+                        forward_cycle = prediction[batch_indices, torch.as_tensor(
+                            cycle_pair_indices, device=device,
+                        )]
+                        forward_cycle = forward_cycle * torch.as_tensor(
+                            scale, device=device, dtype=forward_cycle.dtype,
+                        ).view(1, 3, 1, 1) + torch.as_tensor(
+                            mean, device=device, dtype=forward_cycle.dtype,
+                        ).view(1, 3, 1, 1)
+                        reverse_prediction, _, _ = fsdp(
+                            latent, cycle_source_t, cycle_target_t, condition,
+                            cycle_source_rgb_t, z4d_override=z4d,
+                        )
+                        reverse_cycle = reverse_prediction[:, 0]
+                        reverse_cycle = reverse_cycle * torch.as_tensor(
+                            scale, device=device, dtype=reverse_cycle.dtype,
+                        ).view(1, 3, 1, 1) + torch.as_tensor(
+                            mean, device=device, dtype=reverse_cycle.dtype,
+                        ).view(1, 3, 1, 1)
+                        with torch.autocast("cuda", enabled=False):
+                            cycle_value, cycle_points, cycle_pixel_error = pixel_cycle_loss(
+                                forward_cycle.float(), reverse_cycle.float(),
+                                source_t[:, 0], cycle_source_t[:, 0],
+                                cycle_source_valid, cycle_target_valid, cycle_target_visible,
+                                *cycle_cameras,
+                                huber_delta=cycle_huber_delta, image_size=256,
+                                pixel_stride=cycle_pixel_stride,
+                            )
+                        loss = loss + cycle_weight * cycle_value / accumulation
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step={step}, micro={micro}")
                 loss.backward()
                 update_loss += float(loss.detach())
+                cycle_loss_sum += float(cycle_value.detach()) / accumulation
+                cycle_pixel_error_sum += float(cycle_pixel_error.detach() * cycle_points.detach())
+                cycle_valid_points += int(cycle_points.detach())
                 with torch.no_grad():
                     metric_error = (prediction.float() - xyz) * torch.as_tensor(scale, device=device).view(1, 1, 3, 1, 1)
                     epe = torch.linalg.vector_norm(metric_error, dim=2)
                     update_epe += float(epe[valid].sum())
                     valid_points += int(valid.sum())
                 pair_count += sum(target_counts)
-                for _index, source, targets, _xyz, _valid, _source_rgb in batch_values:
+                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all in batch_values:
                     source_hist[source] += 1
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
@@ -561,7 +657,10 @@ def main() -> None:
             if diagnostic:
                 last_diagnostic_cycle[name] = step // 20
                 scalars = torch.tensor(
-                    [update_loss, update_epe, valid_points, pair_count], device=device, dtype=torch.float64
+                    [
+                        update_loss, update_epe, valid_points, pair_count,
+                        cycle_loss_sum, cycle_pixel_error_sum, cycle_valid_points,
+                    ], device=device, dtype=torch.float64,
                 )
                 timing_max = torch.tensor([
                     geometry_wait_seconds, geometry_task_max_seconds, latent_load_seconds,
@@ -585,9 +684,15 @@ def main() -> None:
                 else:
                     rgb_alpha_stats = torch.empty((0, 2), device=device, dtype=torch.float64)
             if rank == 0 and diagnostic:
-                global_loss, global_epe_sum, global_valid, global_pairs = scalars.tolist()
+                (
+                    global_loss, global_epe_sum, global_valid, global_pairs,
+                    global_cycle_loss, global_cycle_pixel_error_sum,
+                    global_cycle_points,
+                ) = scalars.tolist()
                 dataset_loss = global_loss / world
                 raw_epe_m = global_epe_sum / max(global_valid, 1)
+                cycle_dataset_loss = global_cycle_loss / world
+                cycle_pixel_error = global_cycle_pixel_error_sum / max(global_cycle_points, 1)
                 weights = fsdp.module.backbone.layer_weights().detach().float().cpu().tolist()
                 rgb_alphas = {
                     scale_name: float(rgb_alpha_stats[index, 0] / rgb_alpha_stats[index, 1])
@@ -598,6 +703,10 @@ def main() -> None:
                     f"train/loss_by_dataset/{name}": dataset_loss,
                     "train/raw_epe_m": raw_epe_m,
                     f"train/raw_epe_m_by_dataset/{name}": raw_epe_m,
+                    "train/cycle_reprojection_loss": cycle_dataset_loss,
+                    f"train/cycle_reprojection_loss_by_dataset/{name}": cycle_dataset_loss,
+                    "train/cycle_reprojection_pixel_error": cycle_pixel_error,
+                    "train/cycle_reprojection_valid_points": int(global_cycle_points),
                     "train/dataset": DATASET_NAMES.index(name), "train/pairs": int(global_pairs),
                     "train/clips_seen_total": sum(clips_seen.values()),
                     **{f"train/clips_seen_{key}": value for key, value in clips_seen.items()},

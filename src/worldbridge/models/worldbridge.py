@@ -15,9 +15,12 @@ class DenseQueryWanModel(nn.Module):
 
     def forward(self, clean_video_latent: torch.Tensor, source: torch.Tensor,
                 target: torch.Tensor, encoder_hidden_states: torch.Tensor | None = None,
-                source_rgb: torch.Tensor | None = None
+                source_rgb: torch.Tensor | None = None,
+                z4d_override: torch.Tensor | StructuredZ4D | None = None
                 ) -> tuple[torch.Tensor, torch.Tensor | StructuredZ4D, DenseQueryOutput]:
-        if encoder_hidden_states is None:
+        if z4d_override is not None:
+            z4d = z4d_override
+        elif encoder_hidden_states is None:
             z4d = self.backbone(clean_video_latent)
         else:
             z4d = self.backbone(clean_video_latent, encoder_hidden_states)

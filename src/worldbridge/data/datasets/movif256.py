@@ -13,7 +13,7 @@ from ..cache.geometry import KubricGeometryMmapStore
 from ..cache.latent import LazyLatentCache, LatentShardStore
 from ..cache.rgb import RGBUInt8ShardStore
 from ..constants import KUBRIC_GEOMETRY_CACHE
-from ..geometry import GeometryBuilder
+from ..geometry import CameraModel, GeometryBuilder
 from ..movif import MOViFDataset, MOViSample
 
 class MOViF256Dataset:
@@ -202,6 +202,18 @@ class MOViF256Dataset:
         xyz, valid, visible = self._geometry(index, source, True)
         assert visible is not None
         return xyz, valid, visible
+
+    def cycle_camera(self, index: int) -> dict[str, np.ndarray | float]:
+        """Return the compact camera contract needed by differentiable cycles."""
+        sample = self.sample(int(index))
+        return {
+            "positions": np.asarray(sample.camera_positions, dtype=np.float32).copy(),
+            "rotations": CameraModel.quaternion_matrix(
+                sample.camera_quaternions,
+            ).astype(np.float32),
+            "focal_length": float(sample.focal_length),
+            "sensor_width": float(sample.sensor_width),
+        }
 
     def rgb(self, index: int) -> np.ndarray:
         if self.rgb_shards is not None:

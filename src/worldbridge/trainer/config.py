@@ -75,14 +75,29 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError(f"incorrect initial layer weights: {weights}")
     if world != 2:
         raise ValueError(f"production training requires exactly 2 ranks; got {world}")
+    cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
+    cycle_names = tuple(str(name) for name in config.get(
+        "cycle_reprojection_datasets", ["kubric"],
+    ))
+    if cycle_enabled and cycle_names != ("kubric",):
+        raise ValueError("the initial cycle experiment supports only cycle_reprojection_datasets=[kubric]")
+    if int(config.get("cycle_reprojection_pixel_stride", 1)) < 1:
+        raise ValueError("cycle_reprojection_pixel_stride must be positive")
+    if float(config.get("cycle_reprojection_weight", 0.0)) < 0.0:
+        raise ValueError("cycle_reprojection_weight must be non-negative")
+    if float(config.get("cycle_reprojection_huber_delta", 0.01)) <= 0.0:
+        raise ValueError("cycle_reprojection_huber_delta must be positive")
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
-    if (accumulation, microbatch) != (2, 2):
+    required_batching = (4, 1) if cycle_enabled else (2, 2)
+    if (accumulation, microbatch) != required_batching:
         raise ValueError(
-            "production training requires gradient_accumulation=2 and microbatch_per_gpu=2"
+            f"training requires gradient_accumulation={required_batching[0]} and "
+            f"microbatch_per_gpu={required_batching[1]}"
         )
-    if int(config["targets_per_source"]) != 19:
-        raise ValueError("production training requires targets_per_source=19")
+    required_targets = 13 if cycle_enabled else 19
+    if int(config["targets_per_source"]) != required_targets:
+        raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
     prefetch_workers = int(config.get(
         "geometry_prefetch_workers", min(4, accumulation * microbatch * 2),

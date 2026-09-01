@@ -15,6 +15,7 @@ from worldbridge.models import (
     StructuredZ4D, WanHiddenGeometryBackbone,
 )
 from worldbridge.models.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
+from worldbridge.trainer.cycle import pixel_cycle_loss
 from worldbridge.trainer.objective import masked_pair_smooth_l1
 from worldbridge.trainer.optimizer import parameter_groups
 from worldbridge.trainer.trainer import fsdp_auto_wrap_policy
@@ -981,6 +982,40 @@ def test_geometry_prefetcher_preserves_order_and_deterministic_sampling():
     assert "def timed_geometry" not in source
     assert "def plan_step" not in source
     assert "def refill_plans" not in source
+
+
+def test_pixel_cycle_is_zero_for_identity_and_responds_to_reverse_shift():
+    size = 8
+    uv = torch.stack(torch.meshgrid(
+        torch.arange(size), torch.arange(size), indexing="xy",
+    ), dim=-1).float()
+    source_xyz = torch.stack((
+        (uv[..., 0] - 3.5) / size,
+        -(uv[..., 1] - 3.5) / size,
+        -torch.ones(size, size),
+    ), dim=0).unsqueeze(0).requires_grad_()
+    reverse_xyz = source_xyz.detach().clone()
+    reverse_xyz[:, 0] += 0.1
+    positions = torch.zeros(1, 21, 3)
+    rotations = torch.eye(3).reshape(1, 1, 3, 3).expand(1, 21, 3, 3).clone()
+    valid = torch.ones(1, size, size, dtype=torch.bool)
+    args = (
+        torch.tensor([0]), torch.tensor([1]), valid, valid, valid,
+        positions, rotations, torch.tensor([1.0]), torch.tensor([1.0]),
+    )
+    loss, count, pixel_error = pixel_cycle_loss(
+        source_xyz.detach(), source_xyz.detach(), *args, image_size=size,
+    )
+    assert count.item() == size * size
+    assert loss.item() == pytest.approx(0.0)
+    assert pixel_error.item() == pytest.approx(0.0)
+    loss, count, pixel_error = pixel_cycle_loss(
+        source_xyz, reverse_xyz, *args, image_size=size,
+    )
+    assert 0 < count.item() < size * size
+    assert pixel_error.item() > 0.0
+    loss.backward()
+    assert source_xyz.grad is not None and torch.isfinite(source_xyz.grad).all()
 
 
 def test_pair_loss_ignores_empty_pair_instead_of_treating_it_as_zero():
