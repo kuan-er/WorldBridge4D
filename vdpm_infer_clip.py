@@ -57,9 +57,9 @@ def load_rgb(dataset: str, index: int):
     if dataset == 'pointodyssey':
         root = Path('/dataset/data/preprocessed_256_three_dataset_v1/metadata/pointodyssey_worldbridge4d_v1')
         from worldbridge.pointodyssey import PointOdysseyDataset
-        ds = PointOdysseyDataset(root, split='validation', image_size=256, raw_root='/dataset/nas0/PointOdyssey')
+        ds = PointOdysseyDataset(root, split='validation', image_size=256)
         row = ds.rows[index]
-        scene = Path(row['source_scene'])
+        scene = Path('/dataset/nas0/PointOdyssey') / Path(row['source_scene']).relative_to('/dataset/PointOdyssey')
         start = int(row['start'])
         frames = []
         for j in range(T):
@@ -117,15 +117,26 @@ def main() -> None:
     all_conf = torch.cat([x['conf'].detach().float().cpu() for x in result['pointmaps']], dim=0).numpy()
     xyz = all_xyz[:, SOURCES].transpose(1, 0, 2, 3, 4)
     conf = all_conf[:, SOURCES].transpose(1, 0, 2, 3)
+    # Explicit protocol outputs: all diagonal pointmaps and source=0 tracking
+    # are retained in addition to all four arbitrary source trajectories.
+    pointmap = all_xyz[np.arange(T), np.arange(T)]
+    pointmap_conf = all_conf[np.arange(T), np.arange(T)]
+    first_frame = all_xyz[:, 0]
+    first_frame_conf = all_conf[:, 0]
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(out, xyz=xyz, confidence=conf, sources=np.asarray(SOURCES), targets=np.arange(T),
-                        dataset=args.dataset, clip_index=np.int64(args.index))
+    np.savez_compressed(
+        out, xyz=xyz, confidence=conf, sources=np.asarray(SOURCES), targets=np.arange(T),
+        pointmap=pointmap, pointmap_confidence=pointmap_conf,
+        first_frame=first_frame, first_frame_confidence=first_frame_conf,
+        dataset=args.dataset, clip_index=np.int64(args.index),
+    )
     summary = {
         **meta, 'dataset': args.dataset, 'index': args.index, 'sources': SOURCES,
         'targets': list(range(T)), 'input_shape_chw': native_shape,
         'saved_xyz_shape': list(xyz.shape), 'saved_confidence_shape': list(conf.shape),
+        'saved_pointmap_shape': list(pointmap.shape), 'saved_first_frame_shape': list(first_frame.shape),
         'elapsed_seconds': elapsed,
         'cuda_peak_gib': torch.cuda.max_memory_allocated(device) / 2**30 if device.type == 'cuda' else None,
         'checkpoint': str(Path(args.checkpoint).resolve()),
