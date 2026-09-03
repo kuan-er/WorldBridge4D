@@ -20,7 +20,7 @@ def main() -> None:
     sys.path.insert(0, str(repo))
     from dpm.model import VDPM
 
-    cfg = OmegaConf.load(repo / 'configs' / 'model' / 'dpm.yaml')
+    cfg = OmegaConf.create({'model': OmegaConf.load(repo / 'configs' / 'model' / 'dpm.yaml')})
     device = torch.device(args.device)
     model = VDPM(cfg).to(device)
     state = torch.load(args.checkpoint, map_location='cpu', mmap=True, weights_only=True)
