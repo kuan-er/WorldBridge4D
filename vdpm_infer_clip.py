@@ -77,7 +77,7 @@ def load_rgb(dataset: str, index: int):
         frames = []
         for j in range(T):
             rel = row['frames'][j]['rgb']
-            with Image.open(stream_root / Path(rel).name) as im:
+            with Image.open(stream_root / 'images' / Path(rel).name) as im:
                 frames.append(np.asarray(im.convert('RGB'), dtype=np.uint8))
         return frames, {'clip_id': row['clip_id'], 'native_size': [frames[0].shape[0], frames[0].shape[1]]}
     raise ValueError(dataset)
