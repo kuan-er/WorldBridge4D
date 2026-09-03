@@ -20,6 +20,34 @@ SOURCES = [5, 10, 15, 20]
 T = 21
 
 
+def preprocess_images_official(images_np):
+    """V-DPM visualise.py preprocessing without importing its cv2 GUI."""
+    if not images_np:
+        raise ValueError('at least one image is required')
+    images = []
+    shapes = set()
+    for image_np in images_np:
+        img = Image.fromarray(image_np)
+        if img.mode == 'RGBA':
+            background = Image.new('RGBA', img.size, (255, 255, 255, 255))
+            img = Image.alpha_composite(background, img)
+        img = img.convert('RGB')
+        width, height = img.size
+        target = 518
+        new_width = target
+        new_height = round(height * (new_width / width) / 14) * 14
+        img = img.resize((new_width, new_height), Image.Resampling.BICUBIC)
+        tensor = torch.from_numpy(np.asarray(img, dtype=np.float32).copy()).permute(2, 0, 1) / 255.0
+        if new_height > target:
+            start_y = (new_height - target) // 2
+            tensor = tensor[:, start_y:start_y + target, :]
+        shapes.add(tuple(tensor.shape[1:]))
+        images.append(tensor)
+    if len(shapes) != 1:
+        raise ValueError(f'official preprocessing produced inconsistent shapes: {shapes}')
+    return torch.stack(images)
+
+
 def load_rgb(dataset: str, index: int):
     if dataset == 'kubric':
         from worldbridge.data import MOViFDataset
@@ -65,7 +93,6 @@ def main() -> None:
     args = ap.parse_args()
 
     from dpm.model import VDPM
-    from visualise import preprocess_images
 
     frames, meta = load_rgb(args.dataset, args.index)
     cfg = OmegaConf.create({'model': OmegaConf.load(REPO / 'configs' / 'model' / 'dpm.yaml')})
@@ -76,7 +103,7 @@ def main() -> None:
     model.eval()
     del state
 
-    images = preprocess_images(frames, mode='crop')
+    images = preprocess_images_official(frames)
     native_shape = list(images.shape[1:])
     images = images.to(device)
     start = time.perf_counter()
