@@ -89,12 +89,13 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError("cycle_reprojection_huber_delta must be positive")
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
-    required_batching = (4, 1) if cycle_enabled else (2, 2)
-    if (accumulation, microbatch) != required_batching:
-        raise ValueError(
-            f"training requires gradient_accumulation={required_batching[0]} and "
-            f"microbatch_per_gpu={required_batching[1]}"
+    allowed_batching = {(4, 1), (4, 2)} if cycle_enabled else {(2, 2)}
+    if (accumulation, microbatch) not in allowed_batching:
+        expected = " or ".join(
+            f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
+            for accum, micro in sorted(allowed_batching)
         )
+        raise ValueError(f"training requires {expected}")
     required_targets = 13 if cycle_enabled else 19
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
