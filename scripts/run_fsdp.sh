@@ -23,7 +23,7 @@ RESUME_CHECKPOINT="${RESUME_CHECKPOINT:-}"  # 可选：显式指定恢复文件�
 WANDB_LOG_AFTER_STEP="${WANDB_LOG_AFTER_STEP:--1}"  # 仅记录大于该 step 的指标；-1 表示从头记录。
 
 # ---------- GPU 拓扑与训练长度 ----------
-GPUS="0,1"  # 项目物理 GPU allowlist 固定为 0、1。
+GPUS="${GPUS:-0,1}"  # 默认使用物理 GPU 0、1；用户可显式指定其他已授权卡。
 NPROC="2"  # 当前生产训练固定为两个 ranks。
 STEPS="${STEPS:-}"  # 可选：覆盖 YAML 中的目标总 step；不是“再训练多少步”。
 
