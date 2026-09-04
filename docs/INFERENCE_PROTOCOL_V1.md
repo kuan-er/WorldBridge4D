@@ -120,9 +120,6 @@ validation benchmark。
 - 方法无法处理某个 clip 时记录 failure，不得静默跳过；
 - 先使用 validation 做适配和比较；
 - 方法、配置和 checkpoint 冻结后再运行 test；
-- 结果按三个数据集分别报告，再计算三个数据集等权的 macro average；
-- 不能按 clip 数量直接合并平均，避免 PointOdyssey 的 clip 数量主导总结果；
-- Dynamic Replica 的 validation 固定指官方 `valid` evaluation release，不得使用从 `train` stream 自行切出的 temporal split 代替；该官方 split 必须在 manifest 和结果元数据中明确标记为 `official_valid`。
 
 ## 5. 当前 RGB 数据源
 
