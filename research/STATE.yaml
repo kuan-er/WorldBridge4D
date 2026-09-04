@@ -1195,11 +1195,14 @@ h030_h027_130k_cycle_kubric_gpu57_k13:
   cycle: kubric_only_max_gap_visible_visible_pixel_stride4_weight0.02
   tests_passed: 77
 h030_h027_140k_cycle_all_w03_gpu67_k13_b1:
-  status: queued
+  status: running
   task: T-20260901153324-39dd05
-  run: R-20260904083701-09d700
+  run: R-20260904083805-2ef397
+  superseded_queued_run: R-20260904083701-09d700
   start_checkpoint: /data/WorldBridge4D-runs/h030-h027-130k-cycle-kubric-gpu57-k13-shared4/checkpoint-0140000.pt
   physical_gpus: [6, 7]
+  resource_mode: shared
+  min_free_memory_mib: 15000
   world_size: 2
   microbatch_per_gpu: 1
   gradient_accumulation: 4
@@ -1208,4 +1211,4 @@ h030_h027_140k_cycle_all_w03_gpu67_k13_b1:
   target_step: 150000
   cycle: all_three_datasets_max_gap_visible_visible_pixel_stride4_weight0.3
   wandb: enabled
-updated_at: 2026-09-04T08:37:02Z
+updated_at: 2026-09-04T08:38:05Z
