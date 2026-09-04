@@ -150,6 +150,28 @@ class PointOdysseyDataset:
         c2w = np.linalg.inv(np.einsum("ij,tjk->tik", D, a["extrinsics"][start:start + T].astype(np.float64)))
         return K, c2w, np.stack(depth), np.stack(depth_valid)
 
+    def cycle_camera(self, index: int) -> dict[str, np.ndarray | float]:
+        """Return the camera contract used by differentiable pixel cycles."""
+        row, a = self.rows[int(index)], self._load(self.rows[int(index)])
+        start = int(row["start"])
+        size_i = self.image_size
+        K = a["intrinsics"][start:start + T].astype(np.float64).copy()
+        S = np.array([
+            [size_i / CROP_SIZE, 0, -CROP_X * size_i / CROP_SIZE],
+            [0, size_i / CROP_SIZE, 0], [0, 0, 1],
+        ], np.float64)
+        K = np.einsum("ij,tjk->tik", S, K)
+        camera_to_world = np.linalg.inv(np.einsum(
+            "ij,tjk->tik", D, a["extrinsics"][start:start + T].astype(np.float64),
+        ))
+        size = float(size_i)
+        return {
+            "positions": camera_to_world[:, :3, 3].astype(np.float32),
+            "rotations": camera_to_world[:, :3, :3].astype(np.float32),
+            "focal_length": np.stack((K[:, 0, 0] / size, K[:, 1, 1] / size), axis=-1).astype(np.float32),
+            "sensor_width": np.ones(21, dtype=np.float32),
+        }
+
     def source_all_targets(self, index: int, source: int) -> tuple[np.ndarray, np.ndarray]:
         xyz, valid, _ = self.source_all_targets_with_visibility(index, source)
         return xyz, valid

@@ -79,8 +79,15 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     cycle_names = tuple(str(name) for name in config.get(
         "cycle_reprojection_datasets", ["kubric"],
     ))
-    if cycle_enabled and cycle_names != ("kubric",):
-        raise ValueError("the initial cycle experiment supports only cycle_reprojection_datasets=[kubric]")
+    supported_cycle_names = {"kubric", "pointodyssey", "dynamic_replica"}
+    if cycle_enabled and (
+        not cycle_names or set(cycle_names) - supported_cycle_names
+        or len(set(cycle_names)) != len(cycle_names)
+    ):
+        raise ValueError(
+            "cycle_reprojection_datasets must be a non-empty subset of "
+            "[kubric, pointodyssey, dynamic_replica]"
+        )
     if int(config.get("cycle_reprojection_pixel_stride", 1)) < 1:
         raise ValueError("cycle_reprojection_pixel_stride must be positive")
     if float(config.get("cycle_reprojection_weight", 0.0)) < 0.0:

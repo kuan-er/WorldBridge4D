@@ -69,6 +69,9 @@ class CachedExternalDataset:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         return self.geometry.source_all_targets_with_visibility(self.geometry_indices[index], source)
 
+    def cycle_camera(self, index: int) -> dict[str, np.ndarray | float]:
+        return self.geometry.cycle_camera(self.geometry_indices[int(index)])
+
     def rgb(self, index: int) -> np.ndarray:
         if self.rgb_shards is not None:
             return self.rgb_shards.clip(int(index))

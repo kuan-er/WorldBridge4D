@@ -48,8 +48,23 @@ def source_xyz_to_target_uv(
     safe_depth = depth.clamp_min(1e-6)
     width = source_xyz.shape[-1]
     height = source_xyz.shape[-2]
-    fx = focal_length / sensor_width * float(width)
-    fy = focal_length / sensor_width * float(width)
+    # Legacy Kubric metadata supplies one normalized focal length; external
+    # datasets may provide independent x/y focal lengths after crop/resize.
+    if focal_length.ndim == 1:
+        fx = focal_length / sensor_width * float(width)
+        fy = fx
+    elif focal_length.ndim == 3 and focal_length.shape[-1] == 2:
+        if focal_length.shape[:2] != (batch, 21):
+            raise ValueError("per-frame focal_length must be [B,21,2]")
+        fx = focal_length[..., 0] / sensor_width * float(width)
+        fy = focal_length[..., 1] / sensor_width * float(width)
+        fx = fx[index, target]
+        fy = fy[index, target]
+    else:
+        raise ValueError(
+            "focal_length must be [B] or [B,21,2], "
+            f"got {tuple(focal_length.shape)}"
+        )
     cx = (float(width) - 1.0) / 2.0
     cy = (float(height) - 1.0) / 2.0
     uv = torch.stack((
@@ -182,10 +197,12 @@ def camera_batch(cameras: list[Mapping[str, object]], device: torch.device,
     rotations = torch.from_numpy(np.stack([
         camera["rotations"] for camera in cameras
     ])).to(device=device, dtype=dtype)
-    focal = torch.tensor(
-        [float(camera["focal_length"]) for camera in cameras], device=device, dtype=dtype,
+    focal = torch.as_tensor(
+        np.stack([np.asarray(camera["focal_length"], dtype=np.float32) for camera in cameras]),
+        device=device, dtype=dtype,
     )
-    sensor = torch.tensor(
-        [float(camera["sensor_width"]) for camera in cameras], device=device, dtype=dtype,
+    sensor = torch.as_tensor(
+        np.stack([np.asarray(camera["sensor_width"], dtype=np.float32) for camera in cameras]),
+        device=device, dtype=dtype,
     )
     return positions, rotations, focal, sensor
