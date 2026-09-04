@@ -22,6 +22,9 @@ artifacts/
 outputs/
 __pycache__/
 .pytest_cache/
+# Machine-specific dataset mount documentation (repository-relative path)
+/docs/DATASET_LOCATIONS.md
+
 # pi-research-loop v2 runtime
 .pi-research/notifications/
 .pi-research/snapshots/
