@@ -41,6 +41,7 @@ def init_wandb(config: dict[str, Any], output: Path, rank: int, disabled: bool):
     run.define_metric("train/*", step_metric="global_step")
     run.define_metric("train/loss_by_dataset/*", step_metric="global_step")
     run.define_metric("train/raw_epe_m_by_dataset/*", step_metric="global_step")
+    run.define_metric("train/cycle_reprojection_loss_by_dataset/*", step_metric="global_step")
     run.define_metric("system/*", step_metric="global_step")
     run.define_metric("sampling/*", step_metric="global_step")
     return run

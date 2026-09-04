@@ -12,11 +12,13 @@ from torch import nn
 
 from worldbridge.models import (
     DenseQueryDecoder, DenseQueryWanModel, DenseUpsampler2D, GatedSourceFusion,
-    WanHiddenGeometryBackbone,
+    StructuredZ4D, WanHiddenGeometryBackbone,
 )
 from worldbridge.models.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
+from worldbridge.trainer.cycle import pixel_cycle_loss
 from worldbridge.trainer.objective import masked_pair_smooth_l1
 from worldbridge.trainer.optimizer import parameter_groups
+from worldbridge.trainer.trainer import fsdp_auto_wrap_policy
 from worldbridge.data.cache import KubricGeometryMmapStore, LazyLatentCache, RGBUInt8ShardStore
 from worldbridge.data.datasets import CachedExternalDataset, MOViF256Dataset
 from worldbridge.data.sampling import (
@@ -145,7 +147,7 @@ def test_resume_planning_uses_status_sidecar_not_full_checkpoint_load():
     source = trainer_source()
     planning = source[source.index("# Cache planning needs only"):source.index("planned_start =")]
     assert '"resume_status_path", resume.parent / "train_status.json"' in planning
-    assert "finetune" not in planning
+    assert 'config.get("finetune_expected_global_step", -1)' in planning
     assert "torch.load" not in planning
 
 
@@ -168,7 +170,7 @@ def test_full_resume_skips_redundant_native_wan_weights(monkeypatch, tmp_path):
         )
 
     source = trainer_source()
-    assert "load_wan_pretrained = not resume.is_file()" in source
+    assert "load_wan_pretrained = not resume.is_file() and finetune_from is None" in source
     assert "load_wan_pretrained=load_wan_pretrained" in source
 
 
@@ -190,6 +192,52 @@ def test_source_rgb_32_fusion_is_zero_init_and_precedes_upsampling():
         changed = upsampler(feature, source_pyramid=pyramid, batch=1, pairs=2)
     assert baseline.shape == changed.shape == (2, 3, 256, 256)
     assert not torch.equal(baseline, changed)
+
+
+def test_pre_attention_rgb_query_is_zero_init_exact_and_receives_gradient():
+    kwargs = dict(
+        num_frames=3, latent_shape=(8, 3, 4, 4), query_dim=8,
+        embedding_dim=4, num_layers=1, num_heads=2,
+        upsample_channels=(8, 4, 2, 1), output_size=(256, 256),
+        query_grid_size=32, structured_motion_slots=1,
+        structured_local_queries=True, source_rgb_pyramid=True,
+        source_rgb_channels=(2, 4, 8), source_rgb_fusion_32=True,
+    )
+    torch.manual_seed(91)
+    baseline = DenseQueryDecoder(**kwargs)
+    torch.manual_seed(91)
+    query_rgb = DenseQueryDecoder(**kwargs, pre_attention_rgb_query=True)
+    missing, unexpected = query_rgb.load_state_dict(baseline.state_dict(), strict=False)
+    assert missing == ["query_rgb_projection.2.weight"]
+    assert unexpected == []
+    assert query_rgb.query_rgb_projection[-1].weight.count_nonzero() == 0
+    assert query_rgb.query_rgb_projection[-1].weight.numel() == 8 * 8
+
+    z4d = StructuredZ4D(
+        dense=torch.randn(1, 8, 3, 4, 4),
+        motion=torch.randn(1, 3, 1, 8),
+    )
+    source = torch.tensor([[1]])
+    target = torch.tensor([[2]])
+    source_rgb = torch.randn(1, 3, 256, 256)
+    baseline.eval(); query_rgb.eval()
+    with torch.no_grad():
+        expected = baseline(z4d, source, target, source_rgb=source_rgb)
+        actual = query_rgb(z4d, source, target, source_rgb=source_rgb)
+    torch.testing.assert_close(actual.normalized_xyz, expected.normalized_xyz, atol=0, rtol=0)
+    torch.testing.assert_close(actual.low_resolution_feature, expected.low_resolution_feature, atol=0, rtol=0)
+
+    query_rgb.train()
+    output = query_rgb(z4d, source, target, source_rgb=source_rgb)
+    output.normalized_xyz.square().mean().backward()
+    gradient = query_rgb.query_rgb_projection[-1].weight.grad
+    assert gradient is not None and torch.isfinite(gradient).all()
+    assert torch.count_nonzero(gradient) > 0
+
+
+def test_production_pre_attention_rgb_projection_parameter_count():
+    projection = nn.Conv2d(128, 1536, 1, bias=False)
+    assert sum(parameter.numel() for parameter in projection.parameters()) == 196_608
 
 
 def test_fresh_group_warmup_ramps_joint_groups_only():
@@ -240,6 +288,26 @@ def test_source_rgb_plus_wan_decoder_freezes_only_geometry_and_bypassed_backbone
     assert all(not parameter.requires_grad for parameter in model.backbone.adapter.parameters())
     assert not model.backbone.bypassed.requires_grad
     assert all(parameter.requires_grad for parameter in model.decoder.parameters())
+
+    model.configure_trainable("decoder_only")
+    assert all(not parameter.requires_grad for parameter in model.backbone.parameters())
+    assert all(parameter.requires_grad for parameter in model.decoder.parameters())
+
+
+def test_fsdp_does_not_wrap_upsampler_custom_method_boundary():
+    upsampler = DenseUpsampler2D(
+        query_dim=8, channels=(8, 4), latent_size=(4, 4), output_size=(8, 8),
+    )
+    threshold = 5_000_000
+    assert fsdp_auto_wrap_policy(
+        upsampler, True, threshold + 1, min_num_params=threshold,
+    )
+    assert not fsdp_auto_wrap_policy(
+        upsampler, False, threshold + 1, min_num_params=threshold,
+    )
+    assert fsdp_auto_wrap_policy(
+        nn.Linear(2, 2), False, threshold + 1, min_num_params=threshold,
+    )
 
 
 def test_full_resume_loads_rank0_model_before_fsdp_sync():
@@ -487,6 +555,44 @@ def test_source_rgb_fusion32_step100k_config_is_strictly_resumable():
     )
     assert config["checkpoint_steps"] == [100_000]
     assert config["checkpoint_every_after"] == 5_000
+    validate_config(config, world=2)
+
+
+def test_h027_pre_attention_rgb_query_finetune_contract():
+    import yaml
+    from worldbridge.trainer.config import validate_config
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "configs/h027_pre_attention_rgb_query_step110000.yaml"
+    )
+    config = yaml.safe_load(path.read_text())
+    assert config["pre_attention_rgb_query"] is True
+    assert config["trainable_mode"] == "decoder_only"
+    assert config["finetune_expected_global_step"] == 100_000
+    assert config["max_steps"] == 110_000
+    assert config["expected_non_wan_parameters"] - 194_400_525 == 196_608
+    validate_config(config, world=2)
+
+
+def test_h027_step130k_exact_resume_contract():
+    import yaml
+    from worldbridge.trainer.config import validate_config
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "configs/h027_pre_attention_rgb_query_step130000.yaml"
+    )
+    config = yaml.safe_load(path.read_text())
+    assert config["pre_attention_rgb_query"] is True
+    assert "pre_attention_rgb_query_gate_max" not in config
+    assert config["trainable_mode"] == "decoder_only"
+    assert config["max_steps"] == 130_000
+    assert config["schedule_extension_horizon_steps"] == 150_000
+    assert config["checkpoint_steps"] == [110_000, 115_000, 120_000, 125_000, 130_000]
+    assert config["checkpoint_every_after"] == 5_000
+    assert config["checkpoint_keep_last"] == 5
+    assert config["resume_status_path"].endswith("resume_status_0105000.json")
     validate_config(config, world=2)
 
 
@@ -876,6 +982,40 @@ def test_geometry_prefetcher_preserves_order_and_deterministic_sampling():
     assert "def timed_geometry" not in source
     assert "def plan_step" not in source
     assert "def refill_plans" not in source
+
+
+def test_pixel_cycle_is_zero_for_identity_and_responds_to_reverse_shift():
+    size = 8
+    uv = torch.stack(torch.meshgrid(
+        torch.arange(size), torch.arange(size), indexing="xy",
+    ), dim=-1).float()
+    source_xyz = torch.stack((
+        (uv[..., 0] - 3.5) / size,
+        -(uv[..., 1] - 3.5) / size,
+        -torch.ones(size, size),
+    ), dim=0).unsqueeze(0).requires_grad_()
+    reverse_xyz = source_xyz.detach().clone()
+    reverse_xyz[:, 0] += 0.1
+    positions = torch.zeros(1, 21, 3)
+    rotations = torch.eye(3).reshape(1, 1, 3, 3).expand(1, 21, 3, 3).clone()
+    valid = torch.ones(1, size, size, dtype=torch.bool)
+    args = (
+        torch.tensor([0]), torch.tensor([1]), valid, valid, valid,
+        positions, rotations, torch.tensor([1.0]), torch.tensor([1.0]),
+    )
+    loss, count, pixel_error = pixel_cycle_loss(
+        source_xyz.detach(), source_xyz.detach(), *args, image_size=size,
+    )
+    assert count.item() == size * size
+    assert loss.item() == pytest.approx(0.0)
+    assert pixel_error.item() == pytest.approx(0.0)
+    loss, count, pixel_error = pixel_cycle_loss(
+        source_xyz, reverse_xyz, *args, image_size=size,
+    )
+    assert 0 < count.item() < size * size
+    assert pixel_error.item() > 0.0
+    loss.backward()
+    assert source_xyz.grad is not None and torch.isfinite(source_xyz.grad).all()
 
 
 def test_pair_loss_ignores_empty_pair_instead_of_treating_it_as_zero():

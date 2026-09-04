@@ -42,12 +42,12 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             f"wan_hidden_layers must include the model's final block: {expected_hidden_layers}"
         )
     mode = str(config.get("trainable_mode", "full"))
-    allowed_modes = {"full", "source_rgb_plus_wan_decoder"}
+    allowed_modes = {"full", "source_rgb_plus_wan_decoder", "decoder_only"}
     if mode not in allowed_modes:
         raise ValueError(
-            "three-dataset training supports full and audited source-RGB phases"
+            "three-dataset training supports full and audited decoder phases"
         )
-    if mode == "source_rgb_plus_wan_decoder":
+    if mode in {"source_rgb_plus_wan_decoder", "decoder_only"}:
         if not bool(config.get("source_rgb_pyramid", False)):
             raise ValueError("source-RGB trainable modes require the RGB pyramid")
         if not bool(config.get("source_rgb_separate_optimizer_group", False)):
@@ -55,7 +55,12 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         multiplier = float(config.get("source_rgb_learning_rate_multiplier", 0.0))
         if multiplier != 10.0:
             raise ValueError("production source-RGB LR multiplier must be exactly 10")
-    if mode == "source_rgb_plus_wan_decoder":
+    if bool(config.get("pre_attention_rgb_query", False)):
+        if mode != "decoder_only":
+            raise ValueError("pre-attention RGB query requires decoder_only training")
+        if not bool(config.get("source_rgb_pyramid", False)):
+            raise ValueError("pre-attention RGB query requires source RGB")
+    if mode in {"source_rgb_plus_wan_decoder", "decoder_only"}:
         if int(config.get("joint_fresh_group_warmup_steps", 0)) < 0:
             raise ValueError("joint fresh-group warm-up steps must be non-negative")
         max_scale = float(config.get("joint_fresh_group_max_lr_scale", 1.0))
@@ -70,14 +75,30 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError(f"incorrect initial layer weights: {weights}")
     if world != 2:
         raise ValueError(f"production training requires exactly 2 ranks; got {world}")
+    cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
+    cycle_names = tuple(str(name) for name in config.get(
+        "cycle_reprojection_datasets", ["kubric"],
+    ))
+    if cycle_enabled and cycle_names != ("kubric",):
+        raise ValueError("the initial cycle experiment supports only cycle_reprojection_datasets=[kubric]")
+    if int(config.get("cycle_reprojection_pixel_stride", 1)) < 1:
+        raise ValueError("cycle_reprojection_pixel_stride must be positive")
+    if float(config.get("cycle_reprojection_weight", 0.0)) < 0.0:
+        raise ValueError("cycle_reprojection_weight must be non-negative")
+    if float(config.get("cycle_reprojection_huber_delta", 0.01)) <= 0.0:
+        raise ValueError("cycle_reprojection_huber_delta must be positive")
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
-    if (accumulation, microbatch) != (2, 2):
-        raise ValueError(
-            "production training requires gradient_accumulation=2 and microbatch_per_gpu=2"
+    allowed_batching = {(4, 1), (4, 2)} if cycle_enabled else {(2, 2)}
+    if (accumulation, microbatch) not in allowed_batching:
+        expected = " or ".join(
+            f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
+            for accum, micro in sorted(allowed_batching)
         )
-    if int(config["targets_per_source"]) != 19:
-        raise ValueError("production training requires targets_per_source=19")
+        raise ValueError(f"training requires {expected}")
+    required_targets = 13 if cycle_enabled else 19
+    if int(config["targets_per_source"]) != required_targets:
+        raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
     prefetch_workers = int(config.get(
         "geometry_prefetch_workers", min(4, accumulation * microbatch * 2),

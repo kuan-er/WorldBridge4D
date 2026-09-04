@@ -95,6 +95,7 @@ def prune_periodic_checkpoints(output: Path, keep_last: int) -> list[str]:
 
 def load_unwrapped_model_checkpoint(
     path: Path, model: torch.nn.Module, rank: int, world: int,
+    allowed_missing_prefixes: tuple[str, ...] = (),
 ) -> tuple[dict[str, Any] | None, dict[str, Any], list[Any]]:
     """Load rank 0 before FSDP so ``sync_module_states`` broadcasts exact weights.
 
@@ -116,8 +117,85 @@ def load_unwrapped_model_checkpoint(
     if len(states) != world:
         raise ValueError("checkpoint lacks one RNG state per rank")
     if rank == 0:
-        model.load_state_dict(payload["model"], strict=True)
+        if not allowed_missing_prefixes:
+            model.load_state_dict(payload["model"], strict=True)
+        else:
+            missing, unexpected = model.load_state_dict(payload["model"], strict=False)
+            invalid_missing = [
+                name for name in missing
+                if not name.startswith(allowed_missing_prefixes)
+            ]
+            if unexpected or invalid_missing or not missing:
+                raise RuntimeError(
+                    "structural checkpoint migration mismatch: "
+                    f"missing={missing[:8]}, invalid_missing={invalid_missing[:8]}, "
+                    f"unexpected={unexpected[:8]}"
+                )
+            print(json.dumps({
+                "event": "structural_model_extension_loaded",
+                "fresh_parameters": len(missing),
+                "allowed_prefixes": list(allowed_missing_prefixes),
+            }), flush=True)
     return payload, training_state, states
+
+
+def load_filtered_optimizer_checkpoint(
+    payload: dict[str, Any] | None,
+    model: FSDP,
+    optimizer: torch.optim.Optimizer,
+    states: list[Any],
+    current_group_names: dict[str, list[str]],
+    rank: int,
+    allowed_fresh_prefixes: tuple[str, ...],
+) -> None:
+    """Restore retained moments while allowing only audited new parameters."""
+    full_optimizer_state = None
+    restored = 0
+    fresh_names: list[str] = []
+    if rank == 0:
+        if payload is None:
+            raise RuntimeError("rank zero lacks the structural fine-tune checkpoint")
+        current_groups = []
+        for group in optimizer.param_groups:
+            group_name = str(group["name"])
+            values = {key: value for key, value in group.items() if key != "params"}
+            values["params"] = list(current_group_names[group_name])
+            current_groups.append(values)
+        names = [str(name) for group in current_groups for name in group["params"]]
+        if len(names) != len(set(names)):
+            raise RuntimeError("fine-tune optimizer contains duplicate parameters")
+        source_state = payload["optimizer"]["state"]
+        fresh_names = [name for name in names if name not in source_state]
+        invalid_fresh = [
+            name for name in fresh_names
+            if not name.startswith(allowed_fresh_prefixes)
+        ]
+        if invalid_fresh:
+            raise RuntimeError(
+                f"checkpoint lacks unaudited optimizer state: {invalid_fresh[:8]}"
+            )
+        retained_state = {
+            name: source_state[name] for name in names if name in source_state
+        }
+        restored = len(retained_state)
+        full_optimizer_state = {
+            "state": retained_state,
+            "param_groups": current_groups,
+        }
+    optimizer_state = FSDP.scatter_full_optim_state_dict(
+        full_optimizer_state, model, optim=optimizer,
+    )
+    optimizer.load_state_dict(optimizer_state)
+    restore_rng_state(states[rank])
+    if rank == 0:
+        print(json.dumps({
+            "event": "filtered_optimizer_state_loaded",
+            "restored_trainable_parameters": restored,
+            "fresh_trainable_parameters": len(fresh_names),
+            "fresh_prefixes": list(allowed_fresh_prefixes),
+            "optimizer_groups": [group["name"] for group in optimizer.param_groups],
+            "rng_states": len(states),
+        }), flush=True)
 
 
 def load_optimizer_checkpoint(payload: dict[str, Any] | None, model: FSDP,

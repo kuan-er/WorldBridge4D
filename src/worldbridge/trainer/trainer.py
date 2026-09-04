@@ -22,6 +22,7 @@ import yaml
 from ..data.constants import DATASET_NAMES
 from ..data.factory import load_training_datasets, prepare_training_indexes
 from ..data.sampling import sample_eligible_targets
+from ..models.decoder import DenseUpsampler2D
 from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_dataset_text_conditions
 from ..utils.io import atomic_json
@@ -29,20 +30,41 @@ from .batching import GeometryPrefetcher
 from .config import validate_config
 from .distributed import initialize_distributed
 from .fsdp_checkpoint import (
-    launch_durable_checkpoint_replica, load_optimizer_checkpoint,
-    load_unwrapped_model_checkpoint, prune_periodic_checkpoints,
+    launch_durable_checkpoint_replica, load_filtered_optimizer_checkpoint,
+    load_optimizer_checkpoint, load_unwrapped_model_checkpoint, prune_periodic_checkpoints,
     save_checkpoint, update_latest_checkpoint,
 )
 from .lazy_vae import (
     LazyVAEPipeline, lazy_latent_owner, pipeline_work_for_rank, required_latent_indices,
     required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
 )
+from .cycle import camera_batch, pixel_cycle_loss
 from .objective import masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .schedulers import apply_cosine_schedule, training_diagnostic_due
 from .tracking import init_wandb, load_stats
 
 _STOP = False
+
+
+def fsdp_auto_wrap_policy(
+    module: torch.nn.Module, recurse: bool, nonwrapped_numel: int,
+    *, min_num_params: int,
+) -> bool:
+    """Size-wrap modules without wrapping the upsampler method boundary.
+
+    The pre-attention RGB path calls ``DenseUpsampler2D.encode_source_rgb``
+    from inside the decoder forward. Wrapping the upsampler itself would make
+    that custom method bypass FSDP's forward all-gather and expose a sharded
+    one-dimensional convolution weight. Its large children may still be
+    wrapped; the remaining parameters are gathered by the decoder's wrapper.
+    """
+    if isinstance(module, DenseUpsampler2D) and not recurse:
+        return False
+    return size_based_auto_wrap_policy(
+        module, recurse, nonwrapped_numel, min_num_params=min_num_params,
+    )
+
 
 def stop_signal(_signum: int, _frame: Any) -> None:
     global _STOP
@@ -53,6 +75,10 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--resume")
+    parser.add_argument(
+        "--finetune-from",
+        help="load an audited structural extension and retained optimizer moments",
+    )
     parser.add_argument("--checkpoint-dir", help="fast local checkpoint directory; defaults to output-dir")
     parser.add_argument("--durable-checkpoint", help="best-effort asynchronous replica path for latest checkpoint")
     parser.add_argument("--steps", type=int)
@@ -71,6 +97,8 @@ def main() -> None:
                         help="warm a short prefix, then encode future clips beside training")
     parser.add_argument("--pipeline-lookahead-steps", type=int, default=16)
     args = parser.parse_args()
+    if args.resume and args.finetune_from:
+        parser.error("--resume and --finetune-from are mutually exclusive")
     if args.lazy_vae_cache and args.lazy_vae_pipeline:
         parser.error("--lazy-vae-cache and --lazy-vae-pipeline are mutually exclusive")
     if args.pipeline_lookahead_steps < 1:
@@ -100,6 +128,7 @@ def main() -> None:
     )
     target_steps = int(args.steps if args.steps is not None else config["max_steps"])
     resume = Path(args.resume) if args.resume else (checkpoint_dir / "latest.pt")
+    finetune_from = Path(args.finetune_from) if args.finetune_from else None
     # Cache planning needs only the checkpoint step. Use the tiny atomically
     # written status sidecar rather than faulting the 9+ GiB checkpoint from a
     # contended HDD before model construction; full checkpoint validation still
@@ -107,7 +136,13 @@ def main() -> None:
     metadata = [None]
     if args.resume and not resume.is_file():
         raise FileNotFoundError(resume)
-    if rank == 0 and resume.is_file():
+    if finetune_from is not None and not finetune_from.is_file():
+        raise FileNotFoundError(finetune_from)
+    if rank == 0 and finetune_from is not None:
+        metadata[0] = int(config.get("finetune_expected_global_step", -1))
+        if metadata[0] < 0:
+            raise ValueError("structural fine-tune requires finetune_expected_global_step")
+    elif rank == 0 and resume.is_file():
         status_path = Path(config.get(
             "resume_status_path", resume.parent / "train_status.json"
         ))
@@ -181,11 +216,15 @@ def main() -> None:
     # broadcasts those exact weights. Loading only rank 0 after wrapping leaves
     # nonzero ranks at their construction weights and is not an exact resume.
     # Fresh runs still require and load the native Wan checkpoint.
-    load_wan_pretrained = not resume.is_file()
+    load_wan_pretrained = not resume.is_file() and finetune_from is None
     if rank == 0 and not load_wan_pretrained:
         print(json.dumps({
-            "event": "wan_pretrained_load_skipped_for_full_resume",
-            "checkpoint": str(resume),
+            "event": (
+                "wan_pretrained_load_skipped_for_structural_finetune"
+                if finetune_from is not None
+                else "wan_pretrained_load_skipped_for_full_resume"
+            ),
+            "checkpoint": str(finetune_from if finetune_from is not None else resume),
         }), flush=True)
     model = build_real_model(
         config, device, load_wan_pretrained=load_wan_pretrained,
@@ -208,10 +247,34 @@ def main() -> None:
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
         raise RuntimeError(f"non-Wan readout parameters {non_wan_count:,} != expected {expected_non_wan:,}")
+    finetune_payload: dict[str, Any] | None = None
+    finetune_state: dict[str, Any] | None = None
+    finetune_rng_states: list[Any] = []
+    if finetune_from is not None:
+        finetune_payload, finetune_state, finetune_rng_states = load_unwrapped_model_checkpoint(
+            finetune_from, model, rank, world,
+            allowed_missing_prefixes=("decoder.query_rgb_projection.",),
+        )
+        expected_step = int(config.get("finetune_expected_global_step", -1))
+        if int(finetune_state["global_step"]) != expected_step:
+            raise RuntimeError(
+                f"fine-tune source step {finetune_state['global_step']} != expected {expected_step}"
+            )
+        expected_clips = {
+            key: int(value)
+            for key, value in config.get("finetune_expected_clips_seen", {}).items()
+        }
+        actual_clips = {
+            key: int(value) for key, value in finetune_state["clips_seen"].items()
+        }
+        if actual_clips != expected_clips:
+            raise RuntimeError(
+                f"fine-tune source clip counters {actual_clips} != expected {expected_clips}"
+            )
     resume_payload: dict[str, Any] | None = None
     resume_state: dict[str, Any] | None = None
     resume_rng_states: list[Any] = []
-    if resume.is_file():
+    if resume.is_file() and finetune_from is None:
         resume_payload, resume_state, resume_rng_states = load_unwrapped_model_checkpoint(
             resume, model, rank, world,
         )
@@ -227,7 +290,19 @@ def main() -> None:
         parameter.numel() for group in groups for parameter in group["params"]
     )
     trainable_mode = str(config.get("trainable_mode"))
-    if trainable_mode == "source_rgb_plus_wan_decoder":
+    if trainable_mode == "decoder_only":
+        expected_decoder = {
+            name for name, _parameter in model.named_parameters()
+            if name.startswith("decoder.")
+        }
+        actual_decoder = set(trainable_names)
+        if actual_decoder != expected_decoder:
+            raise RuntimeError(
+                "decoder-only freeze audit failed: "
+                f"missing={sorted(expected_decoder - actual_decoder)[:8]}, "
+                f"unexpected={sorted(actual_decoder - expected_decoder)[:8]}"
+            )
+    elif trainable_mode == "source_rgb_plus_wan_decoder":
         adapter_ids = {id(value) for value in model.backbone.adapter_parameters}
         bypassed_ids = {id(value) for value in model.backbone.bypassed_parameters}
         expected_joint = {
@@ -263,7 +338,7 @@ def main() -> None:
             },
         }), flush=True)
     dtype = precision_dtype(config["precision"])
-    auto_wrap = lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
+    auto_wrap = lambda module, recurse, nonwrapped_numel: fsdp_auto_wrap_policy(
         module, recurse, nonwrapped_numel,
         min_num_params=int(config.get("fsdp_min_num_params", 5_000_000)),
     )
@@ -276,6 +351,23 @@ def main() -> None:
     optimizer = torch.optim.AdamW(groups, weight_decay=float(config["weight_decay"]))
     start_step = 0
     clips_seen = {name: 0 for name in DATASET_NAMES}
+    if finetune_state is not None:
+        load_filtered_optimizer_checkpoint(
+            finetune_payload, fsdp, optimizer, finetune_rng_states,
+            current_group_names, rank,
+            allowed_fresh_prefixes=("decoder.query_rgb_projection.",),
+        )
+        start_step = int(finetune_state["global_step"])
+        clips_seen.update({
+            key: int(value) for key, value in finetune_state["clips_seen"].items()
+        })
+        del finetune_payload
+        if rank == 0:
+            print(json.dumps({
+                "event": "structural_finetune_state_loaded", "step": start_step,
+                "world_size": world, "optimizer": "filtered_restored",
+                "rng_states": len(finetune_rng_states),
+            }), flush=True)
     if resume_state is not None:
         load_optimizer_checkpoint(
             resume_payload, fsdp, optimizer, resume_rng_states, rank,
@@ -295,6 +387,13 @@ def main() -> None:
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     use_source_rgb = bool(config.get("source_rgb_pyramid", False))
+    cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
+    cycle_dataset_names = tuple(str(name) for name in config.get(
+        "cycle_reprojection_datasets", ["kubric"],
+    ))
+    cycle_weight = float(config.get("cycle_reprojection_weight", 0.0))
+    cycle_pixel_stride = int(config.get("cycle_reprojection_pixel_stride", 1))
+    cycle_huber_delta = float(config.get("cycle_reprojection_huber_delta", 0.01))
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     ensure_dataset_diagnostics = bool(
         config.get("diagnostic_ensure_dataset_coverage", False)
@@ -320,6 +419,8 @@ def main() -> None:
         microbatch_per_gpu=microbatch_per_gpu,
         targets_per_source=k,
         use_source_rgb=use_source_rgb,
+        cycle_enabled=cycle_enabled,
+        cycle_dataset_names=cycle_dataset_names,
         start_step=start_step,
         target_steps=target_steps,
         depth=prefetch_depth,
@@ -343,6 +444,9 @@ def main() -> None:
             update_epe = 0.0
             valid_points = 0
             pair_count = 0
+            cycle_loss_sum = 0.0
+            cycle_pixel_error_sum = 0.0
+            cycle_valid_points = 0
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
@@ -360,13 +464,16 @@ def main() -> None:
                 target_counts = []
                 for (_planned_index, _source, rng), future in group:
                     wait_started = time.perf_counter()
-                    (index, source, xyz_all, valid_all, source_rgb_np), task_seconds = future.result()
+                    (
+                        index, source, xyz_all, valid_all, source_rgb_np,
+                        visible_all, camera,
+                    ), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
                     targets = sample_eligible_targets(valid_all, k, rng)
                     batch_values.append((
                         index, source, targets, xyz_all[targets], valid_all[targets],
-                        source_rgb_np,
+                        source_rgb_np, visible_all, camera, valid_all,
                     ))
                     target_counts.append(len(targets))
                 if len(set(target_counts)) != 1:
@@ -404,26 +511,106 @@ def main() -> None:
                 xyz = torch.from_numpy(normalized_np).to(device, non_blocking=True)
                 valid = torch.from_numpy(valid_np).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
+                cycle_batch = cycle_enabled and name in cycle_dataset_names
+                cycle_pair_indices = cycle_targets = None
+                cycle_source_t = cycle_target_t = cycle_source_rgb_t = None
+                cycle_source_valid = cycle_target_valid = cycle_target_visible = None
+                cycle_cameras = None
+                if cycle_batch:
+                    cycle_pair_indices = np.asarray([
+                        int(np.argmax(np.abs(value[2] - value[1])))
+                        for value in batch_values
+                    ], dtype=np.int64)
+                    cycle_targets = np.asarray([
+                        int(value[2][pair_index])
+                        for value, pair_index in zip(batch_values, cycle_pair_indices)
+                    ], dtype=np.int64)
+                    if any(value[6] is None or value[7] is None for value in batch_values):
+                        raise RuntimeError("cycle-enabled batch is missing visibility or camera metadata")
+                    reverse_rgb_np = np.stack([
+                        dataset.source_rgb(value[0], target_index)
+                        for value, target_index in zip(batch_values, cycle_targets)
+                    ])
+                    cycle_source_t = torch.from_numpy(cycle_targets[:, None]).to(
+                        device, dtype=torch.long, non_blocking=True,
+                    )
+                    cycle_target_t = source_t[:, :1]
+                    cycle_source_rgb_t = torch.from_numpy(reverse_rgb_np).permute(0, 3, 1, 2).to(
+                        device, dtype=dtype, non_blocking=True,
+                    ) / 127.5 - 1.0
+                    cycle_source_valid = torch.from_numpy(np.stack([
+                        value[8][value[1]] & value[6][value[1]]
+                        for value in batch_values
+                    ])).to(device, non_blocking=True)
+                    cycle_target_valid = torch.from_numpy(np.stack([
+                        value[8][target_index]
+                        for value, target_index in zip(batch_values, cycle_targets)
+                    ])).to(device, non_blocking=True)
+                    cycle_target_visible = torch.from_numpy(np.stack([
+                        value[6][target_index]
+                        for value, target_index in zip(batch_values, cycle_targets)
+                    ])).to(device, non_blocking=True)
+                    cycle_cameras = camera_batch(
+                        [value[7] for value in batch_values], device, torch.float32,
+                    )
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
-                    prediction, _, _ = fsdp(
+                    prediction, z4d, _ = fsdp(
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
                     loss = masked_pair_smooth_l1(
                         prediction.float(), xyz.float(), valid,
                         beta=float(config.get("smooth_l1_beta", 0.05)),
                     ) / accumulation
+                    cycle_value = prediction.new_zeros(())
+                    cycle_points = prediction.new_zeros(())
+                    cycle_pixel_error = prediction.new_zeros(())
+                    if cycle_batch:
+                        batch_indices = torch.arange(
+                            prediction.shape[0], device=device,
+                        )
+                        forward_cycle = prediction[batch_indices, torch.as_tensor(
+                            cycle_pair_indices, device=device,
+                        )]
+                        forward_cycle = forward_cycle * torch.as_tensor(
+                            scale, device=device, dtype=forward_cycle.dtype,
+                        ).view(1, 3, 1, 1) + torch.as_tensor(
+                            mean, device=device, dtype=forward_cycle.dtype,
+                        ).view(1, 3, 1, 1)
+                        reverse_prediction, _, _ = fsdp(
+                            latent, cycle_source_t, cycle_target_t, condition,
+                            cycle_source_rgb_t, z4d_override=z4d,
+                        )
+                        reverse_cycle = reverse_prediction[:, 0]
+                        reverse_cycle = reverse_cycle * torch.as_tensor(
+                            scale, device=device, dtype=reverse_cycle.dtype,
+                        ).view(1, 3, 1, 1) + torch.as_tensor(
+                            mean, device=device, dtype=reverse_cycle.dtype,
+                        ).view(1, 3, 1, 1)
+                        with torch.autocast("cuda", enabled=False):
+                            cycle_value, cycle_points, cycle_pixel_error = pixel_cycle_loss(
+                                forward_cycle.float(), reverse_cycle.float(),
+                                source_t[:, 0], cycle_source_t[:, 0],
+                                cycle_source_valid, cycle_target_valid, cycle_target_visible,
+                                *cycle_cameras,
+                                huber_delta=cycle_huber_delta, image_size=256,
+                                pixel_stride=cycle_pixel_stride,
+                            )
+                        loss = loss + cycle_weight * cycle_value / accumulation
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step={step}, micro={micro}")
                 loss.backward()
                 update_loss += float(loss.detach())
+                cycle_loss_sum += float(cycle_value.detach()) / accumulation
+                cycle_pixel_error_sum += float(cycle_pixel_error.detach() * cycle_points.detach())
+                cycle_valid_points += int(cycle_points.detach())
                 with torch.no_grad():
                     metric_error = (prediction.float() - xyz) * torch.as_tensor(scale, device=device).view(1, 1, 3, 1, 1)
                     epe = torch.linalg.vector_norm(metric_error, dim=2)
                     update_epe += float(epe[valid].sum())
                     valid_points += int(valid.sum())
                 pair_count += sum(target_counts)
-                for _index, source, targets, _xyz, _valid, _source_rgb in batch_values:
+                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all in batch_values:
                     source_hist[source] += 1
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
@@ -439,14 +626,19 @@ def main() -> None:
                 None if extension_start is None else int(extension_start),
                 None if extension_horizon is None else int(extension_horizon),
             )
+            warmup_groups = (
+                {"wan_backbone", "dense_decoder"}
+                if str(config.get("trainable_mode")) == "source_rgb_plus_wan_decoder"
+                else ({"dense_decoder"} if str(config.get("trainable_mode")) == "decoder_only" else set())
+            )
             fresh_group_warmup_factor = apply_fresh_group_warmup(
                 optimizer,
-                {"wan_backbone", "dense_decoder"},
+                warmup_groups,
                 step + 1,
                 start_step,
                 int(config.get("joint_fresh_group_warmup_steps", 0)),
                 float(config.get("joint_fresh_group_max_lr_scale", 1.0)),
-            ) if str(config.get("trainable_mode")) == "source_rgb_plus_wan_decoder" else 1.0
+            ) if warmup_groups else 1.0
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
             completed = step + 1
             clips_seen[name] += world * accumulation * microbatch_per_gpu
@@ -465,7 +657,10 @@ def main() -> None:
             if diagnostic:
                 last_diagnostic_cycle[name] = step // 20
                 scalars = torch.tensor(
-                    [update_loss, update_epe, valid_points, pair_count], device=device, dtype=torch.float64
+                    [
+                        update_loss, update_epe, valid_points, pair_count,
+                        cycle_loss_sum, cycle_pixel_error_sum, cycle_valid_points,
+                    ], device=device, dtype=torch.float64,
                 )
                 timing_max = torch.tensor([
                     geometry_wait_seconds, geometry_task_max_seconds, latent_load_seconds,
@@ -489,9 +684,15 @@ def main() -> None:
                 else:
                     rgb_alpha_stats = torch.empty((0, 2), device=device, dtype=torch.float64)
             if rank == 0 and diagnostic:
-                global_loss, global_epe_sum, global_valid, global_pairs = scalars.tolist()
+                (
+                    global_loss, global_epe_sum, global_valid, global_pairs,
+                    global_cycle_loss, global_cycle_pixel_error_sum,
+                    global_cycle_points,
+                ) = scalars.tolist()
                 dataset_loss = global_loss / world
                 raw_epe_m = global_epe_sum / max(global_valid, 1)
+                cycle_dataset_loss = global_cycle_loss / world
+                cycle_pixel_error = global_cycle_pixel_error_sum / max(global_cycle_points, 1)
                 weights = fsdp.module.backbone.layer_weights().detach().float().cpu().tolist()
                 rgb_alphas = {
                     scale_name: float(rgb_alpha_stats[index, 0] / rgb_alpha_stats[index, 1])
@@ -502,6 +703,10 @@ def main() -> None:
                     f"train/loss_by_dataset/{name}": dataset_loss,
                     "train/raw_epe_m": raw_epe_m,
                     f"train/raw_epe_m_by_dataset/{name}": raw_epe_m,
+                    "train/cycle_reprojection_loss": cycle_dataset_loss,
+                    f"train/cycle_reprojection_loss_by_dataset/{name}": cycle_dataset_loss,
+                    "train/cycle_reprojection_pixel_error": cycle_pixel_error,
+                    "train/cycle_reprojection_valid_points": int(global_cycle_points),
                     "train/dataset": DATASET_NAMES.index(name), "train/pairs": int(global_pairs),
                     "train/clips_seen_total": sum(clips_seen.values()),
                     **{f"train/clips_seen_{key}": value for key, value in clips_seen.items()},

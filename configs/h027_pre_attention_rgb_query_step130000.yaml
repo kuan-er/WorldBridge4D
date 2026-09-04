@@ -1,0 +1,161 @@
+# H027 user-directed long continuation: exact-resume the ungated additive
+# pre-attention source-RGB query route from its immutable step-105k checkpoint
+# and train the decoder through global step 130k with W&B upload.
+image_size: 256
+clip_length: 21
+latent_spatial_size: 32
+coordinate_frame: source
+wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
+vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
+backbone_readout: wan_hidden_structured
+wan_hidden_layers:
+- 13
+- 14
+- 15
+- 29
+layer_gate_initial_logits:
+- 0.0
+- 0.0
+- 0.0
+- -1.0986122887
+layer_gate_temperature: 1.0
+layer_gate_top_k: 4
+geometry_dim: 512
+geometry_spatial_size: 32
+geometry_num_heads: 8
+geometry_clean_skip: true
+motion_slots: 8
+structured_local_queries: true
+query_dim: 1536
+embedding_dim: 768
+num_cross_attn_layers: 5
+num_heads: 12
+query_grid_size: 32
+upsample_channels:
+- 1536
+- 768
+- 384
+- 192
+source_rgb_pyramid: true
+source_rgb_channels:
+- 32
+- 64
+- 128
+source_rgb_fusion_scales:
+- 32
+- 64
+- 128
+- 256
+source_rgb_fusion_32: true
+pre_attention_rgb_query: true
+source_rgb_zero_init: true
+source_rgb_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-rgb-uint8-256
+source_rgb_cache_max_open_shards: 16
+expected_non_wan_parameters: 194597133
+precision: bf16
+trainable_mode: decoder_only
+source_rgb_separate_optimizer_group: true
+source_rgb_learning_rate_multiplier: 10.0
+# Preserve the selected production policy: source RGB uses 10x LR while the
+# mature Wan and decoder groups remain capped at 10% of their scheduled LR.
+joint_fresh_group_warmup_steps: 0
+joint_fresh_group_max_lr_scale: 0.1
+fsdp: full_shard
+fsdp_min_num_params: 5000000
+microbatch_per_gpu: 2
+gradient_accumulation: 2
+targets_per_source: 19
+learning_rate: 0.0003
+geometry_learning_rate: 0.0003
+backbone_learning_rate: 5.0e-05
+weight_decay: 0.0001
+warmup_steps: 1000
+lr_schedule: cosine
+schedule_horizon_steps: 100000
+schedule_extension_start_step: 56503
+# Preserve the exact continuous LR schedule used to produce the selected 100k
+# checkpoint. max_steps is the canonical endpoint; the longer schedule horizon
+# exists only so a later explicit --resume/--steps continuation has no LR jump.
+schedule_extension_horizon_steps: 150000
+max_steps: 130000
+resume_status_path: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step130000/resume_status_0105000.json
+finetune_expected_global_step: 100000
+finetune_expected_clips_seen:
+  kubric: 280000
+  pointodyssey: 240000
+  dynamic_replica: 280000
+selected_checkpoint_step: 100000
+selected_checkpoint_sha256: 3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2
+selected_checkpoint_artifact: artifact://H023/R-20260822143915-eec343/checkpoint/3181a255d48687f1
+gradient_clip: 1.0
+smooth_l1_beta: 0.05
+gradient_checkpointing: true
+seed: 20260812
+geometry_seed: 20260812
+decoder_seed: 424242
+checkpoint_steps:
+- 110000
+- 115000
+- 120000
+- 125000
+- 130000
+checkpoint_every_after: 5000
+checkpoint_keep_last: 5
+diagnostic_every_steps: 5
+diagnostic_ensure_dataset_coverage: true
+graceful_stop_hours: 120
+mixture_coordinate_stats: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_b2_k16_a2/coordinate_stats_gate_bootstrap.npz
+text_conditions:
+  kubric: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/kubric.pt
+  pointodyssey: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/pointodyssey.pt
+  dynamic_replica: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/dynamic_replica.pt
+  metadata: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/metadata.json
+prompts:
+  kubric: Estimate dense three-dimensional point trajectories over time from this
+    monocular video. The video shows multiple rigid objects moving independently in
+    a rendered three-dimensional scene. The camera viewpoint may change over time,
+    and objects may become occluded and reappear.
+  pointodyssey: Estimate dense three-dimensional point trajectories over time from
+    this monocular video. The video shows articulated characters and objects undergoing
+    diverse rigid and non-rigid motion in a rendered three-dimensional scene. The
+    camera viewpoint may change over time, and objects may become occluded and reappear.
+  dynamic_replica: Estimate dense three-dimensional point trajectories over time from
+    this monocular video. The video shows articulated people moving through a rendered
+    furnished indoor three-dimensional scene. The camera viewpoint may change over
+    time, and people may become occluded and reappear.
+datasets:
+  kubric:
+    raw_root: /dataset/nas0/yejun/MOVi-F/512x512
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/kubric
+    geometry_compact_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/kubric_geometry
+  pointodyssey:
+    raw_root: /dataset/nas0/PointOdyssey
+    geometry_cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/pointodyssey
+    annotation_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/anno
+    annotation_npy_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/anno_npy
+    depth_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/depth/pointodyssey
+  dynamic_replica:
+    raw_root: /dataset/data/Dynamic_dataset/dynamic_stereo
+    geometry_cache_root: /data/WorldBridge4D-persistent/datasets/dynamic_stereo_worldbridge4d_v1
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica
+    trajectory_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/trajectories
+    depth_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/depth/dynamic_replica
+tracking:
+  enabled: true
+  project: worldbridge4d
+  group: h027-pre-attention-rgb-query-step130000
+  tags:
+  - h027
+  - pre-attention-rgb-query
+  - zero-init-additive-residual
+  - decoder-only
+  - wan-frozen
+  - geometry-adapter-frozen
+  - source-rgb-pyramid
+  - source-rgb-fusion32
+  - filtered-decoder-adam-state
+  - exact-resume-step105k
+  - user-directed-step130k
+  - gpu15
+  - b2-k19-a2

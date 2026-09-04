@@ -5,7 +5,7 @@ from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 import time
-from typing import Mapping
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -14,7 +14,10 @@ from ..data.types import TrainingDataset
 from .schedulers import dataset_for_step
 
 SamplePlan = tuple[int, int, np.random.Generator]
-GeometryValue = tuple[int, int, np.ndarray, np.ndarray, np.ndarray | None]
+GeometryValue = tuple[
+    int, int, np.ndarray, np.ndarray, np.ndarray | None,
+    np.ndarray | None, dict[str, Any] | None,
+]
 TimedGeometryValue = tuple[GeometryValue, float]
 
 
@@ -40,6 +43,7 @@ def load_geometry(
     required_targets: int,
     fallback_seed: int,
     use_source_rgb: bool,
+    use_cycle: bool = False,
 ) -> TimedGeometryValue:
     """Load one eligible clip/source pair and report worker execution time."""
     task_started = time.perf_counter()
@@ -48,6 +52,12 @@ def load_geometry(
     fallback_order = fallback_rng.permutation(len(dataset))
     candidates.extend(int(value) for value in fallback_order if int(value) != int(index))
     last_error = None
+    visibility_loader = getattr(dataset, "source_all_targets_with_visibility", None) if use_cycle else None
+    camera_loader = getattr(dataset, "cycle_camera", None) if use_cycle else None
+    if use_cycle and (visibility_loader is None or camera_loader is None):
+        raise ValueError(
+            "cycle reprojection requires source visibility and camera metadata"
+        )
     for candidate_number, candidate in enumerate(candidates):
         candidate_sources = (
             source_permutation
@@ -55,18 +65,36 @@ def load_geometry(
             else fallback_rng.permutation(21)
         )
         try:
-            source, xyz, valid = source_with_eligible_targets(
-                dataset, candidate, candidate_sources,
-                min_targets=required_targets,
-            )
+            visible = None
+            if use_cycle:
+                source = None
+                for source_candidate in candidate_sources:
+                    xyz_candidate, valid_candidate, visible_candidate = visibility_loader(
+                        candidate, int(source_candidate)
+                    )
+                    eligible = np.asarray(valid_candidate, dtype=bool).reshape(21, -1).any(axis=1)
+                    if int(eligible.sum()) >= int(required_targets):
+                        source = int(source_candidate)
+                        xyz, valid, visible = xyz_candidate, valid_candidate, visible_candidate
+                        break
+                if source is None:
+                    raise ValueError(
+                        f"clip {candidate} has no source with {required_targets} eligible targets"
+                    )
+            else:
+                source, xyz, valid = source_with_eligible_targets(
+                    dataset, candidate, candidate_sources,
+                    min_targets=required_targets,
+                )
         except ValueError as error:
             last_error = error
             continue
         # RGB failures are data-contract errors, not a reason to alter the
         # deterministic geometry fallback clip/source.
         source_rgb = dataset.source_rgb(candidate, source) if use_source_rgb else None
+        camera = camera_loader(candidate) if use_cycle else None
         return (
-            (candidate, source, xyz, valid, source_rgb),
+            (candidate, source, xyz, valid, source_rgb, visible, camera),
             time.perf_counter() - task_started,
         )
     raise ValueError(
@@ -87,6 +115,8 @@ class GeometryPrefetcher:
         microbatch_per_gpu: int,
         targets_per_source: int,
         use_source_rgb: bool,
+        cycle_enabled: bool = False,
+        cycle_dataset_names: tuple[str, ...] = ("kubric",),
         start_step: int,
         target_steps: int,
         depth: int,
@@ -98,6 +128,8 @@ class GeometryPrefetcher:
         self.slots_per_rank = int(accumulation) * int(microbatch_per_gpu)
         self.targets_per_source = int(targets_per_source)
         self.use_source_rgb = bool(use_source_rgb)
+        self.cycle_enabled = bool(cycle_enabled)
+        self.cycle_dataset_names = frozenset(str(name) for name in cycle_dataset_names)
         self.target_steps = int(target_steps)
         self.depth = int(depth)
         self.next_step = int(start_step)
@@ -130,6 +162,7 @@ class GeometryPrefetcher:
                     self.seed, step, slot, self.rank, 772,
                 ]).generate_state(1)[0]),
                 self.use_source_rgb,
+                self.cycle_enabled and dataset_name in self.cycle_dataset_names,
             )
             for slot, (index, _source, _rng) in enumerate(sample_plans)
         ]

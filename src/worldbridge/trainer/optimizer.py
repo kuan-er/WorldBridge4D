@@ -14,6 +14,7 @@ def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[
     rgb_prefixes = (
         "decoder.upsampler.source_rgb_encoder.",
         "decoder.upsampler.source_fusions.",
+        "decoder.query_rgb_projection.",
     )
     separate_rgb = bool(config.get("source_rgb_separate_optimizer_group", False))
     rgb = [
