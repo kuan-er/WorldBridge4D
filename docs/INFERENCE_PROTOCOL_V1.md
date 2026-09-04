@@ -99,6 +99,19 @@ benchmark/
 }
 ```
 
+Dynamic Replica 的 canonical external-validation manifest 必须从官方 `valid` release
+生成，RGB 根目录固定为：
+
+```text
+/dataset/data/Dynamic_dataset/dynamic_stereo/validation
+```
+
+该目录包含官方 `frame_annotations_valid.jgz` 和各 valid sequence 的 `images/`、
+`trajectories/` 等数据。上游 README 以 `valid/` 表示该 split；本机解压后 sequence
+目录直接位于上述 `validation/` 目录下。`dynamic_stereo/train` 及其本地 temporal
+split 只允许用于训练或单独标注的辅助诊断，不得进入本规范的 Dynamic Replica
+validation benchmark。
+
 要求：
 
 - benchmark clip 列表冻结后不能因为某方法失败而更换；
@@ -109,7 +122,7 @@ benchmark/
 - 方法、配置和 checkpoint 冻结后再运行 test；
 - 结果按三个数据集分别报告，再计算三个数据集等权的 macro average；
 - 不能按 clip 数量直接合并平均，避免 PointOdyssey 的 clip 数量主导总结果；
-- Dynamic Replica 的 validation 必须标记为 temporal holdout；当前它不是独立 validation scene holdout。
+- Dynamic Replica 的 validation 固定指官方 `valid` evaluation release，不得使用从 `train` stream 自行切出的 temporal split 代替；该官方 split 必须在 manifest 和结果元数据中明确标记为 `official_valid`。
 
 ## 5. 当前 RGB 数据源
 
@@ -119,9 +132,13 @@ benchmark/
 |---|---|---|
 | Kubric/MOVi-F | `/dataset/nas0/yejun/MOVi-F/512x512` | 从 TFRecord 的 `video` 字段解码 |
 | PointOdyssey | `/dataset/nas0/PointOdyssey` | 从 MP4 解码 |
-| Dynamic Replica | `/dataset/data/Dynamic_dataset/dynamic_stereo` | 按 stream 顺序读取 PNG |
+| Dynamic Replica 官方 `valid` | `/dataset/data/Dynamic_dataset/dynamic_stereo/validation` | 按官方 sequence 顺序读取 PNG |
 
-各外部方法使用自己的官方 RGB loader。Dynamic Replica 的 PNG 可能带 alpha 通道，RGB-only 方法输入前须将 RGBA 转成 RGB，并在配置中记录该处理。
+各外部方法使用自己的官方 RGB loader。Dynamic Replica validation 必须读取官方
+`validation/<sequence>/images/`，并以 `frame_annotations_valid.jgz` 及同一 sequence
+下的官方 annotations/geometry 作为 GT 源。PNG 可能带 alpha 通道，RGB-only 方法输入
+前须将 RGBA 转成 RGB，并在配置中记录该处理。训练仍可使用
+`/dataset/data/Dynamic_dataset/dynamic_stereo/train`，但训练源不能复用为 validation。
 
 ## 6. Official-native 输入协议
 
@@ -366,10 +383,12 @@ predictions/<clip_id>.safetensors
 ```text
 Kubric validation
 PointOdyssey validation
-Dynamic Replica validation
+Dynamic Replica official `valid` evaluation release
 ```
 
-此阶段用于正式方法比较，但不再因单个方法表现调整 benchmark clip。
+此阶段用于正式方法比较，但不再因单个方法表现调整 benchmark clip。Dynamic Replica
+不得回退到本地 train-root temporal split；若官方 sequence 或 annotation 无法读取，
+必须记录 failure/coverage，不得用本地 split 静默替换。
 
 ### Stage 3：Final test
 
@@ -387,4 +406,9 @@ python scripts/inference/run_method.py \
   --output /data/WorldBridge4D-inference/results/vdpm/<run_id>
 ```
 
-第一阶段先接入 RGB-only 方法。当前机器尚未确认 VDPM 的 repo 地址和官方 checkpoint 地址；在获得这两个地址后，先执行 Stage 1 smoke test，再进入完整 validation。
+第一阶段先接入 RGB-only 方法。Dynamic Replica 的 Stage 1/2 输入固定使用官方
+`valid` release；当前机器已将其部署到
+`/dataset/data/Dynamic_dataset/dynamic_stereo/validation`，并核验
+`frame_annotations_valid.jgz`。在生成官方 manifest、GT adapter 并冻结其 SHA-256
+后，先执行 Stage 1 smoke test，再进入完整 validation。训练用的 `train` temporal
+split 不得作为官方结果标签。
