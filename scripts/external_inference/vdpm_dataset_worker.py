@@ -3,14 +3,15 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
-from omegaconf import OmegaConf
 
-REPO = Path('/data/WorldBridge4D-inference/repos/vdpm')
+EXTERNAL_ROOT = Path(os.environ.get('WORLDBRIDGE4D_INFERENCE_ROOT', '/data/WorldBridge4D-inference'))
+REPO = EXTERNAL_ROOT / 'repos' / 'vdpm'
 SCRIPT = Path(__file__).with_name('vdpm_infer_clip.py')
 spec = importlib.util.spec_from_file_location('vdpm_infer_clip', SCRIPT)
 mod = importlib.util.module_from_spec(spec)
@@ -31,6 +32,7 @@ def main() -> None:
         raise ValueError('stop must be greater than start')
 
     from dpm.model import VDPM
+    from omegaconf import OmegaConf
     cfg = OmegaConf.create({'model': OmegaConf.load(REPO / 'configs' / 'model' / 'dpm.yaml')})
     device = torch.device(args.device)
     model = VDPM(cfg).to(device)

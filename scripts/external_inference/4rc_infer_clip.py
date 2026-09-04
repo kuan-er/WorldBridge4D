@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 import time
@@ -11,10 +12,11 @@ import numpy as np
 import torch
 from PIL import Image
 
-WB = Path('/data/WorldBridge4D')
-FOURRC = Path('/data/WorldBridge4D-inference/repos/4rc')
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+EXTERNAL_ROOT = Path(os.environ.get('WORLDBRIDGE4D_INFERENCE_ROOT', '/data/WorldBridge4D-inference'))
+FOURRC = EXTERNAL_ROOT / 'repos' / '4rc'
 sys.path.insert(0, str(FOURRC))
-sys.path.insert(0, str(WB / 'src'))
+sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 
 SOURCES = [5, 10, 15, 20]
 T = 21

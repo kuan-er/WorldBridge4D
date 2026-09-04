@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import torch
-from omegaconf import OmegaConf
 
 
 def main() -> None:
@@ -19,6 +18,7 @@ def main() -> None:
     repo = Path(args.repo).resolve()
     sys.path.insert(0, str(repo))
     from dpm.model import VDPM
+    from omegaconf import OmegaConf
 
     cfg = OmegaConf.create({'model': OmegaConf.load(repo / 'configs' / 'model' / 'dpm.yaml')})
     device = torch.device(args.device)

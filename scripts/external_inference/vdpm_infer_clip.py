@@ -2,19 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
-from omegaconf import OmegaConf
 from PIL import Image
 
-REPO = Path('/data/WorldBridge4D-inference/repos/vdpm')
-WB = Path('/data/WorldBridge4D')
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+EXTERNAL_ROOT = Path(os.environ.get('WORLDBRIDGE4D_INFERENCE_ROOT', '/data/WorldBridge4D-inference'))
+REPO = EXTERNAL_ROOT / 'repos' / 'vdpm'
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(WB / 'src'))
+sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 
 SOURCES = [5, 10, 15, 20]
 T = 21
@@ -93,6 +94,7 @@ def main() -> None:
     args = ap.parse_args()
 
     from dpm.model import VDPM
+    from omegaconf import OmegaConf
 
     frames, meta = load_rgb(args.dataset, args.index)
     cfg = OmegaConf.create({'model': OmegaConf.load(REPO / 'configs' / 'model' / 'dpm.yaml')})

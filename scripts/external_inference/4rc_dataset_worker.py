@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -13,13 +15,17 @@ from PIL import Image
 # Importing this module also supplies the audited RGB-only dataset adapters.
 from importlib.util import module_from_spec, spec_from_file_location
 
-HERE = Path(__file__).parent
+HERE = Path(__file__).resolve().parent
+PROJECT_ROOT = HERE.parents[1]
+EXTERNAL_ROOT = Path(os.environ.get('WORLDBRIDGE4D_INFERENCE_ROOT', '/data/WorldBridge4D-inference'))
+FOURRC = EXTERNAL_ROOT / 'repos' / '4rc'
+sys.path.insert(0, str(FOURRC))
+sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 spec = spec_from_file_location('vdpm_infer_clip', HERE / 'vdpm_infer_clip.py')
 vdpm = module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(vdpm)
 
-FOURRC = Path('/data/WorldBridge4D-inference/repos/4rc')
 SOURCES = [5, 10, 15, 20]
 T = 21
 

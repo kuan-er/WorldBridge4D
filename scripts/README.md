@@ -8,6 +8,10 @@
 - `prepare_data.py`：数据、cache 与 checkpoint 维护的统一子命令入口。
 - `run_fsdp.sh`：固定 GPU 0/1 的两卡 `torchrun` 启动和输入预检。
 
+VDPM/4RC official-native 集成不是生产训练入口，统一收纳在
+`external_inference/`；新运行不得再引用仓库顶层的历史脚本路径。详细布局和命令见
+[`external_inference/README.md`](external_inference/README.md)。
+
 查看统一维护命令：
 
 ```bash
