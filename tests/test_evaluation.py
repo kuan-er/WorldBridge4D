@@ -6,7 +6,16 @@ from pathlib import Path
 import pytest
 import torch
 
-from worldbridge.evaluation.benchmark import aggregate, align_if_possible, validated_output_root
+from worldbridge.evaluation.benchmark import (
+    ARBITRARY_SOURCES,
+    EVALUATED_QUERIES,
+    LOGICAL_QUERIES,
+    QUERY_GROUPS,
+    aggregate,
+    aggregate_query_metrics,
+    align_if_possible,
+    validated_output_root,
+)
 from worldbridge.evaluation.inference import DEFAULT_OUTPUT_ROOT, inference_output_path
 from worldbridge.evaluation.metrics import align_sim3_to_ground_truth
 from worldbridge.evaluation.rendering import select_error_tracks, select_worst_unique_clips
@@ -65,7 +74,18 @@ def test_error_track_selection_is_spatially_separated():
     assert select_error_tracks(error, valid, 2, 3, 3.0) == [(1, 1), (6, 6)]
 
 
-def test_exhaustive_alignment_skips_sources_without_valid_points():
+def test_fixed_budget_manifest_has_122_logical_and_121_unique_queries():
+    assert len(QUERY_GROUPS["pointmap"]) == 21
+    assert len(QUERY_GROUPS["first_frame_tracking"]) == 21
+    assert len(QUERY_GROUPS["arbitrary_tracking"]) == 80
+    assert len(LOGICAL_QUERIES) == 122
+    assert len(EVALUATED_QUERIES) == 121
+    assert set(ARBITRARY_SOURCES) == {5, 10, 15, 20}
+    assert LOGICAL_QUERIES.count((0, 0)) == 2
+    assert all(source != target for source, target in QUERY_GROUPS["arbitrary_tracking"])
+
+
+def test_fixed_budget_alignment_skips_sources_without_valid_points():
     prediction = torch.zeros(21, 3, 2, 2)
     target = torch.ones_like(prediction)
     valid = torch.zeros(21, 2, 2, dtype=torch.bool)
@@ -79,7 +99,7 @@ def test_exhaustive_alignment_skips_sources_without_valid_points():
     }
 
 
-def test_exhaustive_aggregate_preserves_pair_macro_and_point_weighting():
+def test_matrix_aggregate_preserves_pair_macro_and_point_weighting():
     matrix = [[None for _ in range(21)] for _ in range(21)]
     counts = [[0 for _ in range(21)] for _ in range(21)]
     matrix[0][0], counts[0][0] = 1.0, 10
@@ -92,6 +112,23 @@ def test_exhaustive_aggregate_preserves_pair_macro_and_point_weighting():
     assert result["macro_source_target_mean_epe_m"] == pytest.approx(2.0)
     assert result["point_weighted_mean_epe_m"] == pytest.approx(2.5)
     assert result["source_target_mean_epe_m"][0][:2] == [1.0, 3.0]
+
+
+def test_fixed_budget_aggregate_counts_category_overlap():
+    record = {"query_metrics": [
+        {
+            "group": "pointmap", "source": 0, "target": 0,
+            "raw_epe_m": 1.0, "sim3_epe_m": 0.5, "valid_points": 10,
+        },
+        {
+            "group": "first_frame_tracking", "source": 0, "target": 0,
+            "raw_epe_m": 1.0, "sim3_epe_m": 0.25, "valid_points": 10,
+        },
+    ]}
+    result = aggregate_query_metrics([record], "sim3")
+    assert result["valid_queries"] == 2
+    assert result["macro_query_mean_epe_m"] == pytest.approx(0.375)
+    assert result["point_weighted_mean_epe_m"] == pytest.approx(0.375)
 
 
 def test_evaluation_output_rejects_ephemeral_root():

@@ -154,9 +154,9 @@ arbitrary_tracking:
   target ∈ [0, 1, ..., 20] 且 target != source # 4×20=80 pairs
 ```
 
-因此每个 clip 的主评测共 122 个 query，其中 arbitrary tracking 固定为 80 个 source-positive pairs。固定 source 覆盖中间帧、forward/backward、短间隔和长间隔；`source=0` 单独作为 first-frame tracking，不混入 arbitrary 指标。
+因此每个 clip 的主评测包含 122 个逻辑 query 条目，其中 arbitrary tracking 固定为 80 个 source-positive pairs。`(source=0,target=0)` 同时属于 pointmap 和 first-frame tracking，分别进入两组汇总，因此 122 个逻辑条目对应 121 个唯一 `(source,target)` 推理结果；实现不得为这个重叠条目重复运行模型。固定 source 覆盖中间帧、forward/backward、短间隔和长间隔；`source=0` 单独作为 first-frame tracking，不混入 arbitrary 指标。
 
-所有方法使用相同的 source/target manifest。一次性输出完整视频轨迹的方法只需由 evaluator 抽取这 122 个 query；source-conditioned 方法最多执行 4 个 arbitrary source inference。只能处理 `source=0` 的方法可以参加 pointmap 和 first-frame tracking，但 arbitrary tracking 记为 `N/A`。
+所有方法使用相同的 source/target manifest。一次性输出完整视频轨迹的方法只需由 evaluator 抽取这 122 个逻辑条目；source-conditioned 方法最多执行 4 个 arbitrary source inference。只能处理 `source=0` 的方法可以参加 pointmap 和 first-frame tracking，但 arbitrary tracking 记为 `N/A`。WorldBridge4D 自身的 validation evaluator 也必须使用同一 fixed-budget query manifest，不再将 exhaustive `21×21` 结果作为主诊断。
 
 方法必须能将输出对齐到 benchmark 的 canonical timestamps，才能参加这组 arbitrary 指标；不能对缺失的 source/target 结果静默插值或伪造。若官方 temporal protocol 不支持这些时间点，应记录为 unsupported/failure，并报告覆盖率。
 
