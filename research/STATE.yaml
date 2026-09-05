@@ -1195,7 +1195,7 @@ h030_h027_130k_cycle_kubric_gpu57_k13:
   cycle: kubric_only_max_gap_visible_visible_pixel_stride4_weight0.02
   tests_passed: 77
 h030_h027_140k_cycle_all_w03_gpu67_k13_b1:
-  status: running
+  status: complete_step150000_checkpoint_registered_wandb_finished
   task: T-20260901153324-39dd05
   run: R-20260904083805-2ef397
   superseded_queued_run: R-20260904083701-09d700
@@ -1210,5 +1210,26 @@ h030_h027_140k_cycle_all_w03_gpu67_k13_b1:
   start_step: 140000
   target_step: 150000
   cycle: all_three_datasets_max_gap_visible_visible_pixel_stride4_weight0.3
-  wandb: enabled
-updated_at: 2026-09-04T08:38:05Z
+  tracking:
+    wandb_run_id: aa94m3tl
+    wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/aa94m3tl
+  completion:
+    exit_code: 0
+    trainer_marker: THREE_DATASET_256_FSDP_OK
+    peak_cuda_memory_gib: 21.5855
+    elapsed_seconds: 70835.7
+  matched_weight002_overlap_mean_training_epe_change_pct:
+    kubric: -0.00038
+    pointodyssey: 0.00038
+    dynamic_replica: -0.00064
+  first1k_to_final1k_training_epe_change_pct:
+    kubric: -0.83
+    pointodyssey: -6.47
+    dynamic_replica: -3.46
+  result: no_detectable_faster_epe_descent_vs_weight002_in_matched_overlap
+  final_checkpoint:
+    global_step: 150000
+    path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-w03-gpu67-k13-b1-r2/checkpoint-0150000.pt
+    sha256: aeee1383958eb9bf3f2b2311a024b41b5c93fb5991ae8f26fa4524009bad9af7
+    artifact: artifact://H030/R-20260904083805-2ef397/checkpoint/aeee1383958eb9bf
+updated_at: 2026-09-05T04:33:28Z
