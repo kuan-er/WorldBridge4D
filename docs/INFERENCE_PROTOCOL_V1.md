@@ -12,13 +12,7 @@
 - 三个数据集分别冻结 `benchmark/<dataset>.jsonl`，每条含 `dataset, clip_id, parent_id, split, frame_indices, rgb_source, gt_source`，并保存 manifest SHA-256。
 - train/validation/test 按 parent/scene 隔离，不使用训练 GT 评 validation。方法失败时保留原 clip，记录原因和覆盖率，不得静默跳过。
 
-| 数据集 | RGB 根目录 | 读取方式 |
-|---|---|---|
-| Kubric/MOVi-F | `/dataset/nas0/yejun/MOVi-F/512x512` | TFRecord `video` |
-| PointOdyssey | `/dataset/nas0/PointOdyssey` | MP4 |
-| Dynamic Replica 官方 `valid` | `/dataset/data/Dynamic_dataset/dynamic_stereo/validation` | sequence PNG |
-
-Dynamic Replica 必须使用上述官方 `validation` 根目录的 `frame_annotations_valid.jgz`、`<sequence>/images/` 及同 sequence annotations/geometry；RGBA 输入转 RGB 并记录。**禁止回退到 `dynamic_stereo/train` 或其本地 temporal split**；训练源仅用于训练或明确标注的辅助诊断。文件不可读时记录失败，不替换 split。
+数据集评估所需的 RGB、validation manifest、GT 位置及 split 使用规则，统一参见 [DATASET_LOCATIONS.md](DATASET_LOCATIONS.md)（本机路径：`/data/WorldBridge4D/docs/DATASET_LOCATIONS.md`）。
 
 独立 adapter 必须声明输出类型、坐标系、单位、分辨率、source/target、原生预处理逆映射及 GT 对应规则，不能隐式修改方法输出或混用不同 head。3D 接口为 `xyz[target, xyz, source_pixel_y, source_pixel_x]`，临时 canonical 预测使用 float32。真实 `source=0` 轨迹不能用 `source=5` 冒充。
 
