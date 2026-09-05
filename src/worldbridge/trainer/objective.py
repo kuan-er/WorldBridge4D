@@ -4,6 +4,25 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
+def loss_scale_to_reference(
+    reference_loss: torch.Tensor,
+    auxiliary_loss: torch.Tensor,
+    *,
+    epsilon: float = 1e-6,
+    max_scale: float = 1000.0,
+) -> torch.Tensor:
+    """Detached batch-local scale that matches an auxiliary loss to a reference."""
+    if reference_loss.numel() != 1 or auxiliary_loss.numel() != 1:
+        raise ValueError("reference and auxiliary losses must be scalars")
+    if epsilon <= 0.0 or max_scale <= 0.0:
+        raise ValueError("epsilon and max_scale must be positive")
+    reference = reference_loss.detach()
+    auxiliary = auxiliary_loss.detach()
+    scale = reference / auxiliary.clamp_min(float(epsilon))
+    scale = scale.clamp(min=0.0, max=float(max_scale))
+    return torch.where(auxiliary > float(epsilon), scale, torch.zeros_like(scale))
+
+
 def masked_pair_smooth_l1(prediction: torch.Tensor, target: torch.Tensor,
                           validity: torch.Tensor, beta: float = 0.05) -> torch.Tensor:
     """Exact pair-wise validity-masked SmoothL1 average from the H004 spec."""

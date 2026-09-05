@@ -94,6 +94,11 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError("cycle_reprojection_weight must be non-negative")
     if float(config.get("cycle_reprojection_huber_delta", 0.01)) <= 0.0:
         raise ValueError("cycle_reprojection_huber_delta must be positive")
+    if bool(config.get("cycle_reprojection_normalize_to_xyz", False)):
+        if float(config.get("cycle_reprojection_normalization_epsilon", 1e-6)) <= 0.0:
+            raise ValueError("cycle_reprojection_normalization_epsilon must be positive")
+        if float(config.get("cycle_reprojection_normalization_max_scale", 1000.0)) <= 0.0:
+            raise ValueError("cycle_reprojection_normalization_max_scale must be positive")
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
     allowed_batching = {(4, 1), (4, 2)} if cycle_enabled else {(2, 2)}

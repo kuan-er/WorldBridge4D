@@ -16,7 +16,7 @@ from worldbridge.models import (
 )
 from worldbridge.models.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
 from worldbridge.trainer.cycle import pixel_cycle_loss
-from worldbridge.trainer.objective import masked_pair_smooth_l1
+from worldbridge.trainer.objective import loss_scale_to_reference, masked_pair_smooth_l1
 from worldbridge.trainer.optimizer import parameter_groups
 from worldbridge.trainer.trainer import fsdp_auto_wrap_policy
 from worldbridge.data.cache import KubricGeometryMmapStore, LazyLatentCache, RGBUInt8ShardStore
@@ -686,7 +686,7 @@ def test_fsdp_launcher_uses_current_config_and_package_commands():
     assert "configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml" in launcher
     assert "STAGING_ROOT=\"${STAGING_ROOT:-/data/WorldBridge4D-persistent/" in launcher
     assert "STAGING_ROOT=\"${STAGING_ROOT:-/tmp/" not in launcher
-    assert 'GPUS="0,1"' in launcher
+    assert 'GPUS="${GPUS:-0,1}"' in launcher
     assert 'NPROC="2"' in launcher
     assert "allow-two-gpu-gate" not in launcher
     assert "ALLOW_FOUR_GPU_EXPERIMENT" not in launcher
@@ -1016,6 +1016,20 @@ def test_pixel_cycle_is_zero_for_identity_and_responds_to_reverse_shift():
     assert pixel_error.item() > 0.0
     loss.backward()
     assert source_xyz.grad is not None and torch.isfinite(source_xyz.grad).all()
+
+
+def test_batch_local_auxiliary_normalization_matches_reference_without_scale_gradient():
+    xyz_loss = torch.tensor(0.068, requires_grad=True)
+    cycle_loss = torch.tensor(0.00025, requires_grad=True)
+    scale = loss_scale_to_reference(xyz_loss, cycle_loss)
+    weighted_cycle = 0.3 * scale * cycle_loss
+    assert scale.item() == pytest.approx(272.0)
+    assert weighted_cycle.item() / xyz_loss.item() == pytest.approx(0.3)
+    (xyz_loss + weighted_cycle).backward()
+    assert xyz_loss.grad.item() == pytest.approx(1.0)
+    assert cycle_loss.grad.item() == pytest.approx(0.3 * 272.0)
+    zero_scale = loss_scale_to_reference(xyz_loss.detach(), torch.zeros(()))
+    assert zero_scale.item() == 0.0
 
 
 def test_pair_loss_ignores_empty_pair_instead_of_treating_it_as_zero():

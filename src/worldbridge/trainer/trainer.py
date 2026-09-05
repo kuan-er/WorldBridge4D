@@ -39,7 +39,7 @@ from .lazy_vae import (
     required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
 )
 from .cycle import camera_batch, pixel_cycle_loss
-from .objective import masked_pair_smooth_l1
+from .objective import loss_scale_to_reference, masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .schedulers import apply_cosine_schedule, training_diagnostic_due
 from .tracking import init_wandb, load_stats
@@ -394,6 +394,15 @@ def main() -> None:
     cycle_weight = float(config.get("cycle_reprojection_weight", 0.0))
     cycle_pixel_stride = int(config.get("cycle_reprojection_pixel_stride", 1))
     cycle_huber_delta = float(config.get("cycle_reprojection_huber_delta", 0.01))
+    cycle_normalize_to_xyz = bool(config.get(
+        "cycle_reprojection_normalize_to_xyz", False,
+    ))
+    cycle_normalization_epsilon = float(config.get(
+        "cycle_reprojection_normalization_epsilon", 1e-6,
+    ))
+    cycle_normalization_max_scale = float(config.get(
+        "cycle_reprojection_normalization_max_scale", 1000.0,
+    ))
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     ensure_dataset_diagnostics = bool(
         config.get("diagnostic_ensure_dataset_coverage", False)
@@ -441,10 +450,13 @@ def main() -> None:
                     float(config.get("pipeline_wait_timeout_seconds", 3600)),
                 )
             update_loss = 0.0
+            xyz_loss_sum = 0.0
             update_epe = 0.0
             valid_points = 0
             pair_count = 0
             cycle_loss_sum = 0.0
+            weighted_cycle_loss_sum = 0.0
+            cycle_scale_sum = 0.0
             cycle_pixel_error_sum = 0.0
             cycle_valid_points = 0
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
@@ -558,11 +570,14 @@ def main() -> None:
                     prediction, z4d, _ = fsdp(
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
-                    loss = masked_pair_smooth_l1(
+                    xyz_value = masked_pair_smooth_l1(
                         prediction.float(), xyz.float(), valid,
                         beta=float(config.get("smooth_l1_beta", 0.05)),
-                    ) / accumulation
+                    )
+                    loss = xyz_value / accumulation
                     cycle_value = prediction.new_zeros(())
+                    weighted_cycle_value = prediction.new_zeros(())
+                    cycle_scale = prediction.new_zeros(())
                     cycle_points = prediction.new_zeros(())
                     cycle_pixel_error = prediction.new_zeros(())
                     if cycle_batch:
@@ -596,12 +611,25 @@ def main() -> None:
                                 huber_delta=cycle_huber_delta, image_size=256,
                                 pixel_stride=cycle_pixel_stride,
                             )
-                        loss = loss + cycle_weight * cycle_value / accumulation
+                        cycle_scale = (
+                            loss_scale_to_reference(
+                                xyz_value, cycle_value,
+                                epsilon=cycle_normalization_epsilon,
+                                max_scale=cycle_normalization_max_scale,
+                            )
+                            if cycle_normalize_to_xyz
+                            else cycle_value.new_ones(())
+                        )
+                        weighted_cycle_value = cycle_weight * cycle_scale * cycle_value
+                        loss = loss + weighted_cycle_value / accumulation
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step={step}, micro={micro}")
                 loss.backward()
                 update_loss += float(loss.detach())
+                xyz_loss_sum += float(xyz_value.detach()) / accumulation
                 cycle_loss_sum += float(cycle_value.detach()) / accumulation
+                weighted_cycle_loss_sum += float(weighted_cycle_value.detach()) / accumulation
+                cycle_scale_sum += float(cycle_scale.detach()) / accumulation
                 cycle_pixel_error_sum += float(cycle_pixel_error.detach() * cycle_points.detach())
                 cycle_valid_points += int(cycle_points.detach())
                 with torch.no_grad():
@@ -658,8 +686,9 @@ def main() -> None:
                 last_diagnostic_cycle[name] = step // 20
                 scalars = torch.tensor(
                     [
-                        update_loss, update_epe, valid_points, pair_count,
-                        cycle_loss_sum, cycle_pixel_error_sum, cycle_valid_points,
+                        update_loss, xyz_loss_sum, update_epe, valid_points, pair_count,
+                        cycle_loss_sum, weighted_cycle_loss_sum, cycle_scale_sum,
+                        cycle_pixel_error_sum, cycle_valid_points,
                     ], device=device, dtype=torch.float64,
                 )
                 timing_max = torch.tensor([
@@ -685,13 +714,20 @@ def main() -> None:
                     rgb_alpha_stats = torch.empty((0, 2), device=device, dtype=torch.float64)
             if rank == 0 and diagnostic:
                 (
-                    global_loss, global_epe_sum, global_valid, global_pairs,
-                    global_cycle_loss, global_cycle_pixel_error_sum,
+                    global_loss, global_xyz_loss, global_epe_sum, global_valid,
+                    global_pairs, global_cycle_loss, global_weighted_cycle_loss,
+                    global_cycle_scale, global_cycle_pixel_error_sum,
                     global_cycle_points,
                 ) = scalars.tolist()
                 dataset_loss = global_loss / world
+                dataset_xyz_loss = global_xyz_loss / world
                 raw_epe_m = global_epe_sum / max(global_valid, 1)
                 cycle_dataset_loss = global_cycle_loss / world
+                weighted_cycle_dataset_loss = global_weighted_cycle_loss / world
+                cycle_loss_ratio = weighted_cycle_dataset_loss / max(
+                    dataset_xyz_loss, cycle_normalization_epsilon,
+                )
+                cycle_scale = global_cycle_scale / world
                 cycle_pixel_error = global_cycle_pixel_error_sum / max(global_cycle_points, 1)
                 weights = fsdp.module.backbone.layer_weights().detach().float().cpu().tolist()
                 rgb_alphas = {
@@ -701,10 +737,18 @@ def main() -> None:
                 payload = {
                     "global_step": completed, "train/loss": dataset_loss,
                     f"train/loss_by_dataset/{name}": dataset_loss,
+                    "train/xyz_loss": dataset_xyz_loss,
+                    f"train/xyz_loss_by_dataset/{name}": dataset_xyz_loss,
                     "train/raw_epe_m": raw_epe_m,
                     f"train/raw_epe_m_by_dataset/{name}": raw_epe_m,
                     "train/cycle_reprojection_loss": cycle_dataset_loss,
                     f"train/cycle_reprojection_loss_by_dataset/{name}": cycle_dataset_loss,
+                    "train/weighted_cycle_reprojection_loss": weighted_cycle_dataset_loss,
+                    f"train/weighted_cycle_reprojection_loss_by_dataset/{name}": weighted_cycle_dataset_loss,
+                    "train/cycle_reprojection_loss_ratio": cycle_loss_ratio,
+                    f"train/cycle_reprojection_loss_ratio_by_dataset/{name}": cycle_loss_ratio,
+                    "train/cycle_reprojection_scale": cycle_scale,
+                    f"train/cycle_reprojection_scale_by_dataset/{name}": cycle_scale,
                     "train/cycle_reprojection_pixel_error": cycle_pixel_error,
                     "train/cycle_reprojection_valid_points": int(global_cycle_points),
                     "train/dataset": DATASET_NAMES.index(name), "train/pairs": int(global_pairs),
