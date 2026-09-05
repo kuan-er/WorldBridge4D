@@ -1,411 +1,177 @@
 # 三数据集外部方法推理评估规范 V1
 
-## 1. 目的与原则
+协议版本：`v1-three-sim3-metrics-diagonal-source-macro-20260905`
 
-本规范用于在 Kubric/MOVi-F、PointOdyssey 和 Dynamic Replica 上运行外部方法（例如 VDPM），并保留可复现、可审计的推理结果。
+**核心约定：official-native 输入、固定 benchmark、统一 evaluator；tracking 拟合和评分均包含同帧项；永久保存指标，校验完成后删除大型预测。** 本修订替代旧版永久保留预测和强制报告 raw EPE 的要求，不代表旧结果已自动升级。
 
-第一版固定采用：
+## 1. 输入与数据集
 
-> **Official-native input + fixed dataset benchmark + unified evaluator + separate input-class reporting**
+- 使用各方法官方推荐的帧数、分辨率、resize/crop/pad、normalization、checkpoint 和后处理，不强制统一成 256×256 或 21 帧输入。评测输出必须对应固定的 21 个 canonical timestamps；缺失结果不得静默插值、伪造或替换 clip。
+- 输入类别分别报告：**A：RGB-only；B：RGB+calibration；C：RGB+geometry**。A 禁止输入 GT depth/XYZ/segmentation/visibility/poses/tracks；C 只能单独作为参考，不能混入 A/B 主榜。第一阶段优先 A。
+- Official-native 不等于相同计算预算的公平比较；Common-input 需另立协议。
+- 三个数据集分别冻结 `benchmark/<dataset>.jsonl`，每条含 `dataset, clip_id, parent_id, split, frame_indices, rgb_source, gt_source`，并保存 manifest SHA-256。
+- train/validation/test 按 parent/scene 隔离，不使用训练 GT 评 validation。方法失败时保留原 clip，记录原因和覆盖率，不得静默跳过。
 
-也就是说：
+| 数据集 | RGB 根目录 | 读取方式 |
+|---|---|---|
+| Kubric/MOVi-F | `/dataset/nas0/yejun/MOVi-F/512x512` | TFRecord `video` |
+| PointOdyssey | `/dataset/nas0/PointOdyssey` | MP4 |
+| Dynamic Replica 官方 `valid` | `/dataset/data/Dynamic_dataset/dynamic_stereo/validation` | sequence PNG |
 
-- 每个方法使用其官方推荐的输入分辨率、帧数、resize/crop、normalization、checkpoint 和后处理；
-- 不强制所有方法使用 `256×256`；
-- 不强制所有方法使用 21 帧；
-- 只统一 benchmark clip 列表、数据划分、GT 评测、禁止 GT 泄漏、结果格式和审计记录；
-- RGB-only、RGB+calibration、RGB+geometry 方法分开报告。
+Dynamic Replica 必须使用上述官方 `validation` 根目录的 `frame_annotations_valid.jgz`、`<sequence>/images/` 及同 sequence annotations/geometry；RGBA 输入转 RGB 并记录。**禁止回退到 `dynamic_stereo/train` 或其本地 temporal split**；训练源仅用于训练或明确标注的辅助诊断。文件不可读时记录失败，不替换 split。
 
-Official-native 结果用于回答“方法按照官方设置的实际能力是多少”，不等同于严格相同计算预算下的公平比较。如需要计算预算受控的比较，应另立 Common-input protocol，不得覆盖本规范的结果。
+独立 adapter 必须声明输出类型、坐标系、单位、分辨率、source/target、原生预处理逆映射及 GT 对应规则，不能隐式修改方法输出或混用不同 head。3D 接口为 `xyz[target, xyz, source_pixel_y, source_pixel_x]`，临时 canonical 预测使用 float32。真实 `source=0` 轨迹不能用 `source=5` 冒充。
 
-## 2. 外部方法分类
+## 2. 三个必需主指标与 query
 
-### Group A：RGB-only
+所有 EPE 单位为 **米，越低越好**。WorldBridge4D 自身和外部方法使用同一 query manifest，不运行 exhaustive 441-pair 主评测。
 
-只允许输入 RGB 视频或 RGB 帧。例如只接收视频的 point tracking、pointmap 方法。
+| 主指标 | 固定 JSON 字段 | 拟合与评分 query | 数量 |
+|---|---|---|---:|
+| Pointmap Sim(3) EPE：每帧三维重建精度 | `pointmap_sim3_epe_m` | `source=target=0..20` | 21 |
+| Source=0 tracking Sim(3) EPE：首帧出发的跟踪精度，含首帧重建项 | `source0_tracking_sim3_epe_m` | `source=0, target=0..20` | 21 |
+| Arbitrary tracking Sim(3) EPE：指定源帧出发的跟踪精度，含同帧重建项 | `arbitrary_tracking_sim3_epe_m` | `source∈[5,10,15,20], target=0..20` | 84 |
 
-### Group B：RGB + calibration
+每个 clip 保留 **126 个逻辑评分条目**，对应 **121 个唯一 `(source,target)`**。五个同帧 query `(0,0)/(5,5)/(10,10)/(15,15)/(20,20)` 同时进入 pointmap 和相应 tracking 组，按各组变换独立评分，数值不必相同。能复用原始输出时不得为统计重叠重复运行模型；不同 head 必须记录实际来源。
 
-除 RGB 外，允许使用方法官方要求的 intrinsics 或 camera poses。
+Tracking **不排除 `source=target`**，因此不能称为纯跨帧 EPE。Arbitrary 仅使用四个 source，不混入 source=0；source-conditioned 方法最多执行四个 arbitrary source inference。不支持的指标记 `unsupported`/`null`，不能伪造。
 
-### Group C：RGB + geometry
+## 3. Sim(3)、评分与汇总
 
-允许使用 depth、segmentation、GT tracks 或其他 GT 几何信息。
+### 3.1 对齐
 
-Group C 结果不能与 Group A/B 合并为同一主榜单，只能作为独立参考或 upper-bound。第一阶段优先运行 Group A。
-
-## 3. 外部方法目录
-
-所有外部方法、checkpoint、配置和输出统一放在独立目录，不写入 WorldBridge4D 主代码仓库：
+默认在 evaluator 中用确定性 closed-form Umeyama 将预测对齐到 GT：
 
 ```text
-/data/WorldBridge4D-inference/
-├── repos/
-│   ├── vdpm/
-│   ├── <method_x>/
-│   └── <method_y>/
-├── checkpoints/
-│   ├── vdpm/
-│   ├── <method_x>/
-│   └── <method_y>/
-├── configs/
-│   ├── vdpm.yaml
-│   └── <method_x>.yaml
-├── benchmark/
-│   ├── kubric.jsonl
-│   ├── pointodyssey.jsonl
-│   └── dynamic_replica.jsonl
-└── results/
-    └── <method>/<run_id>/
+aligned = scale * prediction @ rotation.T + translation
 ```
 
-每次运行的结果目录至少包含：
+- Pointmap：每个 clip 的 21 个 diagonal pointmap 联合拟合 **一个**变换。
+- Tracking：每个 clip、每个 source `0/5/10/15/20` 各拟合 **一个**变换，使用该 source 全部 21 个 target 的有效点，包括同帧项。完整 clip 共六个变换。
+- 使用 proper rotation（`det(R)=+1`，尺度与反射修正一致）。不得逐 frame/point/trajectory 单独拟合，或跨 source 复用变换。
+- 少于 3 个有效对应点、退化点集等记录具体失败状态，不能用单位变换冒充成功。其他算法（如官方 RANSAC）须记录实现、种子和采样规则，并与默认结果分开标注。
+- GT 仅用于 evaluator 拟合/评分，不得泄漏到 RGB-only 推理输入。
+
+### 3.2 EPE 与聚合
+
+1. 每点误差为 `||aligned_prediction - GT||₂`。使用 GT-valid 且 GT 有限的点，target 遮挡但有效的点仍参加评分；这些点上的非有限预测记失败，不能通过过滤改善分数。
+2. 每个 query 保存 `error_sum_m`、`valid_points` 和 `epe_m = error_sum_m / valid_points`。GT 空项记 `empty_gt`，误差和/点数为 0，EPE 为 `null`；缺预测、缺 GT 文件等不能当作空 GT。
+3. **Pointmap / source=0**：分别在各自 21 个 query 上求 `sum(error_sum_m) / sum(valid_points)`。
+4. **Arbitrary**：先在每个 source 的 21 个 target 内按有效点加权求 EPE，再求 `(EPE_5 + EPE_10 + EPE_15 + EPE_20) / 4`。保持历史四 source 等权口径，不将全部 84 对的点合并加权。
+5. 某组没有有效评分点，或必需 source 无法拟合/评分时，该组主指标为 `null`；部分均值只能另存为明确标注的诊断。
+6. **数据集**：对每项成功评测的 clip EPE 等权平均，同时报告覆盖率。**Macro Average**：三个数据集指标等权平均；不足三个可用数据集时为 `null`，不得冒充完整平均。
+
+Raw EPE、XYZ MAE、visible/occluded-valid、short/long-gap、late-appearing、重投影误差均为可选诊断；若配置启用，须在清理预测前保存。Visibility 仅用于诊断分组。仅输出 2D tracks 的方法单独报告 pixel error、PCK、visible/occluded、long-term 和 failure rate，不做 Sim(3)，不与 3D EPE 混列。
+
+## 4. 最终输出格式
+
+所有外部 repo、权重、配置、benchmark 和运行输出置于 `/data/WorldBridge4D-inference/`，不得提交到主代码 Git。每次运行保存：
 
 ```text
-<method>/<run_id>/
-├── run_manifest.json
+results/<method>/<run_id>/
+├── run_manifest.json          # 配置/代码/数据来源、校验值、命令和运行元信息
 ├── resolved_config.yaml
 ├── environment.txt
 ├── stdout.log
-├── predictions/
-├── metrics.json
-└── failures.jsonl
+├── predictions/               # 临时 .npz/.safetensors；清理后可为空
+├── metrics/<clip_id>.json     # 永久保存逐 query / clip 指标和对齐变换
+├── metrics.json               # 数据集及 Macro Average 汇总
+├── failures.jsonl
+└── cleanup.jsonl              # 永久保存删除审计
 ```
 
-模型权重、外部 repo、推理结果和生成中间文件不得提交到 `/data/WorldBridge4D` 的 Git 仓库。
+### 4.1 逐 clip JSON
 
-## 4. 数据集与 benchmark manifest
-
-三个数据集分别使用固定 manifest：
-
-```text
-benchmark/
-├── kubric.jsonl
-├── pointodyssey.jsonl
-└── dynamic_replica.jsonl
-```
-
-每条记录至少包含：
+下面是 **pending 模板**，不是实际结果。三个主指标字段必须始终存在；无值用 `null`，禁止 NaN/Infinity。
 
 ```json
 {
+  "metric_protocol_version": "v1-three-sim3-metrics-diagonal-source-macro-20260905",
+  "method": "vdpm",
   "dataset": "pointodyssey",
-  "clip_id": "...",
-  "parent_id": "...",
-  "split": "validation",
-  "frame_indices": [...],
-  "rgb_source": "...",
-  "gt_source": "..."
-}
-```
-
-Dynamic Replica 的 canonical external-validation manifest 必须从官方 `valid` release
-生成，RGB 根目录固定为：
-
-```text
-/dataset/data/Dynamic_dataset/dynamic_stereo/validation
-```
-
-该目录包含官方 `frame_annotations_valid.jgz` 和各 valid sequence 的 `images/`、
-`trajectories/` 等数据。上游 README 以 `valid/` 表示该 split；本机解压后 sequence
-目录直接位于上述 `validation/` 目录下。`dynamic_stereo/train` 及其本地 temporal
-split 只允许用于训练或单独标注的辅助诊断，不得进入本规范的 Dynamic Replica
-validation benchmark。
-
-要求：
-
-- benchmark clip 列表冻结后不能因为某方法失败而更换；
-- train 和 validation/test 必须按 parent/scene 隔离；
-- 不使用训练 GT；
-- 方法无法处理某个 clip 时记录 failure，不得静默跳过；
-- 先使用 validation 做适配和比较；
-- 方法、配置和 checkpoint 冻结后再运行 test；
-
-## 5. 当前 RGB 数据源
-
-当前机器上三个数据集的 RGB 均可访问，但格式不同：
-
-| 数据集 | RGB 数据源 | 输入读取方式 |
-|---|---|---|
-| Kubric/MOVi-F | `/dataset/nas0/yejun/MOVi-F/512x512` | 从 TFRecord 的 `video` 字段解码 |
-| PointOdyssey | `/dataset/nas0/PointOdyssey` | 从 MP4 解码 |
-| Dynamic Replica 官方 `valid` | `/dataset/data/Dynamic_dataset/dynamic_stereo/validation` | 按官方 sequence 顺序读取 PNG |
-
-各外部方法使用自己的官方 RGB loader。Dynamic Replica validation 必须读取官方
-`validation/<sequence>/images/`，并以 `frame_annotations_valid.jgz` 及同一 sequence
-下的官方 annotations/geometry 作为 GT 源。PNG 可能带 alpha 通道，RGB-only 方法输入
-前须将 RGBA 转成 RGB，并在配置中记录该处理。训练仍可使用
-`/dataset/data/Dynamic_dataset/dynamic_stereo/train`，但训练源不能复用为 validation。
-
-## 6. Official-native 输入协议
-
-每个方法允许使用其官方推荐的：
-
-- 输入帧数和 temporal sampling；
-- 输入分辨率；
-- resize、crop 或 padding；
-- RGB normalization；
-- frame ordering；
-- checkpoint 和官方后处理。
-
-但是 benchmark 的 clip/scene 身份和可使用的原始 RGB 帧必须由固定 manifest 指定。方法不能自行替换 benchmark clip 或使用其他 split 的数据。
-
-## 7. 固定预算 arbitrary tracking
-
-第一阶段不进行 exhaustive arbitrary audit，不要求每个方法运行全部 `21×21=441` 个 `(source,target)` 组合。
-
-主评测固定使用以下 query 集合：
-
-```text
-pointmap:
-  source=target=0..20                         # 21 pairs
-
-first_frame_tracking:
-  source=0, target=0..20                      # 21 pairs
-
-arbitrary_tracking:
-  source ∈ [5, 10, 15, 20]
-  target ∈ [0, 1, ..., 20] 且 target != source # 4×20=80 pairs
-```
-
-因此每个 clip 的主评测包含 122 个逻辑 query 条目，其中 arbitrary tracking 固定为 80 个 source-positive pairs。`(source=0,target=0)` 同时属于 pointmap 和 first-frame tracking，分别进入两组汇总，因此 122 个逻辑条目对应 121 个唯一 `(source,target)` 推理结果；实现不得为这个重叠条目重复运行模型。固定 source 覆盖中间帧、forward/backward、短间隔和长间隔；`source=0` 单独作为 first-frame tracking，不混入 arbitrary 指标。
-
-所有方法使用相同的 source/target manifest。一次性输出完整视频轨迹的方法只需由 evaluator 抽取这 122 个逻辑条目；source-conditioned 方法最多执行 4 个 arbitrary source inference。只能处理 `source=0` 的方法可以参加 pointmap 和 first-frame tracking，但 arbitrary tracking 记为 `N/A`。WorldBridge4D 自身的 validation evaluator 也必须使用同一 fixed-budget query manifest，不再将 exhaustive `21×21` 结果作为主诊断。
-
-方法必须能将输出对齐到 benchmark 的 canonical timestamps，才能参加这组 arbitrary 指标；不能对缺失的 source/target 结果静默插值或伪造。若官方 temporal protocol 不支持这些时间点，应记录为 unsupported/failure，并报告覆盖率。
-
-每次运行必须记录实际：
-
-- 输入帧数；
-- 输入 frame indices/timestamps；
-- 输入分辨率；
-- crop/resize/pad 规则；
-- normalization；
-- 是否使用额外输入；
-- 是否执行 test-time optimization。
-
-禁止向 RGB-only 方法提供：
-
-- GT depth；
-- GT XYZ；
-- GT segmentation；
-- GT visibility；
-- GT camera pose；
-- GT tracks。
-
-如果某方法官方要求 intrinsics、camera pose 或 depth，必须归入相应输入类别，不能和 RGB-only 结果混合比较。
-
-## 8. 输出与 adapter
-
-推理阶段保留外部方法的原始官方输出。评测阶段通过独立 adapter 转换为统一评测接口，不在 evaluator 中隐式修改方法输出。
-
-统一元数据格式：
-
-```json
-{
-  "method": "vdpm",
-  "dataset": "kubric",
-  "clip_id": "...",
-  "coordinate_frame": "...",
+  "clip_id": "pointodyssey/val/example/start000000",
   "unit": "meters",
-  "output_type": "dense_3d_pointmap",
-  "source_frames": [...],
-  "target_frames": [...],
-  "resolution": ["H", "W"]
+  "status": "pending",
+  "metrics": {
+    "pointmap_sim3_epe_m": null,
+    "source0_tracking_sim3_epe_m": null,
+    "arbitrary_tracking_sim3_epe_m": null
+  },
+  "metric_status": {
+    "pointmap_sim3_epe_m": "pending",
+    "source0_tracking_sim3_epe_m": "pending",
+    "arbitrary_tracking_sim3_epe_m": "pending"
+  },
+  "aggregation": {
+    "pointmap": "valid_point_weighted_over_21_diagonal_queries",
+    "source0_tracking": "valid_point_weighted_over_21_targets_including_diagonal",
+    "arbitrary_tracking": "valid_point_weighted_per_source_over_21_targets__equal_mean_of_4_sources",
+    "dataset": "equal_mean_of_successful_clip_metrics",
+    "macro_average": "equal_mean_of_3_dataset_metrics"
+  },
+  "include_diagonal_in_tracking_score": true,
+  "arbitrary_tracking_sim3_epe_m_per_source": {"5": null, "10": null, "15": null, "20": null},
+  "expected_scoring_queries": {"pointmap": 21, "source0_tracking": 21, "arbitrary_tracking": 84},
+  "query_metrics": [],
+  "alignment": {
+    "algorithm": "closed_form_umeyama",
+    "direction": "prediction_to_gt",
+    "formula": "aligned = scale * prediction @ rotation.T + translation",
+    "transforms": []
+  },
+  "provenance": {
+    "run_manifest": "run_manifest.json",
+    "run_manifest_sha256": null,
+    "evaluator_commit": null,
+    "dataset_manifest_sha256": null,
+    "prediction_files": []
+  },
+  "cleanup": {"state": "retained", "audit_file": "cleanup.jsonl"}
 }
 ```
 
-外部方法可能输出：
+完整输出必须满足：
 
-- 2D point tracks；
-- 3D point tracks；
-- per-frame depth；
-- dense pointmaps；
-- world-coordinate points；
-- camera-coordinate points；
-- inverse depth。
+| 内容 | 必需字段/约束 |
+|---|---|
+| `status` | 三项均成功才为 `succeeded`；否则 `pending/partial/failed` |
+| `metric_status` | 每项为 `succeeded/pending/unsupported/insufficient_valid_points/degenerate_fit/failed`；非成功项附原因 |
+| `query_metrics` | **126 条**；每条含 `group`（`pointmap/source0_tracking/arbitrary_tracking`）、`source, target, error_sum_m, valid_points, epe_m, status`；GT 空项按 §3.2，其他失败误差值为 `null` |
+| `arbitrary_tracking_sim3_epe_m_per_source` | 四个 source EPE；任一缺失则主 arbitrary EPE 为 `null` |
+| `alignment.transforms` | **六条**；每条含 `group, source, fit_scope, fit_targets, fit_points, scale, rotation, translation, status`；pointmap 的 source 为 `null`，fit_targets 为完整 `0..20`，rotation 为 3×3、translation 为 3；失败变换值为 `null` 并附原因 |
+| `provenance` | 填入实际校验值；`prediction_files` 保存原始/对齐预测的路径、字节数和 SHA-256 |
 
-adapter 必须显式声明输出类型、坐标系、单位和转换方法。不能把不同坐标定义隐式视为相同。
+必须保留逐 query 统计和变换，不能只保留三个均值。
 
-对于能输出 3D pointmap/3D tracking 的方法，评测接口应能表达：
+### 4.2 汇总与复现记录
 
-```text
-xyz[target, xyz, source_pixel_y, source_pixel_x]
-```
+`metrics.json` 含 `metric_protocol_version, method, input_type, unit, aggregation`，以及 `datasets`（键 `kubric/pointodyssey/dynamic_replica`）和 `macro_average`：
 
-如果方法只能输出 2D tracks，则只进入 2D tracking 评测，不得伪造 3D EPE。
+- 每个数据集保存同名三项 `metrics`；保存 `expected_clips, evaluated_clips, succeeded_clips, partial_clips, failed_clips, pending_clips`。四种状态之和等于 manifest clip 数，`evaluated = expected - pending`。
+- `metric_coverage` 按三个指标键保存 `succeeded_clips, expected_clips, coverage`（两者之比）和失败原因计数，包括 unsupported/有效点不足。
+- `failure_rate = failed / expected`；`incomplete_rate = (partial + failed + pending) / expected`。分母为 0 时为 `null`。
+- `macro_average.metrics` 使用同样三个键，逐项记录 `contributing_datasets`，按 §3.2 聚合。任何缺项都须标注覆盖率，不能称为全量完成。
 
-## 9. 评测指标
+主表列为：`Method | Input Type | Dataset | Pointmap Sim(3) EPE | Source=0 tracking Sim(3) EPE | Arbitrary tracking Sim(3) EPE | Coverage(each) | Failure Rate | Incomplete Rate`。每方法有三个数据集及 Macro Average 四行，无值填 `N/A` 并说明原因。
 
-### 9.1 3D pointmap / 3D tracking
+运行 manifest/配置/环境须保存：代码与 evaluator commit、checkpoint/benchmark SHA-256、命令、seed、设备/dtype、包/CUDA 版本、实际输入帧索引/timestamps/分辨率、crop/resize/pad/normalization、坐标单位及 GT 映射、额外输入/后处理/test-time optimization，以及逐 clip 耗时、峰值显存、成功/失败原因和确定性信息。确定性方法运行一次，随机方法至少三个 seed，报告 `mean ± sample std`。
 
-统一报告：
+## 5. 指标完成后删除预测
 
-- 3D endpoint error（EPE，单位米）；
-- XYZ MAE；
-- visible EPE；
-- occluded-valid EPE；
-- `source=0` tracking EPE；
-- fixed-budget arbitrary source-target EPE；
-- short-gap / long-gap EPE；
-- late-appearing EPE；
-- target-camera reprojection error（适用时）。
+**按 clip 校验后删除原始及对齐的大型预测，释放磁盘空间；推荐只在内存中对齐，不再落盘第二份大数组。** 预测在评测完成前须完整保留，可分 chunk 推理但不能丢失必需数据。
 
-其中：
+1. 完成三个主指标和已启用的可选诊断。原子持久化逐 clip JSON（临时文件、flush/fsync、rename、同步目录），再读回校验。
+2. 校验三个主指标均成功、有限非负，126 条 query 和六个变换完整，source/target/GT 对应正确，逐 query 统计能按 §3.2 重建汇总；验证 provenance、预测和 JSON 校验值。**不能仅凭 JSON 存在或旧 `status=succeeded` 就删除。**
+3. 更新并持久化汇总及覆盖率。同步写入 `cleanup.jsonl` 的 `authorized` 记录：run/clip、指标 JSON SHA-256、待删准确路径/SHA-256/字节数、时间。
+4. 仅删除清单中该 clip、该 run 的预测；记录 `deleted`、释放字节数、时间/错误，更新 `cleanup.state`。若 JSON 随清理状态更新，另记新 SHA-256，保留清理前校验值。允许幂等重试，不得通配删除未评测文件。
+5. 永久保留指标、变换、配置、manifest、日志、校验和失败/删除审计。不得删除数据集、GT、checkpoint、repo 或其他运行文件。
 
-- pointmap 使用 `source=target`；
-- first-frame tracking 使用 `source=0`；
-- arbitrary tracking 使用固定 80 个合法的 `(source,target)` 查询；
-- visibility 只用于分组统计；
-- GT validity/occlusion mask 只在 evaluator 中使用。
+`pending/partial/failed`、有效点不足或必需组 unsupported 时**禁止自动删除**，需另行明确确认才能放弃预测。恢复时先检查指标及清理记录，不因“预测文件已不存在”就重复推理。
 
-### 9.2 默认 Sim(3) 对齐
+删除后不能重新可视化、修改评分协议或补算未保存指标；需要这些功能时必须重新推理。
 
-对于 RGB-only 单目 3D/4D 重建和 3D tracking，**默认主指标必须使用 Sim(3) 对齐**。Sim(3) 包含统一尺度、旋转和平移，用于消除单目方法输出坐标系与 GT 坐标系之间的 gauge ambiguity；它不消除几何形状或运动误差。
+## 6. 历史兼容与执行流程
 
-固定规则如下：
+旧 `tracking_sim3_epe_m_mean` 的 84-pair、四 source 等权口径与本协议一致。核对 `sources=[5,10,15,20]`、`targets=0..20`、四个有限 EPE 及均值后，可保留其数值，标记 `origin="legacy_json"`、原始协议/evaluator、源 JSON 路径和 SHA-256。但 GT 映射、拟合器及非有限预测处理仍须审计后才能混入同一主榜。
 
-- tracking：每个 clip、每个 source 单独拟合一个 Sim(3)，使用该 source 的全部 21 个 target 和全部有效 GT 点；
-- pointmap：每个 clip 拟合一个 Sim(3)，使用 21 个 diagonal pointmaps 的全部有效 GT 点；
-- 不允许逐 frame、逐 point 或逐 trajectory 单独拟合；
-- GT 只允许在 evaluator 中用于拟合和评分，绝不能作为 RGB-only 方法的输入；
-- 原始未对齐预测必须保留，作为 raw metric-scale diagnostic；
-- 主表报告 Sim(3)-aligned EPE，另报告 raw EPE；
-- 对齐变换、拟合点数、拟合范围和算法必须写入 metrics/metadata；
-- 2D tracking 不进行 Sim(3) 对齐。
-
-默认 evaluator 使用确定性的 closed-form Umeyama Sim(3) 拟合；若复现外部方法官方 RANSAC/对齐实现，必须显式记录实现、随机种子和拟合采样规则，不能与默认结果混称。
-
-因此，当前 V1 的 3D 主指标定义为：
-
-```text
-primary = Sim(3)-aligned EPE
-secondary = raw EPE
-```
-
-### 9.3 2D tracking
-
-只能输出 2D track 的方法单独报告：
-
-- average pixel error；
-- PCK；
-- visible/occluded tracking；
-- long-term tracking；
-- failure rate。
-
-2D 指标不能与 3D EPE 排在同一指标列中。
-
-### 9.4 汇总格式
-
-```text
-Method | Input Type | Dataset | Pointmap EPE | Tracking EPE | Occluded EPE | Late EPE | Failure Rate
-```
-
-每个方法必须有：
-
-```text
-Kubric
-PointOdyssey
-Dynamic Replica
-Macro Average
-```
-
-## 10. 可复现性记录
-
-每个方法、每个数据集、每次运行必须保存：
-
-```json
-{
-  "method": "vdpm",
-  "checkpoint": "...",
-  "checkpoint_sha256": "...",
-  "code_repo": "...",
-  "code_commit": "...",
-  "dataset_manifest_sha256": "...",
-  "input_protocol": "official_native",
-  "seed": 2026,
-  "device": "cuda:0",
-  "dtype": "float16",
-  "extra_inputs": [],
-  "postprocess": "...",
-  "status": "succeeded"
-}
-```
-
-同时记录：
-
-主 benchmark 的 tracking 推理结果必须保存，不仅保存汇总指标。每个 clip 至少保存：
-
-```text
-predictions/<clip_id>.safetensors
-```
-
-其中包含四个 arbitrary source（`5/10/15/20`）对应的全部 80 个 target 预测，以及 pointmap/first-frame 结果（如果方法支持）。canonical prediction 使用 `float32`，并记录 source、targets、坐标系、单位、输出分辨率和 SHA-256。推理过程中仍可按 chunk 计算，但不得因 chunk 而丢弃主 benchmark 预测。
-
-第一阶段不运行和保存 exhaustive 441-pair 结果；相关目录和指标不作为 V1 必需产物。
-
-同时记录：
-
-- inference command；
-- resolved method config；
-- Python/package/CUDA 环境；
-- checkpoint SHA-256；
-- 每个 clip 的推理耗时；
-- 峰值显存；
-- 成功和失败 clip 数；
-- 每个失败的具体原因；
-- 是否为确定性运行；
-- 随机方法使用的 seed。
-
-确定性方法默认运行一次；随机方法至少运行 3 个 seed，并报告 `mean ± sample std`。
-
-## 11. 运行阶段
-
-### Stage 1：Smoke test
-
-每个方法在每个数据集上先运行 3–5 个 clip，检查：
-
-- repo 和依赖可运行；
-- checkpoint 可加载；
-- RGB loader 正常；
-- 输出非空且 shape 正确；
-- 坐标系和单位明确；
-- 输出可被 evaluator 读取；
-- 不发生 GT 输入泄漏。
-
-### Stage 2：Validation benchmark
-
-配置冻结后运行完整 validation split，并保存每个 clip 的固定预算 prediction：
-
-```text
-Kubric validation
-PointOdyssey validation
-Dynamic Replica official `valid` evaluation release
-```
-
-此阶段用于正式方法比较，但不再因单个方法表现调整 benchmark clip。Dynamic Replica
-不得回退到本地 train-root temporal split；若官方 sequence 或 annotation 无法读取，
-必须记录 failure/coverage，不得用本地 split 静默替换。
-
-### Stage 3：Final test
-
-所有方法、配置、checkpoint 和 adapter 冻结后运行 test split。test 结果只用于最终报告，不再进行调参或更改预处理。test 也只运行固定预算 query，不进行 exhaustive audit。
-
-## 12. 推荐统一入口
-
-未来统一入口可以采用：
-
-```bash
-python scripts/inference/run_method.py \
-  --method vdpm \
-  --config /data/WorldBridge4D-inference/configs/vdpm.yaml \
-  --benchmark /data/WorldBridge4D-inference/configs/benchmark_three_dataset_v1.yaml \
-  --output /data/WorldBridge4D-inference/results/vdpm/<run_id>
-```
-
-第一阶段先接入 RGB-only 方法。Dynamic Replica 的 Stage 1/2 输入固定使用官方
-`valid` release；当前机器已将其部署到
-`/dataset/data/Dynamic_dataset/dynamic_stereo/validation`，并核验
-`frame_annotations_valid.jgz`。在生成官方 manifest、GT adapter 并冻结其 SHA-256
-后，先执行 Stage 1 smoke test，再进入完整 validation。训练用的 `train` temporal
-split 不得作为官方结果标签。
+执行顺序：每方法每数据集先用 3–5 clips 做 smoke test（依赖、权重、RGB/shape、坐标单位、evaluator、无 GT 泄漏）→ 冻结配置跑完整 validation → 冻结方法/checkpoint/adapter 后跑 test，test 不再调参。两阶段均按固定 query 输出指标并按 §5 清理，不以 exhaustive 441-pair 替代。
