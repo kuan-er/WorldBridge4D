@@ -1233,7 +1233,7 @@ h030_h027_140k_cycle_all_w03_gpu67_k13_b1:
     sha256: aeee1383958eb9bf3f2b2311a024b41b5c93fb5991ae8f26fa4524009bad9af7
     artifact: artifact://H030/R-20260904083805-2ef397/checkpoint/aeee1383958eb9bf
 h030_h027_140k_cycle_all_batch_norm30_gpu56_k13_b1:
-  status: queued_waiting_for_gpu_lease
+  status: running_tracking_active
   task: T-20260901153324-39dd05
   run: R-20260905052559-4b4a54
   start_checkpoint: /data/WorldBridge4D-runs/h030-h027-130k-cycle-kubric-gpu57-k13-shared4/checkpoint-0140000.pt
