@@ -1232,4 +1232,23 @@ h030_h027_140k_cycle_all_w03_gpu67_k13_b1:
     path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-w03-gpu67-k13-b1-r2/checkpoint-0150000.pt
     sha256: aeee1383958eb9bf3f2b2311a024b41b5c93fb5991ae8f26fa4524009bad9af7
     artifact: artifact://H030/R-20260904083805-2ef397/checkpoint/aeee1383958eb9bf
-updated_at: 2026-09-05T04:33:28Z
+h030_h027_140k_cycle_all_batch_norm30_gpu56_k13_b1:
+  status: queued_waiting_for_gpu_lease
+  task: T-20260901153324-39dd05
+  run: R-20260905052559-4b4a54
+  start_checkpoint: /data/WorldBridge4D-runs/h030-h027-130k-cycle-kubric-gpu57-k13-shared4/checkpoint-0140000.pt
+  physical_gpus: [5, 6]
+  resource_mode: shared
+  min_free_memory_mib: 15000
+  world_size: 2
+  microbatch_per_gpu: 1
+  gradient_accumulation: 4
+  targets_per_source: 13
+  start_step: 140000
+  target_step: 150000
+  cycle: all_three_datasets_batch_local_normalized_to_xyz_ratio0.3
+  normalization_epsilon: 1.0e-6
+  normalization_max_scale: 1000.0
+  tests_passed: 53
+  wandb: enabled
+updated_at: 2026-09-05T05:26:01Z
