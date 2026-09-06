@@ -41,7 +41,7 @@ from .lazy_vae import (
 from .cycle import camera_batch, pixel_cycle_loss
 from .objective import loss_scale_to_reference, masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
-from .schedulers import apply_cosine_schedule, training_diagnostic_due
+from .schedulers import apply_cosine_schedule, apply_lr_restart_schedule, training_diagnostic_due
 from .tracking import init_wandb, load_stats
 
 _STOP = False
@@ -382,6 +382,13 @@ def main() -> None:
             }), flush=True)
     if start_step >= target_steps:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
+    lr_restart = config.get("lr_restart")
+    if lr_restart is not None:
+        if not int(lr_restart["start_step"]) <= start_step < target_steps <= int(lr_restart["end_step"]):
+            raise ValueError("restored checkpoint/target outside LR restart phase")
+        if rank == 0:
+            print(json.dumps({"event": "lr_restart_phase", "restored_step": start_step,
+                              "protocol": lr_restart, "optimizer_moments": "preserved"}), flush=True)
     run = init_wandb(config, output, rank, args.disable_wandb)
     accumulation = int(config["gradient_accumulation"])
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
@@ -646,13 +653,16 @@ def main() -> None:
             gradient_norm = fsdp.clip_grad_norm_(float(config["gradient_clip"]))
             if not torch.isfinite(gradient_norm):
                 raise FloatingPointError(f"non-finite gradient norm at step={step + 1}")
-            lr_factor = apply_cosine_schedule(
-                optimizer,
-                step + 1,
-                int(config["warmup_steps"]),
-                int(config["schedule_horizon_steps"]),
-                None if extension_start is None else int(extension_start),
-                None if extension_horizon is None else int(extension_horizon),
+            lr_factor = (
+                apply_lr_restart_schedule(optimizer, step + 1, lr_restart)
+                if lr_restart is not None else apply_cosine_schedule(
+                    optimizer,
+                    step + 1,
+                    int(config["warmup_steps"]),
+                    int(config["schedule_horizon_steps"]),
+                    None if extension_start is None else int(extension_start),
+                    None if extension_horizon is None else int(extension_horizon),
+                )
             )
             warmup_groups = (
                 {"wan_backbone", "dense_decoder"}
@@ -666,7 +676,7 @@ def main() -> None:
                 start_step,
                 int(config.get("joint_fresh_group_warmup_steps", 0)),
                 float(config.get("joint_fresh_group_max_lr_scale", 1.0)),
-            ) if warmup_groups else 1.0
+            ) if warmup_groups and lr_restart is None else 1.0
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
             completed = step + 1
             clips_seen[name] += world * accumulation * microbatch_per_gpu

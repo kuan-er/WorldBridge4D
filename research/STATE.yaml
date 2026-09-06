@@ -1277,7 +1277,11 @@ h030_h027_140k_cycle_all_batch_norm30_gpu56_k13_b1:
     sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
     artifact: artifact://H030/R-20260905052559-4b4a54/checkpoint/d682a5d53f41c06c
 h030_matched_post_training_diagnostics:
-  status: implementation_preflight_pending
+  status: cancelled_by_user_before_full_diagnostic
+  tests_passed: 25
+  cpu_preflight_run: R-20260906101912-5967d7
+  terminated_gate: R-20260906102022-ff9165
+  terminated_preparation: R-20260906102140-f6c609
   task: T-20260901153324-39dd05
   protocol: configs/h030_matched_diagnostics.yaml
   entrypoint: python -m worldbridge.evaluation.diagnostics
@@ -1295,4 +1299,25 @@ h030_matched_post_training_diagnostics:
   cuda_allocator_budget_gib: 12
   output_root: /data/WorldBridge4D-runs/diagnostics-h030-150k-20260906
   unresolved: PointOdyssey configured raw mount is absent; preparation must audit and report missing validation inputs without replacement
-updated_at: 2026-09-06T10:20:00Z
+h030_150k_lrrestart_gpu23_b2_k19:
+  status: preparing_user_requested_training
+  task: T-20260901153324-39dd05
+  config: configs/h030_150k_lrrestart_gpu23_b2_k19.yaml
+  physical_gpus: [2, 3]
+  world_size: 2
+  microbatch_per_gpu: 2
+  gradient_accumulation: 2
+  targets_per_source: 19
+  effective_clips_per_update: 8
+  supervised_pairs_per_update: 152
+  start_step: 150000
+  target_step: 155000
+  start_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  model: unchanged_h027_decoder_only
+  cycle: unchanged_all_dataset_batch_normalized_ratio0.3
+  learning_rate_phase: explicit_500_step_warmup_then_hold
+  peak_actual_learning_rates: {dense_decoder: 0.000003, source_rgb: 0.00003}
+  optimizer_moments: preserved
+  output: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19
+  diagnostic_inference: stopped
+updated_at: 2026-09-06T10:33:00Z

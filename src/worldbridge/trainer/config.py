@@ -101,14 +101,17 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             raise ValueError("cycle_reprojection_normalization_max_scale must be positive")
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
-    allowed_batching = {(4, 1), (4, 2)} if cycle_enabled else {(2, 2)}
+    cycle_b2_k19 = bool(config.get("cycle_b2_a2_k19", False))
+    if cycle_b2_k19 and not cycle_enabled:
+        raise ValueError("cycle_b2_a2_k19 requires the cycle objective")
+    allowed_batching = {(2, 2)} if cycle_b2_k19 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})
     if (accumulation, microbatch) not in allowed_batching:
         expected = " or ".join(
             f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 13 if cycle_enabled else 19
+    required_targets = 13 if cycle_enabled and not cycle_b2_k19 else 19
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
@@ -129,6 +132,22 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     if diagnostic_every < 1:
         raise ValueError("diagnostic_every_steps must be positive")
+    restart = config.get("lr_restart")
+    if restart is not None:
+        if mode != "decoder_only":
+            raise ValueError("LR restart currently requires decoder_only")
+        start = int(restart["start_step"])
+        end = int(restart["end_step"])
+        warmup = int(restart["warmup_steps"])
+        if not 0 <= start < start + warmup < end or int(config["max_steps"]) > end:
+            raise ValueError("invalid LR restart phase interval")
+        rates = restart["group_learning_rates"]
+        if set(rates) != {"dense_decoder", "source_rgb_decay", "source_rgb_no_decay"}:
+            raise ValueError("LR restart requires explicit rates for all decoder/RGB groups")
+        if any(not np.isfinite(float(rate)) or float(rate) <= 0 for rate in rates.values()):
+            raise ValueError("LR restart rates must be finite and positive")
+        if config.get("schedule_extension_start_step") is not None:
+            raise ValueError("LR restart must not also enable legacy cosine extension")
     extension_start = config.get("schedule_extension_start_step")
     extension_horizon = config.get("schedule_extension_horizon_steps")
     if (extension_start is None) != (extension_horizon is None):
