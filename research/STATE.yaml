@@ -1409,7 +1409,16 @@ h030_native_reuse_10k:
   prior_run_to_stop: R-20260906113542-e51a6d
   output: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k19
 h030_native_reuse_k15_10k:
-  status: running_initialization_first_update_pending
+  status: running_past_previous_oom_region
+  last_observed_step: 150135
+  last_observed_step_at: 2026-09-06T13:11:57.212Z
+  recent_logged_step_seconds_range: [3.4479, 4.5651]
+  peak_cuda_memory_gib: 63.32874393463135
+  last_observed_lr_factor: 0.27
+  verified_checkpoint_step: 150100
+  verified_checkpoint_artifact: artifact://H030/R-20260906125858-4dd8d0/checkpoint/99d800f2a799848c
+  verified_checkpoint_sha256: 99d800f2a799848c001c867d45fd3c56fedf9365b393a102198093059a299c23
+  next_review: warmup_complete150500_or_oom
   run: R-20260906125858-4dd8d0
   tests_passed: 66
   started_at: 2026-09-06T12:59:36.724Z
@@ -1433,4 +1442,4 @@ h030_native_reuse_k15_10k:
   cycle: unchanged_all_dataset_batch_normalized_ratio0.3
   checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
   output: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k15
-updated_at: 2026-09-06T12:59:00Z
+updated_at: 2026-09-06T13:13:12Z
