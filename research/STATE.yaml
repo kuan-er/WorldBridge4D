@@ -1309,7 +1309,8 @@ h030_matched_post_training_diagnostics:
   output_root: /data/WorldBridge4D-runs/diagnostics-h030-150k-20260906
   unresolved: PointOdyssey configured raw mount is absent; preparation must audit and report missing validation inputs without replacement
 h030_150k_lrrestart_gpu23_b2_k19:
-  status: preparing_allocator_fix_resume
+  status: allocator_fix_resume_submitted
+  recovery_run: R-20260906110313-74d800
   initial_run_failure: cuda_oom_backward_with_13.62gib_reserved_unallocated
   recovery_step: 150010
   recovery_checkpoint: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19/checkpoint-0150010.pt
@@ -1355,4 +1356,4 @@ h030_150k_lrrestart_gpu23_b2_k19:
   optimizer_moments: preserved
   output: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19
   diagnostic_inference: stopped
-updated_at: 2026-09-06T10:49:00Z
+updated_at: 2026-09-06T11:04:00Z
