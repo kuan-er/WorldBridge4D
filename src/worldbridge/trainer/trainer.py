@@ -42,6 +42,7 @@ from .lazy_vae import (
 from .cycle import camera_batch, pixel_cycle_loss
 from .objective import loss_scale_to_reference, masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
+from .precision import assert_fp32_optimizer_storage, prepare_fsdp_master_parameters
 from .schedulers import apply_cosine_schedule, apply_lr_restart_schedule, training_diagnostic_due
 from .tracking import init_wandb, load_stats
 
@@ -250,6 +251,8 @@ def main() -> None:
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
         raise RuntimeError(f"non-Wan readout parameters {non_wan_count:,} != expected {expected_non_wan:,}")
+    master_precision = str(config.get("fsdp_master_precision", "model"))
+    prepare_fsdp_master_parameters(model, master_precision)
     finetune_payload: dict[str, Any] | None = None
     finetune_state: dict[str, Any] | None = None
     finetune_rng_states: list[Any] = []
@@ -383,6 +386,12 @@ def main() -> None:
                 "event": "resume_state_loaded", "step": start_step,
                 "world_size": world, "optimizer": "restored", "rng_states": len(resume_rng_states),
             }), flush=True)
+    if master_precision == "fp32":
+        assert_fp32_optimizer_storage(optimizer)
+        if rank == 0:
+            print(json.dumps({"event": "fp32_master_storage_verified", "step": start_step,
+                              "parameters": "float32", "adam_moments": "float32",
+                              "compute_precision": config["precision"]}), flush=True)
     if start_step >= target_steps:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
     lr_restart = config.get("lr_restart")

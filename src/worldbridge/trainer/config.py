@@ -75,6 +75,11 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError(f"incorrect initial layer weights: {weights}")
     if world != 2:
         raise ValueError(f"production training requires exactly 2 ranks; got {world}")
+    master_precision = str(config.get("fsdp_master_precision", "model"))
+    if master_precision not in {"model", "fp32"}:
+        raise ValueError("fsdp_master_precision must be model or fp32")
+    if master_precision == "fp32" and (config.get("precision") != "bf16" or mode != "decoder_only"):
+        raise ValueError("FP32 master trial requires BF16 compute and decoder_only")
     cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
     cycle_names = tuple(str(name) for name in config.get(
         "cycle_reprojection_datasets", ["kubric"],

@@ -1,0 +1,66 @@
+# User delegation, 2026-09-06: decide autonomously at155k; prioritize useful
+# training continuity on these two physical GPUs, not occupancy-only workloads.
+status: pending_155k_review
+current_run: R-20260906125858-4dd8d0
+owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
+physical_gpus: ['2', '3']
+review_event: midphase155000
+current_run_continues_during_review: true
+review:
+  primary_metrics: [train/xyz_loss, train/raw_epe_m]
+  stratify_by: [kubric, pointodyssey, dynamic_replica]
+  full_lr_reference: [150501, 151500]
+  late_windows: [[153001, 154000], [154001, 155000]]
+  supporting_metrics: [train/gradient_norm, train/cycle_reprojection_pixel_error]
+  caveat: sampled_training_batches_not_validation_or_matched_examples
+  continue: sustained_primary_metric_improvement_without_material_dataset_regression
+  consider_switch: persistently_flat_or_worsening_primary_metrics_after_runtime_and_actual_update_audit
+  uncertainty: do_not_stop_for_one_noisy_window_or_for_writing_reports
+  implementation_fault: investigate_and_prioritize_fix_before_attributing_failure_to_cycle
+  decision_and_successor_run_must_be_recorded_once: true
+update_audit:
+  run: R-20260906161247-365472
+  output: /data/WorldBridge4D-runs/h030-k15-update-audit-20260906/150k_to_152k.json
+  cpu_only: true
+  purpose: stored_trainable_parameter_dtypes_adam_dtypes_and_sampled_actual_deltas
+prepared_control:
+  status: cpu_preflight_passed_not_selected_or_gpu_queued
+  hypothesis: removing_normalized_cycle_may_improve_xyz_descent_at_matched_lr
+  config: configs/h030_150k_to_155k_gpu23_b2_k15_xyz_only.yaml
+  preflight_run: R-20260906160414-c77045
+  tests_passed: 77
+  implementation_commit: 784aa1ba032260aec0a24fd51ffdc3e773d2f4a4
+  start_step: 150000
+  target_step: 155000
+  origin: original_full_model_adam_counters_and_per_rank_rng_not_the_new155k_model
+  checkpoint_path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+  checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  output: /data/WorldBridge4D-runs/h030-150k-to-155k-xyz-only-gpu23-b2-k15
+  comparison: match_dataset_clips_source_target_sampling_and_compare_primary_metrics_over_shared_first5k
+handoff_if_selected:
+  preserve: verified_155000_checkpoint_and_its_planning_sidecar_outside_rotating_checkpoint_set
+  order: verify_and_preserve155k_then_enqueue_tested_successor_then_soft_stop_current_run
+  dependency: succeeded_cpu_preflight_with_original150k_checkpoint_path_and_sha256
+  # PRL lease directories serialize managed Runs even in shared mode. Shared
+  # allows the unmanaged allocation, not a second managed owner of the lease.
+  # Do NOT depend on the old Run's unsupported terminated status.
+  resources:
+    gpu_ids: ['2', '3']
+    mode: shared
+    allow_foreign_processes: true
+    min_free_memory_mib: 65536
+    memory_safety_mib: 4096
+    wait_timeout_seconds: 7200
+    poll_ms: 1000
+    retry_backoff_seconds: 5
+  termination:
+    checkpoint_signal: SIGTERM
+    graceful_timeout_seconds: 900
+    terminate_signal: SIGTERM
+    allow_sigkill: false
+  launcher: worldbridge.trainer.soft_torchrun
+  unset_environment: [PYTORCH_CUDA_ALLOC_CONF, PYTORCH_ALLOC_CONF, PYTORCH_NO_CUDA_MEMORY_CACHING]
+  observations_required: [process_spawn, first_completed_optimizer_update, early_verified_checkpoint]
+  first_update_event_milestone: first_update
+  failure_listeners: [OutOfMemoryError, CUDA_out_of_memory, process.exit, progress_watchdog]
+  forbidden: [foreign_process_control,_gpu_substitution,allocator_tuning,occupancy_only_jobs]
