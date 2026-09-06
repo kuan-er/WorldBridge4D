@@ -1,6 +1,14 @@
 # User delegation, 2026-09-06: decide autonomously at155k; prioritize useful
 # training continuity on these two physical GPUs, not occupancy-only workloads.
-status: pending_155k_review
+status: decided_switch_fp32_master_successor_queued_soft_stop_requested
+successor_run: R-20260906193615-482544
+decision_at: 2026-09-06T19:35:46Z
+review_analysis_run: R-20260906193408-508969
+review_summary: /data/WorldBridge4D-runs/h030-k15-155k-review-20260906/trends/decision_windows.json
+final1k_vs_first_full_lr1k_epe_change_pct: {kubric: -2.997, pointodyssey: 10.956, dynamic_replica: 11.674}
+preserved_155k_checkpoint: /data/WorldBridge4D-runs/h030-k15-155k-reference/checkpoint-0155000.pt
+preserved_155k_sha256: 213fb159c9bad3cd8837d7e6b79ecb84d95a1f0c2d5f164b341d9443ee39d637
+preserved_155k_artifact: artifact://H030/R-20260906125858-4dd8d0/checkpoint/213fb159c9bad3cd
 current_run: R-20260906125858-4dd8d0
 owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
 physical_gpus: ['2', '3']
@@ -30,7 +38,7 @@ update_audit:
   inference: possible_update_rounding_not_proof_of_sole_cause
   implementation: model_factory_casts_parameters_BF16_before_native_AdamW_no_FP32_master
 preferred_followup:
-  status: cpu_preflight_passed_not_selected_or_gpu_queued
+  status: selected_and_queued_before_old_run_soft_stop
   hypothesis: FP32_master_parameters_and_Adam_moments_restore_small_update_accumulation
   config: configs/h030_150k_to_155k_gpu23_b2_k15_fp32_master.yaml
   preflight_run: R-20260906162138-79a388
