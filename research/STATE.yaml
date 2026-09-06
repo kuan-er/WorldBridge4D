@@ -1464,17 +1464,18 @@ h030_native_reuse_k15_10k:
   checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
   output: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k15
 h030_fp32_master_5k:
-  status: running_100_updates_and_fp32_checkpoint_verified
+  status: running_midphase2500_matched_log_review_pending
   started_at: 2026-09-06T19:37:37.517Z
   predecessor_exit_to_process_spawn_seconds: 21.605
   first_optimizer_update_at: 2026-09-06T19:40:06.030Z
   process_spawn_to_first_optimizer_update_seconds: 148.513
   first_update_loss_matches_bf16_control: true
-  last_observed_step: 150100
-  last_observed_step_at: 2026-09-06T19:47:39.025Z
-  last_observed_lr_factor: 0.2
-  peak_cuda_memory_gib: 65.109778881073
-  recent_sampled_step_seconds: [3.3937, 3.7732]
+  last_observed_step: 152500
+  last_observed_step_at: 2026-09-06T22:29:37.123Z
+  warmup_completed_at: 2026-09-06T20:16:58.262Z
+  last_observed_lr_factor: 1.0
+  peak_cuda_memory_gib: 65.44096374511719
+  recent_sampled_step_seconds: [3.4146, 3.6144]
   checkpoint_artifact: artifact://H030/R-20260906193615-482544/checkpoint/25fda0f7ac715e57
   checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-master-early-reference/checkpoint-0150100.pt
   checkpoint_sha256: 25fda0f7ac715e573938b3712d9bc519fe9482b8cc96144079711f0b3150c660
@@ -1502,7 +1503,7 @@ h030_fp32_master_5k:
   predecessor_stop_requested_at: 2026-09-06T19:36:24.357Z
   original_start_step: 150000
   target_step: 155000
-  checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  origin_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
   restore: full_original150k_model_Adam_counters_per_rank_RNG_values_cast_FP32_not_reset
   master_storage: all_parameters_and_Adam_moments_FP32
   compute_and_reduce_precision: bf16
@@ -1515,6 +1516,6 @@ h030_fp32_master_5k:
   allocator: native_defaults_cache_reuse_no_manual_flush
   estimated_checkpoint_bytes: 8000000000
   termination: checkpoint_first_SIGTERM_only_no_SIGKILL
-  next_review: warmup150500_or_failure_continue_current_configuration
+  next_review: midphase_matched_comparison_then155000_or_failure
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-fp32-master-gpu23-b2-k15
-updated_at: 2026-09-06T19:55:08Z
+updated_at: 2026-09-06T22:29:37Z
