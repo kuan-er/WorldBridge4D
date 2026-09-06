@@ -1233,7 +1233,7 @@ h030_h027_140k_cycle_all_w03_gpu67_k13_b1:
     sha256: aeee1383958eb9bf3f2b2311a024b41b5c93fb5991ae8f26fa4524009bad9af7
     artifact: artifact://H030/R-20260904083805-2ef397/checkpoint/aeee1383958eb9bf
 h030_h027_140k_cycle_all_batch_norm30_gpu56_k13_b1:
-  status: running_tracking_active
+  status: complete_step150000_checkpoint_registered_wandb_finished
   task: T-20260901153324-39dd05
   run: R-20260905052559-4b4a54
   start_checkpoint: /data/WorldBridge4D-runs/h030-h027-130k-cycle-kubric-gpu57-k13-shared4/checkpoint-0140000.pt
@@ -1250,5 +1250,30 @@ h030_h027_140k_cycle_all_batch_norm30_gpu56_k13_b1:
   normalization_epsilon: 1.0e-6
   normalization_max_scale: 1000.0
   tests_passed: 53
-  wandb: enabled
-updated_at: 2026-09-05T05:26:01Z
+  tracking:
+    wandb_run_id: bmrad8ww
+    wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/bmrad8ww
+  completion:
+    exit_code: 0
+    trainer_marker: THREE_DATASET_256_FSDP_OK
+    peak_cuda_memory_gib: 21.5909
+    elapsed_seconds: 95846.0
+  mean_weighted_cycle_to_xyz_ratio:
+    kubric: 0.2946
+    pointodyssey: 0.2932
+    dynamic_replica: 0.2996
+  matched_unnormalized_training_epe_change_pct:
+    kubric: -0.0063
+    pointodyssey: 0.0213
+    dynamic_replica: -0.0196
+  matched_unnormalized_cycle_pixel_error_change_pct:
+    kubric: -1.40
+    pointodyssey: -1.33
+    dynamic_replica: -2.34
+  result: cycle_improved_but_no_detectable_training_epe_benefit
+  final_checkpoint:
+    global_step: 150000
+    path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+    sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+    artifact: artifact://H030/R-20260905052559-4b4a54/checkpoint/d682a5d53f41c06c
+updated_at: 2026-09-06T09:28:21Z
