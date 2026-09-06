@@ -1309,8 +1309,17 @@ h030_matched_post_training_diagnostics:
   output_root: /data/WorldBridge4D-runs/diagnostics-h030-150k-20260906
   unresolved: PointOdyssey configured raw mount is absent; preparation must audit and report missing validation inputs without replacement
 h030_150k_lrrestart_gpu23_b2_k19:
-  status: native_allocator_recovery_running_startup
+  status: native_recovery_first_optimizer_update_verified
   recovery_run: R-20260906113542-e51a6d
+  native_first_verified_step: 150011
+  native_first_loss: 0.00374025572091341
+  native_first_gradient_norm: 2.484375
+  native_first_peak_cuda_memory_gib: 72.07973861694336
+  native_first_step_seconds: 152.75212892820127
+  native_first_cache_release_seconds_max_rank: 6.90932424
+  native_first_cycle_xyz_ratio: 0.30000001820810335
+  native_first_lr_factor: 0.022
+  recovery_wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/th1r6a14
   async_stalled_run: R-20260906111226-9b5276
   async_terminal_result: backward_oom_before_first_update
   async_failure_time: 2026-09-06T11:29:37.047Z
@@ -1319,7 +1328,7 @@ h030_150k_lrrestart_gpu23_b2_k19:
   async_failure_cuda_free_mib: 28.19
   recovery_restored_step: 150010
   async_allocator_gpu23_probe: passed
-  async_recovery_first_update: pending
+  async_recovery_first_update: not_completed_failed_oom
   blocked_handoff_run: R-20260906110743-3bee61
   recovery_tests_passed: 59
   unsupported_allocator_soft_stop_step: 150023
@@ -1374,4 +1383,4 @@ h030_150k_lrrestart_gpu23_b2_k19:
   optimizer_moments: preserved
   output: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19
   diagnostic_inference: stopped
-updated_at: 2026-09-06T11:37:00Z
+updated_at: 2026-09-06T11:42:00Z
