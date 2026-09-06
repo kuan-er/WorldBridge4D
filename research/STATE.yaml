@@ -1279,6 +1279,15 @@ h030_h027_140k_cycle_all_batch_norm30_gpu56_k13_b1:
 h030_matched_post_training_diagnostics:
   status: cancelled_by_user_before_full_diagnostic
   tests_passed: 25
+  completed_partial_inference:
+    label: h023_100k
+    dataset: kubric_train
+    clip_index: 2096
+    source: 2
+    epe_m: 0.7947880821632305
+    boundary_epe_m: 4.232300363272789
+    interior_epe_m: 0.14804694575650035
+    matched_new_checkpoint_comparison: not_completed
   cpu_preflight_run: R-20260906101912-5967d7
   terminated_gate: R-20260906102022-ff9165
   terminated_preparation: R-20260906102140-f6c609
@@ -1300,7 +1309,15 @@ h030_matched_post_training_diagnostics:
   output_root: /data/WorldBridge4D-runs/diagnostics-h030-150k-20260906
   unresolved: PointOdyssey configured raw mount is absent; preparation must audit and report missing validation inputs without replacement
 h030_150k_lrrestart_gpu23_b2_k19:
-  status: running_first_optimizer_update_verified
+  status: preparing_allocator_fix_resume
+  initial_run_failure: cuda_oom_backward_with_13.62gib_reserved_unallocated
+  recovery_step: 150010
+  recovery_checkpoint: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19/checkpoint-0150010.pt
+  recovery_sha256: 2fe0b945ce9b04c0bd8c6d82a69d5e5dafa06f1c95e870dfc0720b34e47f61be
+  allocator_fix: PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+  launcher_fix: elastic_cleanup_SIGTERM_only
+  resume_sidecar_fix: resolve_beside_actual_resume_checkpoint
+  recovery_output: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19-allocfix-r1
   first_verified_step: 150001
   first_update_loss: 0.014708258211612701
   first_update_xyz_loss: 0.011314044473692775

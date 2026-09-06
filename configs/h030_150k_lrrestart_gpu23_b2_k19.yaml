@@ -68,7 +68,8 @@ parent_schedule_provenance:
   schedule_extension_start_step: 56503
   schedule_extension_horizon_steps: 150000
 max_steps: 155000
-resume_status_path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/train_status.json
+# The resume planning sidecar is resolved beside the actual --resume checkpoint.
+# These selected_checkpoint fields identify the phase origin, not later resumes.
 selected_checkpoint_step: 150000
 selected_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
 selected_checkpoint_path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
