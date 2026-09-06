@@ -1,6 +1,7 @@
 # User delegation, 2026-09-06: decide autonomously at155k; prioritize useful
 # training continuity on these two physical GPUs, not occupancy-only workloads.
-status: handoff_complete_fp32_master100_updates_checkpoint_verified
+status: fp32_norm30_midphase_regression_switched_to_cycle0
+next_protocol: research/protocols/h030_fp32_cycle0_control.yaml
 predecessor_final_step: 155061
 predecessor_finished_at: 2026-09-06T19:37:15.912Z
 successor_started_at: 2026-09-06T19:37:37.517Z
@@ -42,7 +43,7 @@ update_audit:
   inference: possible_update_rounding_not_proof_of_sole_cause
   implementation: model_factory_casts_parameters_BF16_before_native_AdamW_no_FP32_master
 preferred_followup:
-  status: running_100_updates_fp32_parameters_and_adam_verified
+  status: terminated_after152500_matched_review_final_step152785
   hypothesis: FP32_master_parameters_and_Adam_moments_restore_small_update_accumulation
   config: configs/h030_150k_to_155k_gpu23_b2_k15_fp32_master.yaml
   preflight_run: R-20260906162138-79a388

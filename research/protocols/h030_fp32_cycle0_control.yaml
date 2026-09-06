@@ -1,0 +1,59 @@
+status: running_first_optimizer_update_verified
+run: R-20260906224802-229787
+task: T-20260901153324-39dd05
+owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
+code_commit: f718c5b6cf95f2185ef27a9b9867d74eed7774b1
+config: configs/h030_150k_to_152500_gpu23_b2_k15_fp32_cycle0.yaml
+hypothesis: removing_cycle_gradient_may_improve_XYZ_under_effective_FP32_optimization
+reason: matched_FP32_norm30_training_EPE_and_XYZ_worsen_while_cycle_metrics_improve
+comparison:
+  baseline_run: R-20260906193615-482544
+  prior_nearly_stagnant_bf16_run: R-20260906125858-4dd8d0
+  analysis_run: R-20260906223620-7bde8a
+  script: research/analysis/h030_compare_logged_training.py
+  summary: /data/WorldBridge4D-runs/h030-fp32-vs-bf16-matched-through152500-20260906/summary.json
+  paired_logged_updates: 750
+  checked: [global_step, dataset, clip_counters, source_hist, target_hist, gap_hist, world_size, pairs, lr_factor]
+  last1k_fp32_vs_bf16_epe_pct: [4.9842, 4.0623, 2.8519]
+  last1k_fp32_vs_bf16_xyz_pct: [9.2227, 11.8340, 5.6300]
+  last1k_cycle_pixel_error_pct: [-34.8452, -34.6633, -17.2065]
+  caveat: training_fingerprints_not_validation_or_full_per_clip_identity_proof
+protocol:
+  original_start_step: 150000
+  target_step: 152500
+  origin_checkpoint_path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+  origin_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  full_restore: model_Adam_counters_two_rank_RNG_values_cast_FP32_not_reset
+  only_objective_change: cycle_weight_0.3_to_0.0
+  cycle_enabled: true
+  rationale: retain_identical_cycle_input_forward_and_RNG_paths_but_zero_auxiliary_gradient
+  warning: lower_total_loss_after_dropping_aux_term_is_not_quality_improvement
+  unchanged: [architecture, decoder_only, frozen_Wan_geometry, seeds, datasets, B2_A2_K15, FP32_masters_Adam, BF16_compute_reduce, clip1, LR, native_allocator_cache_reuse]
+  warmup_steps: 500
+  peak_actual_lrs: {dense_decoder: 0.000003, source_rgb: 0.00003}
+  output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-gpu23-b2-k15
+handoff:
+  preflight_run: R-20260906224551-e96b4b
+  tests_passed: 85
+  reference_checkpoint: /data/WorldBridge4D-runs/h030-fp32-norm30-step152500-reference/checkpoint-0152500.pt
+  reference_sha256: 5161db16ba3fe23ad1d3d8b11df5ab4c0ec09b861cf3efc31e838c559cb0a69c
+  reference_outside_rotation: true
+  enqueued_at: 2026-09-06T22:48:02.117Z
+  old_stop_requested_at: 2026-09-06T22:48:31.395Z
+  old_final_step: 152785
+  old_finished_at: 2026-09-06T22:49:45.307Z
+  started_at: 2026-09-06T22:50:09.062Z
+  exit_to_spawn_seconds: 23.755
+  first_update_at: 2026-09-06T22:52:34.253Z
+  first_update_xyz_and_epe_match_norm30_initial_prediction: true
+  first_update_weighted_cycle: 0.0
+  first_update_gradient_norm: 0.50836580991745
+  signals: SIGTERM_only_no_SIGKILL
+resources:
+  gpu_ids: ['2', '3']
+  mode: shared
+  allow_foreign_processes: true
+  min_free_memory_mib: 65536
+  memory_safety_mib: 4096
+next_review: checkpoint150100_then_warmup500_then_matched151500_before_terminal152500
+standalone_diagnostic_inference: remains_cancelled
