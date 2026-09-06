@@ -102,16 +102,19 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
     cycle_b2_k19 = bool(config.get("cycle_b2_a2_k19", False))
-    if cycle_b2_k19 and not cycle_enabled:
-        raise ValueError("cycle_b2_a2_k19 requires the cycle objective")
-    allowed_batching = {(2, 2)} if cycle_b2_k19 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})
+    cycle_b2_k15 = bool(config.get("cycle_b2_a2_k15", False))
+    if cycle_b2_k19 and cycle_b2_k15:
+        raise ValueError("select only one B2/A2 cycle target profile")
+    if (cycle_b2_k19 or cycle_b2_k15) and not cycle_enabled:
+        raise ValueError("B2/A2 cycle profiles require the cycle objective")
+    allowed_batching = {(2, 2)} if cycle_b2_k19 or cycle_b2_k15 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})
     if (accumulation, microbatch) not in allowed_batching:
         expected = " or ".join(
             f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 13 if cycle_enabled and not cycle_b2_k19 else 19
+    required_targets = 15 if cycle_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
