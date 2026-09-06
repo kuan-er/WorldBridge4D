@@ -1410,18 +1410,30 @@ h030_native_reuse_10k:
   output: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k19
 h030_native_reuse_k15_10k:
   status: lr_hold_with_intermittent_input_read_stalls
-  last_observed_step: 151775
-  last_observed_step_at: 2026-09-06T15:27:39.832Z
+  last_observed_step: 152010
+  last_observed_step_at: 2026-09-06T16:01:36.558Z
   training_trend_analysis_run: R-20260906153044-765af2
   training_trend_summary: /data/WorldBridge4D-runs/h030-k15-log-trend-20260906/summary.json
   training_trend_conclusion: no_consistent_cross_dataset_decline_in_logged_batches_yet
   warmup_end_logged_step_seconds_range: [3.5064, 4.7156]
   peak_cuda_memory_gib: 63.490121841430664
   last_observed_lr_factor: 1.0
-  verified_checkpoint_step: 150500
-  verified_checkpoint_artifact: artifact://H030/R-20260906125858-4dd8d0/checkpoint/636426e1c03d0de2
-  verified_checkpoint_sha256: 636426e1c03d0de24539196af96ee3b0465b6470458d4e8d96fb3af067cf6e2b
+  verified_checkpoint_step: 152000
+  verified_checkpoint_path: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k15/checkpoint-0152000.pt
+  verified_checkpoint_sha256: b17314264a248f15e24acb02a6cb9fd915c690dab324128e1943914dd9a64136
+  verified_checkpoint_at: 2026-09-06T16:12:55.898Z
+  checkpoint_verification_note: CPU_audit_hashed_file_not_registered_artifact_still_subject_to_periodic_rotation
   next_review: midphase155000_or_failure
+  autonomous_155k_decision: user_authorized_continue_or_new_training_hypothesis_on_physical2_and3
+  decision_protocol: research/protocols/h030_155k_review.yaml
+  continuity_policy: prepare_and_enqueue_tested_successor_before_owned_run_soft_stop
+  update_audit_run: R-20260906161247-365472
+  update_audit: all193_trainable_tensors_and_Adam_moments_BF16_only1567_of139851_samples_changed_over2000_updates
+  preferred_next_hypothesis: fp32_master_weights_and_Adam_states_with_BF16_compute_cycle_retained
+  fp32_master_preflight_run: R-20260906162138-79a388
+  fp32_master_preflight_tests_passed: 83
+  xyz_only_backup_preflight_run: R-20260906160414-c77045
+  successor_gpu_run: not_selected_or_queued
   run: R-20260906125858-4dd8d0
   tests_passed: 66
   started_at: 2026-09-06T12:59:36.724Z
@@ -1445,4 +1457,4 @@ h030_native_reuse_k15_10k:
   cycle: unchanged_all_dataset_batch_normalized_ratio0.3
   checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
   output: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k15
-updated_at: 2026-09-06T15:30:45Z
+updated_at: 2026-09-06T16:21:38Z

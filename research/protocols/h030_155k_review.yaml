@@ -19,10 +19,36 @@ review:
   implementation_fault: investigate_and_prioritize_fix_before_attributing_failure_to_cycle
   decision_and_successor_run_must_be_recorded_once: true
 update_audit:
+  status: succeeded
   run: R-20260906161247-365472
   output: /data/WorldBridge4D-runs/h030-k15-update-audit-20260906/150k_to_152k.json
   cpu_only: true
   purpose: stored_trainable_parameter_dtypes_adam_dtypes_and_sampled_actual_deltas
+  result: 193_trainable_tensors_and_all_Adam_moments_BF16_only1567_of139851_samples_changed
+  optimizer_steps_advanced: 2000
+  stored_learning_rates_verified: [0.000003, 0.00003, 0.00003]
+  inference: possible_update_rounding_not_proof_of_sole_cause
+  implementation: model_factory_casts_parameters_BF16_before_native_AdamW_no_FP32_master
+preferred_followup:
+  status: cpu_preflight_passed_not_selected_or_gpu_queued
+  hypothesis: FP32_master_parameters_and_Adam_moments_restore_small_update_accumulation
+  config: configs/h030_150k_to_155k_gpu23_b2_k15_fp32_master.yaml
+  preflight_run: R-20260906162138-79a388
+  tests_passed: 83
+  origin: same_original150000_full_state_as_current_cycle_arm
+  target_step: 155000
+  compute_and_reduce_precision: bf16
+  master_parameter_and_adam_precision: fp32
+  cycle: retained_normalized_ratio0.3
+  output: /data/WorldBridge4D-runs/h030-150k-to-155k-fp32-master-gpu23-b2-k15
+  rationale: prioritize_observed_precision_issue_before_changing_objective_or_LR
+  master_conversion: before_model_resume_and_optimizer_groups_preserving_values_and_future_FP32_resume
+  runtime_gate: assert_FP32_parameters_and_Adam_moments_after_restore_before_first_update
+  capacity: two_rank_GPU_capacity_unverified_CPU_tests_are_not_GPU_stability_evidence
+  storage:
+    estimated_checkpoint_bytes: 8000000000
+    reserve_multiplier: 2
+    min_free_bytes: 16000000000
 prepared_control:
   status: cpu_preflight_passed_not_selected_or_gpu_queued
   hypothesis: removing_normalized_cycle_may_improve_xyz_descent_at_matched_lr
@@ -40,7 +66,7 @@ prepared_control:
 handoff_if_selected:
   preserve: verified_155000_checkpoint_and_its_planning_sidecar_outside_rotating_checkpoint_set
   order: verify_and_preserve155k_then_enqueue_tested_successor_then_soft_stop_current_run
-  dependency: succeeded_cpu_preflight_with_original150k_checkpoint_path_and_sha256
+  dependency: selected_variant_succeeded_cpu_preflight_with_original150k_checkpoint_path_and_sha256
   # PRL lease directories serialize managed Runs even in shared mode. Shared
   # allows the unmanaged allocation, not a second managed owner of the lease.
   # Do NOT depend on the old Run's unsupported terminated status.
@@ -63,4 +89,4 @@ handoff_if_selected:
   observations_required: [process_spawn, first_completed_optimizer_update, early_verified_checkpoint]
   first_update_event_milestone: first_update
   failure_listeners: [OutOfMemoryError, CUDA_out_of_memory, process.exit, progress_watchdog]
-  forbidden: [foreign_process_control,_gpu_substitution,allocator_tuning,occupancy_only_jobs]
+  forbidden: [foreign_process_control, gpu_substitution, allocator_tuning, occupancy_only_jobs]
