@@ -103,6 +103,9 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     microbatch = int(config.get("microbatch_per_gpu", 0))
     cycle_b2_k19 = bool(config.get("cycle_b2_a2_k19", False))
     cycle_b2_k15 = bool(config.get("cycle_b2_a2_k15", False))
+    xyz_b2_k15 = bool(config.get("xyz_b2_a2_k15", False))
+    if xyz_b2_k15 and (cycle_enabled or cycle_b2_k19 or cycle_b2_k15):
+        raise ValueError("XYZ-only B2/A2/K15 requires cycle disabled and no cycle profile")
     if cycle_b2_k19 and cycle_b2_k15:
         raise ValueError("select only one B2/A2 cycle target profile")
     if (cycle_b2_k19 or cycle_b2_k15) and not cycle_enabled:
@@ -114,7 +117,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 15 if cycle_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)
+    required_targets = 15 if cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
