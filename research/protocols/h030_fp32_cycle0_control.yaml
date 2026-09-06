@@ -1,4 +1,9 @@
-status: running145_updates_checkpoint150100_verified
+status: running_warmup500_checkpoint_verified
+warmup_completed_at: 2026-09-06T23:25:43.147Z
+checkpoint150500_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-warmup-reference/checkpoint-0150500.pt
+checkpoint150500_sha256: bb09ecdb28de887589ff3ea08a65f8f928af3baf9842b2b6fb6586d0269940b0
+checkpoint150500_artifact: artifact://H030/R-20260906224802-229787/checkpoint/bb09ecdb28de8875
+checkpoint150500_verified: full_model_FP32_Adam_world2_RNG2_cycle_weight0_matched_sidecar_full_LRs
 checkpoint150100_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-early-reference/checkpoint-0150100.pt
 checkpoint150100_sha256: 7e596c7f2771407402c1c15cfc70625cb778176c7f4333aa820ff0ccf67b7fac
 checkpoint150100_artifact: artifact://H030/R-20260906224802-229787/checkpoint/7e596c7f27714074
@@ -58,5 +63,5 @@ resources:
   allow_foreign_processes: true
   min_free_memory_mib: 65536
   memory_safety_mib: 4096
-next_review: warmup150500_then_matched151500_before_terminal152500
+next_review: matched151500_before_terminal152500_or_failure
 standalone_diagnostic_inference: remains_cancelled
