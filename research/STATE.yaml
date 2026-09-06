@@ -1309,8 +1309,14 @@ h030_matched_post_training_diagnostics:
   output_root: /data/WorldBridge4D-runs/diagnostics-h030-150k-20260906
   unresolved: PointOdyssey configured raw mount is absent; preparation must audit and report missing validation inputs without replacement
 h030_150k_lrrestart_gpu23_b2_k19:
-  status: async_allocator_recovery_queued_after_soft_stop
-  recovery_run: R-20260906110743-3bee61
+  status: running_async_allocator_verified_full_state_restored
+  recovery_run: R-20260906111226-9b5276
+  recovery_restored_step: 150010
+  async_allocator_gpu23_probe: passed
+  async_recovery_first_update: pending
+  blocked_handoff_run: R-20260906110743-3bee61
+  recovery_tests_passed: 59
+  unsupported_allocator_soft_stop_step: 150023
   unsupported_allocator_run: R-20260906110313-74d800
   unsupported_allocator: expandable_segments_not_supported_by_installed_torch_build
   initial_run_failure: cuda_oom_backward_with_13.62gib_reserved_unallocated
@@ -1330,7 +1336,7 @@ h030_150k_lrrestart_gpu23_b2_k19:
   first_update_peak_cuda_memory_gib: 72.06566333770752
   first_update_seconds: 44.205576959997416
   first_update_is_generalization_evidence: false
-  wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/dd7oqg9z
+  initial_wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/dd7oqg9z
   gpu_intrusion_response: acknowledged_continue_training_no_external_pid_control
   run: R-20260906103847-51d301
   preflight_run: R-20260906103734-7788fb
@@ -1358,4 +1364,4 @@ h030_150k_lrrestart_gpu23_b2_k19:
   optimizer_moments: preserved
   output: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19
   diagnostic_inference: stopped
-updated_at: 2026-09-06T11:09:00Z
+updated_at: 2026-09-06T11:15:00Z
