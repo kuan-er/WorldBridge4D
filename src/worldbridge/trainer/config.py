@@ -132,6 +132,13 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     if diagnostic_every < 1:
         raise ValueError("diagnostic_every_steps must be positive")
+    for key in ("trace_first_updates", "cuda_empty_cache_every_steps"):
+        if int(config.get(key, 0)) < 0:
+            raise ValueError(f"{key} must be non-negative")
+    stall = float(config.get("runtime_stall_traceback_seconds", 0))
+    timeout = float(config.get("distributed_timeout_seconds", 86400))
+    if not np.isfinite(stall) or stall < 0 or not np.isfinite(timeout) or timeout <= 0:
+        raise ValueError("invalid runtime timeout/traceback interval")
     restart = config.get("lr_restart")
     if restart is not None:
         if mode != "decoder_only":

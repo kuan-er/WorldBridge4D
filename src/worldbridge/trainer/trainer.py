@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import nullcontext
+import faulthandler
 import json
 from pathlib import Path
 import random
@@ -106,7 +107,9 @@ def main() -> None:
     for value in (signal.SIGINT, signal.SIGTERM, signal.SIGUSR1):
         signal.signal(value, stop_signal)
     config = yaml.safe_load(Path(args.config).read_text())
-    rank, world, local, device = initialize_distributed()
+    rank, world, local, device = initialize_distributed(
+        timeout_seconds=float(config.get("distributed_timeout_seconds", 86400)),
+    )
     validate_config(config, world)
     seed = int(config.get("seed", 20260812))
     random.seed(seed + rank); np.random.seed(seed + rank); torch.manual_seed(seed + rank)
@@ -443,9 +446,24 @@ def main() -> None:
         workers=prefetch_workers,
     )
     optimizer.zero_grad(set_to_none=True)
+    trace_updates = int(config.get("trace_first_updates", 0))
+    stall_seconds = float(config.get("runtime_stall_traceback_seconds", 0))
+    empty_cache_every = int(config.get("cuda_empty_cache_every_steps", 0))
+
+    def trace_phase(stage: str, step: int, micro: int | None = None) -> None:
+        if step < start_step + trace_updates:
+            # This marks host-side progress, not completed optimizer updates or
+            # synchronized GPU timings. Do not trigger global_step listeners.
+            print(json.dumps({"event": "training_phase", "rank": rank,
+                              "update_number": step + 1, "micro": micro,
+                              "stage": stage, "monotonic_seconds": time.perf_counter()}), flush=True)
+
     try:
         prefetcher.refill()
         for step in range(start_step, target_steps):
+            if stall_seconds > 0:
+                faulthandler.dump_traceback_later(stall_seconds, repeat=True)
+            trace_phase("update_start", step)
             planned = prefetcher.pop(step)
             name = planned.dataset_name
             dataset = planned.dataset
@@ -479,6 +497,7 @@ def main() -> None:
                     plans[begin:begin + microbatch_per_gpu],
                     futures[begin:begin + microbatch_per_gpu],
                 ))
+                trace_phase("geometry_wait_start", step, micro)
                 batch_values = []
                 target_counts = []
                 for (_planned_index, _source, rng), future in group:
@@ -499,6 +518,7 @@ def main() -> None:
                     raise ValueError(
                         f"microbatch clips have different eligible target counts: {target_counts}"
                     )
+                trace_phase("geometry_ready", step, micro)
                 latent_started = time.perf_counter()
                 latents_np = np.stack([dataset.clean_latent(value[0]) for value in batch_values])
                 latent_load_seconds += time.perf_counter() - latent_started
@@ -507,6 +527,7 @@ def main() -> None:
                     for value in batch_values
                 ])
                 valid_np = np.stack([value[4] for value in batch_values])
+                trace_phase("batch_to_device_start", step, micro)
                 source_rgb_t = None
                 if use_source_rgb:
                     source_rgb_np = np.stack([value[5] for value in batch_values])
@@ -574,9 +595,11 @@ def main() -> None:
                     )
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
+                    trace_phase("forward_start", step, micro)
                     prediction, z4d, _ = fsdp(
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
+                    trace_phase("forward_enqueued", step, micro)
                     xyz_value = masked_pair_smooth_l1(
                         prediction.float(), xyz.float(), valid,
                         beta=float(config.get("smooth_l1_beta", 0.05)),
@@ -599,10 +622,12 @@ def main() -> None:
                         ).view(1, 3, 1, 1) + torch.as_tensor(
                             mean, device=device, dtype=forward_cycle.dtype,
                         ).view(1, 3, 1, 1)
+                        trace_phase("cycle_forward_start", step, micro)
                         reverse_prediction, _, _ = fsdp(
                             latent, cycle_source_t, cycle_target_t, condition,
                             cycle_source_rgb_t, z4d_override=z4d,
                         )
+                        trace_phase("cycle_forward_enqueued", step, micro)
                         reverse_cycle = reverse_prediction[:, 0]
                         reverse_cycle = reverse_cycle * torch.as_tensor(
                             scale, device=device, dtype=reverse_cycle.dtype,
@@ -631,7 +656,9 @@ def main() -> None:
                         loss = loss + weighted_cycle_value / accumulation
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step={step}, micro={micro}")
+                trace_phase("backward_start", step, micro)
                 loss.backward()
+                trace_phase("backward_enqueued", step, micro)
                 update_loss += float(loss.detach())
                 xyz_loss_sum += float(xyz_value.detach()) / accumulation
                 cycle_loss_sum += float(cycle_value.detach()) / accumulation
@@ -837,9 +864,19 @@ def main() -> None:
                             "event": "checkpoint_prune", "removed": removed,
                         }), flush=True)
                 dist.barrier()
+            if empty_cache_every and completed % empty_cache_every == 0:
+                trace_phase("cache_release_start", step)
+                # Includes temporary full-state buffers on checkpoint updates.
+                # Never changes live tensors, gradients, optimizer, or RNG.
+                torch.cuda.empty_cache()
+                trace_phase("cache_release_complete", step)
+            if stall_seconds > 0:
+                faulthandler.cancel_dump_traceback_later()
             if bool(stop_tensor.item()):
                 break
     finally:
+        if stall_seconds > 0:
+            faulthandler.cancel_dump_traceback_later()
         prefetcher.close()
         if pipeline is not None:
             pipeline.close()

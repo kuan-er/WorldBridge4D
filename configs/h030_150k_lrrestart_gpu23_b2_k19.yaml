@@ -95,6 +95,11 @@ diagnostic_ensure_dataset_coverage: true
 graceful_stop_hours: 48
 geometry_prefetch_workers: 4
 geometry_prefetch_depth: 2
+# Runtime-only native allocator recovery. B/A/K, objective and LR are unchanged.
+cuda_empty_cache_every_steps: 1
+trace_first_updates: 2
+runtime_stall_traceback_seconds: 180
+distributed_timeout_seconds: 600
 mixture_coordinate_stats: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_b2_k16_a2/coordinate_stats_gate_bootstrap.npz
 text_conditions:
   kubric: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/kubric.pt
