@@ -1,4 +1,7 @@
-status: running_first_optimizer_update_verified
+status: running145_updates_checkpoint150100_verified
+checkpoint150100_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-early-reference/checkpoint-0150100.pt
+checkpoint150100_sha256: 7e596c7f2771407402c1c15cfc70625cb778176c7f4333aa820ff0ccf67b7fac
+checkpoint150100_artifact: artifact://H030/R-20260906224802-229787/checkpoint/7e596c7f27714074
 run: R-20260906224802-229787
 task: T-20260901153324-39dd05
 owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
@@ -55,5 +58,5 @@ resources:
   allow_foreign_processes: true
   min_free_memory_mib: 65536
   memory_safety_mib: 4096
-next_review: checkpoint150100_then_warmup500_then_matched151500_before_terminal152500
+next_review: warmup150500_then_matched151500_before_terminal152500
 standalone_diagnostic_inference: remains_cancelled
