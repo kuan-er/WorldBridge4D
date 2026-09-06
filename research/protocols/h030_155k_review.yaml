@@ -1,6 +1,10 @@
 # User delegation, 2026-09-06: decide autonomously at155k; prioritize useful
 # training continuity on these two physical GPUs, not occupancy-only workloads.
-status: decided_switch_fp32_master_successor_queued_soft_stop_requested
+status: handoff_complete_fp32_master100_updates_checkpoint_verified
+predecessor_final_step: 155061
+predecessor_finished_at: 2026-09-06T19:37:15.912Z
+successor_started_at: 2026-09-06T19:37:37.517Z
+successor_first_optimizer_update_at: 2026-09-06T19:40:06.030Z
 successor_run: R-20260906193615-482544
 decision_at: 2026-09-06T19:35:46Z
 review_analysis_run: R-20260906193408-508969
@@ -38,7 +42,7 @@ update_audit:
   inference: possible_update_rounding_not_proof_of_sole_cause
   implementation: model_factory_casts_parameters_BF16_before_native_AdamW_no_FP32_master
 preferred_followup:
-  status: selected_and_queued_before_old_run_soft_stop
+  status: running_100_updates_fp32_parameters_and_adam_verified
   hypothesis: FP32_master_parameters_and_Adam_moments_restore_small_update_accumulation
   config: configs/h030_150k_to_155k_gpu23_b2_k15_fp32_master.yaml
   preflight_run: R-20260906162138-79a388
@@ -52,7 +56,10 @@ preferred_followup:
   rationale: prioritize_observed_precision_issue_before_changing_objective_or_LR
   master_conversion: before_model_resume_and_optimizer_groups_preserving_values_and_future_FP32_resume
   runtime_gate: assert_FP32_parameters_and_Adam_moments_after_restore_before_first_update
-  capacity: two_rank_GPU_capacity_unverified_CPU_tests_are_not_GPU_stability_evidence
+  capacity: first100_updates_passed_peak65.110GiB_not_full5k_stability_proof
+  first100_update_audit_run: R-20260906195226-ef9840
+  first100_checkpoint_sha256: 25fda0f7ac715e573938b3712d9bc519fe9482b8cc96144079711f0b3150c660
+  first100_master_samples_changed: 137594_of139851_not_a_quality_result
   storage:
     estimated_checkpoint_bytes: 8000000000
     reserve_multiplier: 2

@@ -1409,7 +1409,9 @@ h030_native_reuse_10k:
   prior_run_to_stop: R-20260906113542-e51a6d
   output: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k19
 h030_native_reuse_k15_10k:
-  status: soft_stop_requested_after155k_review_successor_already_queued
+  status: checkpointed_stop_step155061_review_reference155000
+  final_completed_step: 155061
+  finished_at: 2026-09-06T19:37:15.912Z
   last_observed_step: 155025
   last_observed_step_at: 2026-09-06T19:34:06.309Z
   training_trend_analysis_run: R-20260906153044-765af2
@@ -1424,7 +1426,7 @@ h030_native_reuse_k15_10k:
   verified_checkpoint_artifact: artifact://H030/R-20260906125858-4dd8d0/checkpoint/213fb159c9bad3cd
   verified_checkpoint_at: 2026-09-06T19:35:46.669Z
   checkpoint_verification_note: full_format3_model_Adam_counters_two_rank_RNG_checked_sidecar_preserved_outside_rotation
-  next_review: old_run_exit_and_successor_first_optimizer_update
+  next_review: superseded_do_not_restart_on_delayed_notifications
   midphase_review_run: R-20260906193408-508969
   midphase_review_summary: /data/WorldBridge4D-runs/h030-k15-155k-review-20260906/trends/decision_windows.json
   midphase_decision: switch_to_matched_fp32_master_control_not_extend_BF16_master_arm_to160k
@@ -1462,7 +1464,28 @@ h030_native_reuse_k15_10k:
   checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
   output: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k15
 h030_fp32_master_5k:
-  status: queued_before_predecessor_soft_stop
+  status: running_100_updates_and_fp32_checkpoint_verified
+  started_at: 2026-09-06T19:37:37.517Z
+  predecessor_exit_to_process_spawn_seconds: 21.605
+  first_optimizer_update_at: 2026-09-06T19:40:06.030Z
+  process_spawn_to_first_optimizer_update_seconds: 148.513
+  first_update_loss_matches_bf16_control: true
+  last_observed_step: 150100
+  last_observed_step_at: 2026-09-06T19:47:39.025Z
+  last_observed_lr_factor: 0.2
+  peak_cuda_memory_gib: 65.109778881073
+  recent_sampled_step_seconds: [3.3937, 3.7732]
+  checkpoint_artifact: artifact://H030/R-20260906193615-482544/checkpoint/25fda0f7ac715e57
+  checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-master-early-reference/checkpoint-0150100.pt
+  checkpoint_sha256: 25fda0f7ac715e573938b3712d9bc519fe9482b8cc96144079711f0b3150c660
+  checkpoint_bytes: 7864618919
+  checkpoint_outside_rotation: true
+  parameter_update_audit_run: R-20260906195226-ef9840
+  trainable_tensor_and_adam_dtype: float32
+  changed_master_weight_samples: 137594
+  total_master_weight_samples: 139851
+  audit_caveat: master_storage_changes_not_full_parameter_census_or_BF16_forward_changes_or_quality_gain
+  wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/qhr7egqe
   task: T-20260901153324-39dd05
   run: R-20260906193615-482544
   preflight_run: R-20260906162138-79a388
@@ -1492,6 +1515,6 @@ h030_fp32_master_5k:
   allocator: native_defaults_cache_reuse_no_manual_flush
   estimated_checkpoint_bytes: 8000000000
   termination: checkpoint_first_SIGTERM_only_no_SIGKILL
-  next_review: first_completed_optimizer_update_or_failure_then_checkpoint150100
+  next_review: warmup150500_or_failure_continue_current_configuration
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-fp32-master-gpu23-b2-k15
-updated_at: 2026-09-06T19:36:24Z
+updated_at: 2026-09-06T19:55:08Z
