@@ -1300,7 +1300,14 @@ h030_matched_post_training_diagnostics:
   output_root: /data/WorldBridge4D-runs/diagnostics-h030-150k-20260906
   unresolved: PointOdyssey configured raw mount is absent; preparation must audit and report missing validation inputs without replacement
 h030_150k_lrrestart_gpu23_b2_k19:
-  status: preparing_user_requested_training
+  status: running_startup_first_update_pending
+  run: R-20260906103847-51d301
+  preflight_run: R-20260906103734-7788fb
+  targeted_tests_passed: 57
+  pointodyssey_cached_geometry_rgb_latent: verified_without_raw_mount
+  started_at: 2026-09-06T10:44:38.649Z
+  environment: {python: 3.11.10, torch: 2.5.1+cu121}
+  lease_recovery: repaired_malformed_dead_pid3477766_gpu2_json_suffix_for_automatic_prl_reclamation
   task: T-20260901153324-39dd05
   config: configs/h030_150k_lrrestart_gpu23_b2_k19.yaml
   physical_gpus: [2, 3]
@@ -1320,4 +1327,4 @@ h030_150k_lrrestart_gpu23_b2_k19:
   optimizer_moments: preserved
   output: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19
   diagnostic_inference: stopped
-updated_at: 2026-09-06T10:33:00Z
+updated_at: 2026-09-06T10:45:00Z
