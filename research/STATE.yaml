@@ -1309,8 +1309,14 @@ h030_matched_post_training_diagnostics:
   output_root: /data/WorldBridge4D-runs/diagnostics-h030-150k-20260906
   unresolved: PointOdyssey configured raw mount is absent; preparation must audit and report missing validation inputs without replacement
 h030_150k_lrrestart_gpu23_b2_k19:
-  status: preparing_native_allocator_recovery_after_async_stall
+  status: native_allocator_recovery_running_startup
+  recovery_run: R-20260906113542-e51a6d
   async_stalled_run: R-20260906111226-9b5276
+  async_terminal_result: backward_oom_before_first_update
+  async_failure_time: 2026-09-06T11:29:37.047Z
+  async_failure_allocated_gib: 66.58
+  async_failure_requested_gib: 1.78
+  async_failure_cuda_free_mib: 28.19
   recovery_restored_step: 150010
   async_allocator_gpu23_probe: passed
   async_recovery_first_update: pending
@@ -1368,4 +1374,4 @@ h030_150k_lrrestart_gpu23_b2_k19:
   optimizer_moments: preserved
   output: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19
   diagnostic_inference: stopped
-updated_at: 2026-09-06T11:15:00Z
+updated_at: 2026-09-06T11:37:00Z
