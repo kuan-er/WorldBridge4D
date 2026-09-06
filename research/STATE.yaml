@@ -1,5 +1,5 @@
-current_task: null
-active_hypotheses: []
+current_task: T-20260901153324-39dd05
+active_hypotheses: [H030]
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -1276,4 +1276,23 @@ h030_h027_140k_cycle_all_batch_norm30_gpu56_k13_b1:
     path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
     sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
     artifact: artifact://H030/R-20260905052559-4b4a54/checkpoint/d682a5d53f41c06c
-updated_at: 2026-09-06T09:28:21Z
+h030_matched_post_training_diagnostics:
+  status: implementation_preflight_pending
+  task: T-20260901153324-39dd05
+  protocol: configs/h030_matched_diagnostics.yaml
+  entrypoint: python -m worldbridge.evaluation.diagnostics
+  checkpoints: [h023_100k, h027_130k, h030_150k_w03, h030_150k_norm30]
+  historical_train_clips_per_dataset: 12
+  validation_clips_per_dataset: 16
+  validation_sources: [0, 10, 20]
+  seed: 20260906
+  targets: all21
+  pixel_stride: 1
+  target_chunk: 1
+  inference_only: true
+  initial_physical_gpu: 0
+  maximum_concurrent_gpus: 3
+  cuda_allocator_budget_gib: 12
+  output_root: /data/WorldBridge4D-runs/diagnostics-h030-150k-20260906
+  unresolved: PointOdyssey configured raw mount is absent; preparation must audit and report missing validation inputs without replacement
+updated_at: 2026-09-06T10:20:00Z
