@@ -1383,4 +1383,27 @@ h030_150k_lrrestart_gpu23_b2_k19:
   optimizer_moments: preserved
   output: /data/WorldBridge4D-runs/h030-150k-lrrestart-gpu23-b2-k19
   diagnostic_inference: stopped
-updated_at: 2026-09-06T11:42:00Z
+h030_native_reuse_10k:
+  status: preparing_user_confirmed_higher_lr_experiment
+  task: T-20260901153324-39dd05
+  config: configs/h030_150k_to_160k_gpu23_b2_k19_native_reuse.yaml
+  physical_gpus: [2, 3]
+  microbatch_per_gpu: 2
+  gradient_accumulation: 2
+  targets_per_source: 19
+  start_step: 150000
+  target_step: 160000
+  additional_updates: 10000
+  model: unchanged_h027_decoder_only
+  cycle: unchanged_all_dataset_batch_normalized_ratio0.3
+  warmup_steps: 500
+  peak_actual_learning_rates: {dense_decoder: 0.000003, source_rgb: 0.00003}
+  schedule: warmup_hold
+  allocator: native_defaults_with_cache_reuse
+  manual_cache_flush: disabled
+  allocator_environment_overrides: unset
+  checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  optimizer_and_rank_rng: restore_from_original150k
+  prior_run_to_stop: R-20260906113542-e51a6d
+  output: /data/WorldBridge4D-runs/h030-150k-to-160k-native-reuse-gpu23-b2-k19
+updated_at: 2026-09-06T12:09:00Z
