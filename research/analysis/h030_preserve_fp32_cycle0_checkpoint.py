@@ -62,7 +62,7 @@ def preserve(source: Path, destination: Path, expected_step: int) -> dict:
             "source_checkpoint": str(checkpoint), "checkpoint_step": expected_step,
             "bytes": protected.stat().st_size, "world_size": 2,
             "adam_age_range": [min(ages), max(ages)], "actual_lrs": RATES,
-            "sha256_identity": "resolved_and_recorded_by_PRL_gate_before_spawn"}
+            "sha256_identity_field": "Run.dependency.checkpoint_checksum"}
 
 
 def main():
