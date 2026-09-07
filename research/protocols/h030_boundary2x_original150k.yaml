@@ -1,5 +1,5 @@
 hypothesis: H030
-status: running_first150001_update_verified
+status: running_full_LR_warmup150500_verified_protected
 latest_user_selection: reuse_existing_unweighted_RGB1x_cycle0_trajectory_add_only_boundary2x_from150000
 supersedes: verbal_proposal_for_two_new155000_to157500_arms_not_submitted
 production: H023_100000_unchanged
@@ -108,5 +108,33 @@ handoff:
   endpoint_preservation: R-20260907145112-191549
   protected_endpoint_directory: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-boundary2x-step155000-reference
   preservation: full_state_matching_sidecar_explicit_all3e6_RATES_all193_Adam_ages_plus5000_local_hardlink_outside_rotation
-  intermediate_action: protect150500_and_review152500_on_events_before_rotation_do_not_use_pre150500_with_legacy_guard
+  intermediate_action: warmup150500_protected_review_and_preserve152500_on_event_before_rotation
   caveat: queued_is_not_spawn_first_update_completed_checkpoint_or_quality_gain
+warmup150500:
+  completed_update_at: 2026-09-07T15:36:19.298Z
+  LR_factor: 1.0
+  actual_and_base_group_LRs: [0.000003, 0.000003, 0.000003]
+  boundary_multiplier: 2.0
+  cycle_weight: 0.0
+  clip_counters: [421400, 361200, 421400]
+  last_logged_dataset: kubric
+  unweighted_XYZ: 0.08993233926594257
+  raw_EPE_m: 0.47883421579996743
+  weighted_XYZ: 0.11718320846557617
+  boundary_pair_mean_fraction: 0.12366104125976562
+  boundary_occluded_valid_points: 353913
+  process_peak_GiB: 65.47874593734741
+  sampled_step_seconds: 3.8348156071733683
+  guard_run: R-20260907153807-863de8
+  guard_succeeded_at: 2026-09-07T15:38:26.463Z
+  registered_at: 2026-09-07T15:40:35.739Z
+  protected_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-boundary2x-step150500-reference/checkpoint-0150500.pt
+  checkpoint_sha256: b19676cca1526cc1ce7b64c90e982972bca3af67fe4b1966c134a64ca888a230
+  artifact: artifact://H030/R-20260907144838-4f3680/checkpoint/b19676cca1526cc1
+  checkpoint_bytes: 7864619303
+  Adam_age_range: [50500, 65500]
+  all193_Adam_age_increments_from150000: 500
+  full_state: FP32_model_Adam_world2_RNG2_matching_planning_sidecar
+  replica: local_same_inode_hardlink_outside_rotation_not_remote_copy
+  guard_scope: intermediate_owned_producer_hash_gated_after_CPU_preflight_success_not_producer_exit
+  decision: continue_selected_budget_unchanged_review152500_unweighted_metrics_no_quality_claim_from_one_warmup_batch

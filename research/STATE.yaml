@@ -545,8 +545,9 @@ h023_256_three_dataset_200m:
 next_step: Unweighted RGB1x continuation succeeded155000; full endpoint protected and
   SHA-registered. DR workers succeeded and the available Kubric/DR screen is frozen;
   PO validation remains blocked. Boundary2x R-20260907144838-4f3680 is running on
-  physical GPUs2/3; first150001 update verified with FP32 masters, LR factor0.002,
-  and unchanged initial unweighted XYZ/EPE versus the existing control. It restores
+  physical GPUs2/3;150500 warmup is complete and its full checkpoint is protected
+  and SHA-registered. All193 Adam ages advanced500; actual/base group LRs are3e-6.
+  Continue unchanged to152500 review and the selected155000 endpoint. It restores
   original FULL150000 to155000 with the original500-step warmup and reuses the
   existing unweighted trajectory; no repeated baseline or two155000-origin arms.
   The final sampled training review still establishes no quality gain. Follow the
@@ -1935,7 +1936,36 @@ h030_fp32_cycle0_rgb1x_continue_to155k:
   latest_observed_log_at: 2026-09-07T14:54:28.139Z
   caveat: continued_by_user_authority_not_evidence_that_prior_no_clear_gain_finding_changed
 h030_boundary2x_original150k:
-  status: running_first150001_update_verified
+  status: running_full_LR_warmup150500_verified_protected
+  latest_verified_step: 150500
+  latest_verified_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-boundary2x-step150500-reference/checkpoint-0150500.pt
+  latest_verified_checkpoint_sha256: b19676cca1526cc1ce7b64c90e982972bca3af67fe4b1966c134a64ca888a230
+  latest_verified_checkpoint_artifact: artifact://H030/R-20260907144838-4f3680/checkpoint/b19676cca1526cc1
+  warmup150500:
+    completed_update_at: 2026-09-07T15:36:19.298Z
+    LR_factor: 1.0
+    actual_and_base_group_LRs: [0.000003, 0.000003, 0.000003]
+    boundary_multiplier: 2.0
+    cycle_weight: 0.0
+    clip_counters: [421400, 361200, 421400]
+    last_logged_dataset: kubric
+    unweighted_XYZ: 0.08993233926594257
+    raw_EPE_m: 0.47883421579996743
+    weighted_XYZ: 0.11718320846557617
+    boundary_pair_mean_fraction: 0.12366104125976562
+    boundary_occluded_valid_points: 353913
+    process_peak_GiB: 65.47874593734741
+    sampled_step_seconds: 3.8348156071733683
+    guard_run: R-20260907153807-863de8
+    guard_succeeded_at: 2026-09-07T15:38:26.463Z
+    registered_at: 2026-09-07T15:40:35.739Z
+    checkpoint_bytes: 7864619303
+    Adam_age_range: [50500, 65500]
+    all193_Adam_age_increments: 500
+    full_state: FP32_model_Adam_world2_RNG2_matching_planning_sidecar
+    replica: local_same_inode_hardlink_outside_rotation_not_remote_copy
+    guard_scope: intermediate_owned_producer_hash_gated_via_successful_CPU_preflight_not_producer_exit
+    decision: continue_selected_budget_unchanged_no_quality_inference_from_one_warmup_batch
   spawned_at: 2026-09-07T15:00:01.762Z
   last_DR_exit_to_spawn_seconds: 28.511
   FP32_master_storage_verified_at: 2026-09-07T15:02:28.783Z
@@ -1986,6 +2016,6 @@ h030_boundary2x_original150k:
   other_DR_GPU2_lease: R-20260907113216-4099b0
   endpoint_guard: R-20260907145112-191549
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-fp32-cycle0-rgb1x-boundary2x-gpu23-b2-k15
-  next_review: early150100_then_warmup150500_preserve_and_review152500_unweighted_metrics_fixed_endpoint_validation
-  caveat: first_update_checks_do_not_establish_quality_bitwise_replay_or_full_horizon_memory_safety
-updated_at: 2026-09-07T15:03:56Z
+  next_review: full_LR152500_unweighted_matched_metrics_then_fixed_endpoint_validation
+  caveat: warmup_checks_do_not_establish_quality_bitwise_replay_or_full_horizon_memory_safety
+updated_at: 2026-09-07T15:40:35Z
