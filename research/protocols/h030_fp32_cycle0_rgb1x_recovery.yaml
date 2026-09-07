@@ -1,4 +1,21 @@
 status: running_checkpoint151000_verified_preserved_registered
+input_stall151085:
+  notification_acknowledged: N-d3bda52fa9dc90b82f66
+  watchdog_threshold_seconds: 900
+  preceding_logged_step: 151085
+  preceding_logged_at: 2026-09-07T06:37:51.252Z
+  resumed_logged_step: 151090
+  resumed_logged_at: 2026-09-07T06:53:03.865Z
+  completed_step_log_gap_seconds: 912.613
+  stack_at: 2026-09-07T06:50:17.531Z
+  main_threads: both_ranks_waiting_future_result_at_trainer_line517
+  loaders: Dynamic_Replica_local_trajectory_NPZ_read_array_with_other_workers_at_per_stream_load_lock
+  LR_factor_after: 1.0
+  weighted_cycle_after: 0.0
+  process_peak_cuda_memory_gib: 65.11200332641602
+  resolution: self_resumed_same_process_without_config_change_or_agent_signals
+  decision: continue_current152500_budget_review151500
+  caveats: real_input_wait_affects_throughput_log_gap_not_exact_zero_updates_duration_underlying_IO_cause_and_old_SIGSEGV_unresolved
 checkpoint151000:
   notification_acknowledged: N-ad874e200453ca686f2f
   update_completed_at: 2026-09-07T06:30:38.917Z

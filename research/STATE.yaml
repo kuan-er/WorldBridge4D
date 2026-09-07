@@ -545,7 +545,9 @@ h023_256_three_dataset_200m:
 next_step: Continue RGB1x same-trajectory recovery on physical2/3 toward152500.
   Full151000 checkpoint is verified, protected outside rotation and SHA-registered;
   all three actual LRs remain3e-6 and all Adam ages advanced500 since resume150500.
-  Latest observed151085. Review150501-151500 primary metrics at151500; no config change.
+  The900s log-progress stall self-resolved at151090; stacks showed Dynamic Replica
+  data loading and geometry-future waits. Review150501-151500 metrics at151500;
+  no restart or configuration change on this recovered input stall.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1703,8 +1705,19 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   status: running_checkpoint151000_verified_preserved_registered
   recovery_milestone_step: 150725
   recovery_milestone_at: 2026-09-07T06:07:12.025Z
-  last_observed_step: 151085
-  last_observed_step_at: 2026-09-07T06:37:51.252Z
+  last_observed_step: 151090
+  last_observed_step_at: 2026-09-07T06:53:03.865Z
+  latest_stall:
+    notification: N-d3bda52fa9dc90b82f66
+    status: acknowledged_self_resolved_without_intervention
+    watchdog_threshold_seconds: 900
+    preceding_logged_step: 151085
+    preceding_logged_at: 2026-09-07T06:37:51.252Z
+    completed_step_log_gap_seconds: 912.613
+    stack_at: 2026-09-07T06:50:17.531Z
+    observed_wait: both_rank_main_threads_geometry_future_result_DR_local_trajectory_NPZ_read_or_per_stream_load_lock
+    decision: continue_unchanged_no_termination_or_retry
+    caveat: log_gap_not_exact_zero_optimizer_updates_duration_nor_prior_SIGSEGV_cause
   last_observed_LR_factor: 1.0
   observed_process_peak_cuda_memory_gib: 65.11200332641602
   recovery_boundary_caveat: progressed_beyond_old150722_not_proof_native_crash_cause_fixed
@@ -1759,4 +1772,4 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   comparison_join: old_run_only_through150500_then_recovery_above150500_exclude_old_replayed_tail
   output: /data/WorldBridge4D-runs/h030-150500-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15-resume-r1
   next_review: matched151500_and152500_no_short_window_switch
-updated_at: 2026-09-07T06:38:49Z
+updated_at: 2026-09-07T06:53:03Z
