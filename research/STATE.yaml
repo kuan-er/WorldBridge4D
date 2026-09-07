@@ -542,12 +542,12 @@ h023_256_three_dataset_200m:
     canonical roots; then verify exact resume from step 2 through a Kubric
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
-next_step: Continue RGB1x same-trajectory recovery on physical2/3 toward152500.
-  Full151000 checkpoint is verified, protected outside rotation and SHA-registered;
-  all three actual LRs remain3e-6 and all Adam ages advanced500 since resume150500.
-  The900s log-progress stall self-resolved at151090; stacks showed Dynamic Replica
-  data loading and geometry-future waits. Review150501-151500 metrics at151500;
-  no restart or configuration change on this recovered input stall.
+next_step: Finish the unchanged RGB1x control on physical2/3 at152500.
+  The151500 full-LR1000-update review is near-flat/mixed versus RGB10x and worse
+  on all primary dataset means versus BF16. Preserve the fixed budget, not switch
+  early. Full151500 checkpoint is protected and SHA-registered; observed151630.
+  Compare the151501-152500 window at the endpoint; no155k successor selected and
+  no automatic new150k LR experiment if results remain mixed or negative.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1702,11 +1702,11 @@ h030_fp32_cycle0_rgb1x_2500:
   output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15
   next_review: none_failed_run_do_not_repeat_original150k_argv
 h030_fp32_cycle0_rgb1x_recovery_r1:
-  status: running_checkpoint151000_verified_preserved_registered
+  status: running_midpoint151500_review_no_clear_gain_checkpoint_preserved
   recovery_milestone_step: 150725
   recovery_milestone_at: 2026-09-07T06:07:12.025Z
-  last_observed_step: 151090
-  last_observed_step_at: 2026-09-07T06:53:03.865Z
+  last_observed_step: 151630
+  last_observed_step_at: 2026-09-07T08:40:30.326Z
   latest_stall:
     notification: N-d3bda52fa9dc90b82f66
     status: acknowledged_self_resolved_without_intervention
@@ -1734,17 +1734,17 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   first_step_seconds: 261.1955817020498
   first_geometry_wait_seconds: 229.98208211385645
   first_process_peak_cuda_memory_gib: 60.54542064666748
-  latest_verified_checkpoint_step: 151000
-  latest_verified_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step151000-reference/checkpoint-0151000.pt
-  latest_verified_checkpoint_sha256: 225e055576aada6d05aab6648b865738f393edbb5e33017a814abebc1a32af82
-  latest_verified_checkpoint_artifact: artifact://H030/R-20260907052221-d438cd/checkpoint/225e055576aada6d
+  latest_verified_checkpoint_step: 151500
+  latest_verified_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step151500-reference/checkpoint-0151500.pt
+  latest_verified_checkpoint_sha256: 500f77048ba8253c954811e37cdb133896783bbed0c522131e23a9d50dc7b055
+  latest_verified_checkpoint_artifact: artifact://H030/R-20260907052221-d438cd/checkpoint/500f77048ba8253c
   latest_verified_checkpoint_bytes: 7864619047
-  latest_verified_checkpoint_registered_at: 2026-09-07T06:38:49.229Z
-  checkpoint_verification_run: R-20260907063521-b0e43a
+  latest_verified_checkpoint_registered_at: 2026-09-07T08:35:53.840Z
+  checkpoint_verification_run: R-20260907083407-e76dd4
   checkpoint_verification: full_FP32_model_Adam_world2_RNG2_matching_sidecar_config_shapes_and_original_ages
   checkpoint_outside_rotation: true
-  checkpoint_Adam_ages: [51000, 66000]
-  checkpoint_all_Adam_age_increments_from150500: 500
+  checkpoint_Adam_ages: [51500, 66500]
+  checkpoint_all_Adam_age_increments_from150500: 1000
   checkpoint_actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
   caveat: checkpoint_protocol_evidence_not_full_bitwise_replay_native_crash_resolution_or_quality_gain
   run: R-20260907052221-d438cd
@@ -1771,5 +1771,19 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   minimum_unsaved_updates_to_replay_at_recovery: 222
   comparison_join: old_run_only_through150500_then_recovery_above150500_exclude_old_replayed_tail
   output: /data/WorldBridge4D-runs/h030-150500-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15-resume-r1
-  next_review: matched151500_and152500_no_short_window_switch
-updated_at: 2026-09-07T06:53:03Z
+  midpoint151500:
+    analysis_run: R-20260907083223-7262a0
+    window: [150501, 151500]
+    paired_logged_updates_per_reference: 300
+    dataset_order: [kubric, pointodyssey, dynamic_replica]
+    vs_RGB10x_XYZ_change_pct: [-0.030203149191498913, 0.00534640899063632, 0.01694860292023037]
+    vs_RGB10x_EPE_change_pct: [-0.02764089609689213, -0.010676370613649233, 0.01626401079566353]
+    vs_BF16_XYZ_change_pct: [0.4118025320759999, 0.15978511455978506, 0.19927600484193064]
+    vs_BF16_EPE_change_pct: [0.6158431623761729, 0.2671121706414592, 0.5465090925212746]
+    output: /data/WorldBridge4D-runs/h030-rgb1x-matched-fullLR-through151500-20260907
+    decision: no_clear_gain_finish152500_without_early_switch_no155k_selection_yet
+    caveat: sampled_training_not_validation_or_clean_bitwise_causal_test_after_runtime_recovery
+  continuation_to155k_selected: false
+  successor_run: null
+  next_review: final152500_second_full_LR_window_no_auto_new150k_arm
+updated_at: 2026-09-07T08:40:30Z
