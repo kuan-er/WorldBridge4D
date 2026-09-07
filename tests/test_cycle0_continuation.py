@@ -113,3 +113,52 @@ def test_handoff_rejects_wrong_or_incomplete_state(tmp_path, fault):
     with pytest.raises(ValueError):
         handoff.preserve(source, tmp_path / "protected", 152500)
     assert not (tmp_path / "protected").exists()
+
+
+def advanced_status(status):
+    return {**status, "completed_steps": status["completed_steps"] + 500,
+            "clips_seen": {k: v + (1200 if k == "pointodyssey" else 1400)
+                           for k, v in status["clips_seen"].items()}}
+
+
+def test_explicit_historical_sidecar_restore_does_not_modify_live_producer(tmp_path):
+    payload, observed = fixture_payload()
+    live = advanced_status(observed)
+    source = save_fixture(tmp_path, payload, live)
+    source_bytes = (source / "train_status.json").read_bytes()
+    destination = tmp_path / "protected"
+    with pytest.raises(ValueError, match="handoff step mismatch"):
+        handoff.preserve(source, destination, 152500)
+    assert not destination.exists()
+    report = handoff.preserve(source, destination, 152500, restore_planning_status=observed)
+    assert (source / "train_status.json").read_bytes() == source_bytes
+    assert json.loads((destination / "train_status.json").read_bytes()) == observed
+    assert os.path.samefile(source / "checkpoint-0152500.pt", destination / "checkpoint-0152500.pt")
+    assert report["live_sidecar_step_at_read"] == 153000
+    assert report["live_sidecar_sha256_at_read"] == handoff.hashlib.sha256(source_bytes).hexdigest()
+    assert "not_copied_live_sidecar" in report["sidecar_provenance"]
+    assert report == handoff.preserve(source, destination, 152500, restore_planning_status=observed)
+
+
+@pytest.mark.parametrize("fault", ["observed_step", "observed_counter", "extra_field", "same_step",
+                                  "world", "counter_total", "counter_decrease", "master", "moment"])
+def test_sidecar_restore_rejects_inconsistent_history_and_preserves_full_guard(tmp_path, fault):
+    payload, observed = fixture_payload()
+    live = advanced_status(observed)
+    if fault == "observed_step": observed["completed_steps"] -= 1
+    elif fault == "observed_counter": observed["clips_seen"]["kubric"] -= 1
+    elif fault == "extra_field": observed["invented"] = True
+    elif fault == "same_step": live = deepcopy(observed)
+    elif fault == "world": live["world_size"] = 1
+    elif fault == "counter_total": live["clips_seen"]["kubric"] += 1
+    elif fault == "counter_decrease":
+        live["clips_seen"]["kubric"] -= 1401
+        live["clips_seen"]["dynamic_replica"] += 1401
+    elif fault == "master": payload["model"]["dense_decoder"] = payload["model"]["dense_decoder"].bfloat16()
+    elif fault == "moment": payload["optimizer"]["state"]["dense_decoder"]["exp_avg"] = torch.zeros(1, dtype=torch.bfloat16)
+    source = save_fixture(tmp_path, payload, live)
+    before = (source / "train_status.json").read_bytes()
+    with pytest.raises(ValueError):
+        handoff.preserve(source, tmp_path / "protected", 152500, restore_planning_status=observed)
+    assert not (tmp_path / "protected").exists()
+    assert (source / "train_status.json").read_bytes() == before
