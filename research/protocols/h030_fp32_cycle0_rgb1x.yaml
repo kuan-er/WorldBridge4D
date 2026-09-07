@@ -1,4 +1,18 @@
-status: running_full_LR_checkpoint150500_verified
+status: failed_rank0_SIGSEGV_same_trajectory_recovery_spawned
+recovery_run: R-20260907052221-d438cd
+next_protocol: research/protocols/h030_fp32_cycle0_rgb1x_recovery.yaml
+failure:
+  last_logged_step: 150722
+  last_logged_at: 2026-09-07T05:02:16.290Z
+  last_complete_checkpoint: 150500
+  rank0_first_failure_observed_by_elastic_at: 2026-09-07T05:07:49Z
+  rank0_exitcode: -11
+  rank1_NCCL_timeout_at: 2026-09-07T05:14:38.279Z
+  finished_at: 2026-09-07T05:15:00.857Z
+  classification: native_SIGSEGV_then_peer_NCCL_timeout_not_agent_deliberate_stop
+  native_root_cause: unresolved
+  preceding_stalls: geometry_wait429s_and_latent_reads48s_observed_not_proof_of_SIGSEGV_cause
+  cleanup: soft_torchrun_sent_SIGTERM_to_owned_peer_no_SIGKILL_old_GPUs_empty_on_inspection
 warmup150500:
   completed_at: 2026-09-07T03:48:00.389Z
   LR_factor: 1.0

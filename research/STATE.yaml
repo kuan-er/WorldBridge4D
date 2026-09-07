@@ -542,9 +542,9 @@ h023_256_three_dataset_200m:
     canonical roots; then verify exact resume from step 2 through a Kubric
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
-next_step: Continue the running RGB1x matched control on physical2/3 toward152500.
-  Warmup150500 full checkpoint and all three peak LRs3e-6 are verified.
-  Compare primary XYZ/EPE at151500. Old RGB10x arm stopped153788, not155000.
+next_step: Verify the first update of RGB1x same-trajectory recovery on physical2/3
+  from protected150500 after rank0 SIGSEGV. Keep the152500 budget and scientific
+  config unchanged; no rewarmup or150k restart. Review full-LR metrics at151500.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1655,13 +1655,19 @@ h030_fp32_cycle0_continue_to155k:
   output: /data/WorldBridge4D-runs/h030-152500-to-155k-fp32-cycle0-gpu23-b2-k15
   next_review: none_superseded_do_not_restart_on_delayed_milestones
 h030_fp32_cycle0_rgb1x_2500:
-  status: running_full_LR_checkpoint150500_verified
+  status: failed_rank0_SIGSEGV_same_trajectory_recovery_spawned
+  recovery_run: R-20260907052221-d438cd
+  failure_class: nonzero_exit
+  first_observed_rank0_failure_at: 2026-09-07T05:07:49Z
+  finished_at: 2026-09-07T05:15:00.857Z
+  failure_note: rank0_exit_minus11_then_rank1_NCCL600s_timeout_native_root_cause_unresolved
+  no_agent_termination_requested: true
   started_at: 2026-09-07T03:08:47.354Z
   first_update_at: 2026-09-07T03:11:18.217Z
   first_update_step: 150001
   first_update_matches_original_XYZ_EPE: true
-  last_observed_step: 150500
-  last_observed_step_at: 2026-09-07T03:48:00.389Z
+  last_observed_step: 150722
+  last_observed_step_at: 2026-09-07T05:02:16.290Z
   last_observed_lr_factor: 1.0
   observed_peak_cuda_memory_gib: 65.43991470336914
   verified_checkpoint_step: 150500
@@ -1691,5 +1697,32 @@ h030_fp32_cycle0_rgb1x_2500:
   unchanged: FP32_masters_Adam_BF16_compute_cycle0_B2_A2_K15_seed_data_native_cache
   checkpoint_verification_note: use_explicit_RGB1x_rates_not_old_preservation_helpers_hardcoded_RGB3e-5
   output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15
-  next_review: matched151500_before152500_or_failure
-updated_at: 2026-09-07T03:49:59Z
+  next_review: none_failed_run_do_not_repeat_original150k_argv
+h030_fp32_cycle0_rgb1x_recovery_r1:
+  status: spawned_first_update_pending
+  run: R-20260907052221-d438cd
+  failed_parent_run: R-20260907030635-631b93
+  task: T-20260901153324-39dd05
+  commit: 74c4826343f214cb7924701c72d0aa4bf58963a4
+  config: configs/h030_150k_to_152500_gpu23_b2_k15_fp32_cycle0_rgb1x.yaml
+  protocol: research/protocols/h030_fp32_cycle0_rgb1x_recovery.yaml
+  submitted_at: 2026-09-07T05:22:24.013Z
+  spawned_at: 2026-09-07T05:25:29.262Z
+  physical_gpus: [2, 3]
+  expected_resume_step: 150500
+  target_step: 152500
+  full_restore: current_RGB1x_model_Adam_counters_two_rank_RNG_not_original150k_or_weights_only
+  checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-warmup-reference/checkpoint-0150500.pt
+  checkpoint_sha256: 589b7f5dc5de361ca426584dbd4d9d8bbff034523058167d52dbf6d08ca44763
+  checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/589b7f5dc5de361c
+  repeated_warmup: false
+  scientific_config_changed: false
+  observation_change: PYTHONFAULTHANDLER1_and_native_failure_early_events
+  prior_tests_reused: 100_same_training_code_and_config_no_new_algorithm_change
+  checkpoint_revalidated_before_spawn: true
+  checksum_seconds: 132.832
+  unsaved_logged_updates_to_replay: 222
+  comparison_join: old_run_only_through150500_then_recovery_above150500_exclude_old_replayed_tail
+  output: /data/WorldBridge4D-runs/h030-150500-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15-resume-r1
+  next_review: first150501_then_past150725_then_checkpoint151000_then_matched151500_and152500
+updated_at: 2026-09-07T05:25:29Z

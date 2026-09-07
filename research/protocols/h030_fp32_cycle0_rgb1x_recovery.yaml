@@ -1,0 +1,82 @@
+status: spawned_first_update_pending
+run: R-20260907052221-d438cd
+failed_parent_run: R-20260907030635-631b93
+task: T-20260901153324-39dd05
+owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
+commit: 74c4826343f214cb7924701c72d0aa4bf58963a4
+config: configs/h030_150k_to_152500_gpu23_b2_k15_fp32_cycle0_rgb1x.yaml
+config_sha256: bc050b3e2fbd15263b89aad908db06e425566208f2495d7aa76f375c9274946a
+purpose: runtime_fault_recovery_of_same_RGB1x_trajectory_not_new_LR_experiment
+incident:
+  last_logged_step: 150722
+  last_logged_at: 2026-09-07T05:02:16.290Z
+  final_actual_optimizer_step: unknown_beyond_last_logged_step
+  last_complete_checkpoint_step: 150500
+  rank0_exitcode: -11
+  rank0_failure_observed_by_elastic_at: 2026-09-07T05:07:49Z
+  rank1_NCCL_timeout_at: 2026-09-07T05:14:38.279Z
+  parent_exit_at: 2026-09-07T05:15:00.857Z
+  parent_failure_class: nonzero_exit
+  root_cause: SIGSEGV_mechanism_unresolved_not_claimed_OOM_LR_or_data_bug
+  cleanup: owned_peer_SIGTERM_at050749_then_second_SIGTERM_at050819_no_SIGKILL
+  process_check: no_old_training_compute_processes_on_selected2_and3_after_exit
+  kernel_log: dmesg_permission_denied
+  source_inspection: RGB_LRU_does_not_force_close_evicted_live_mappings_and_returns_owned_copies_no_speculative_data_patch
+recovery:
+  submitted_at: 2026-09-07T05:22:24.013Z
+  spawned_at: 2026-09-07T05:25:29.262Z
+  input_step: 150500
+  target_step: 152500
+  source_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-warmup-reference/checkpoint-0150500.pt
+  checkpoint_sha256: 589b7f5dc5de361ca426584dbd4d9d8bbff034523058167d52dbf6d08ca44763
+  checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/589b7f5dc5de361c
+  checkpoint_semantics: previously_verified_full_FP32_model_Adam_world2_RNG2_matching_sidecar_full_LRs_ages50500_to65500
+  input_rehashed_before_process_spawn: true
+  checkpoint_hash_seconds: 132.832
+  worker_boot_seconds: 36.836
+  timing_caveat: slow_host_IO_or_scheduling_hint_not_proven_native_crash_cause
+  recovery_mode: full_state_not_weights_only
+  LR_origin_step: 150000
+  original_warmup_steps: 500
+  repeated_warmup: false
+  full_actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  unchanged: [FP32_masters_Adam, BF16_compute_reduce, decoder_only, cycle_weight0, cycle_input_forward_diagnostics, B2_A2_K15, seeds_data, native_allocator_cache_reuse, LR_policy]
+  training_seed: 20260812
+  geometry_seed: 20260812
+  decoder_seed: 424242
+  observation_changes: [PYTHONFAULTHANDLER1, first_update150501_event, earlier_native_fault_event, past_old_failure150725_event]
+  source_code_changes: none
+  test_basis: existing100_tests_same_training_code_and_identical_config_checksum
+  launcher_choice: explicit_PRL_launch_to_pin_SHA_dependency_allow_parent_failure_and_retarget_events_not_blind_retry_of_original150k_argv
+  output: /data/WorldBridge4D-runs/h030-150500-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15-resume-r1
+resources:
+  gpu_ids: ['2', '3']
+  mode: shared
+  allow_foreign_processes: true
+  min_free_memory_mib: 65536
+  memory_safety_mib: 4096
+  wait_timeout_seconds: 7200
+termination:
+  launcher: worldbridge.trainer.soft_torchrun
+  checkpoint_signal: SIGTERM
+  checkpoint_event_id: checkpoint_complete
+  terminate_signal: SIGTERM
+  graceful_timeout_seconds: 900
+  force_kill_timeout_seconds: 120
+  allow_sigkill: false
+review_plan:
+  normal_budget: finish152500_without_short_window_LR_switches
+  intermediate_review: 151500
+  primary_windows: [[150501, 151500], [151501, 152500]]
+  primary_metrics: per_dataset_XYZ_and_EPE_not_total_loss
+  baseline_runs: [R-20260906224802-229787, R-20260906125858-4dd8d0]
+  if_consistent_gain: prepare_tested_same_trajectory152500_to155000_continuation_without_reset_or_rewarmup
+  if_mixed_or_no_gain: report_before_another150k_short_LR_arm_do_not_extend_for_occupancy
+  if_native_failure_repeats: inspect_new_fatal_trace_before_any_further_retry
+  comparison_join: initial_run_steps_at_most150500_then_recovery_steps_above150500_exclude_failed_unsaved_tail
+  review151500_implementation: recovery_only_start150500_end151500_all_full_LR_not_new_warmup
+  full2500_claim_requires: explicitly_tested_multi_run_join_or_separate_nonoverlapping_warmup_and_full_LR_reports
+  quality_caveat: sampled_training_fingerprints_not_validation_or_complete_clip_identity
+  standalone_diagnostic_inference: remains_cancelled
+  production_baseline: H023_100k_unchanged
+watchdog: completed_global_step_only_900_seconds_record_and_wake
