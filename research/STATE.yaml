@@ -547,7 +547,11 @@ next_step: Unweighted RGB1x continuation succeeded155000; full endpoint protecte
   PO validation remains blocked. Boundary2x R-20260907144838-4f3680 is running on
   physical GPUs2/3;150500 warmup is complete and its full checkpoint is protected
   and SHA-registered. All193 Adam ages advanced500; actual/base group LRs are3e-6.
-  Continue unchanged to152500 review and the selected155000 endpoint. It restores
+  Continue unchanged to152500 review; user now authorizes autonomous hypotheses and
+  experiments after that comparison without another approval round. Use remaining
+  training time to test and enqueue useful GPU2and3 successors BEFORE completion
+  or any checkpoint-first deliberate switch, rather than waiting with idle GPUs.
+  The current selected endpoint is155000; no new factor is selected before review. It restores
   original FULL150000 to155000 with the original500-step warmup and reuses the
   existing unweighted trajectory; no repeated baseline or two155000-origin arms.
   The final sampled training review still establishes no quality gain. Follow the
@@ -2018,4 +2022,30 @@ h030_boundary2x_original150k:
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-fp32-cycle0-rgb1x-boundary2x-gpu23-b2-k15
   next_review: full_LR152500_unweighted_matched_metrics_then_fixed_endpoint_validation
   caveat: warmup_checks_do_not_establish_quality_bitwise_replay_or_full_horizon_memory_safety
-updated_at: 2026-09-07T15:40:35Z
+h030_autonomous_successors_after_next_review:
+  user_authorized: true
+  authorization_recorded_at: 2026-09-07T17:15:24Z
+  authorization: 你可以在下一次对照后继续提出假设然后开启实验，不要让 GPU2 3 空闲下来
+  trigger: next_boundary2x_comparison_at152500
+  physical_gpus: [2, 3]
+  additional_user_approval_required_for_in_scope_successors: false
+  current_training: R-20260907144838-4f3680
+  current_policy: unchanged_until_review_selected_endpoint155000_no_new_factor_chosen_yet
+  review:
+    protect: full152500_model_Adam_counters_world2_RNG2_matching_sidecar_outside_rotation
+    compare: unweighted_XYZ_EPE_with_existing_RGB1x_control_over_same_logged_steps_and_fingerprints
+    distinguish: sampled_training_from_fixed_validation_weighted_loss_from_quality
+    diagnosis: boundary_interior_motion_visibility_crosses_where_available_do_not_invent_missing_results
+  successor_policy:
+    - derive_one_falsifiable_single_factor_hypothesis_from_review_and_record_budget_and_decision_criteria
+    - reuse_existing_valid_controls_no_redundant_baseline_training
+    - CPU_tests_before_computation_immutable_PRL_snapshot_owner_config_seed_checkpoint_identity
+    - prepare_while_current_useful_training_continues_enqueue_before_endpoint_or_any_deliberate_stop
+    - relay_useful_training_and_diagnostics_on_exact_GPU2and3_without_memory_heavy_overlap
+    - checkpoint_first_SIGTERM_soft_torchrun_no_SIGKILL_no_foreign_process_control
+    - preserve_native_allocator_no_caps_no_tuning_no_periodic_empty_cache_no_GPU_substitution
+  continuity_caveat: minimize_avoidable_idle_time_checkpoint_IO_hashing_model_loading_and_lease_handoffs_are_not_zero_latency_no_occupancy_only_jobs
+  next_hypothesis: not_selected_until_comparison_evidence
+  new_GPU_successor_submission: pending_next_review_not_claimed_queued
+  production: H023_100000_unchanged_until_validated_improvement
+updated_at: 2026-09-07T17:15:24Z
