@@ -1,4 +1,18 @@
-status: running_first_resumed_update150501_verified
+status: running_beyond_previous_last_logged_step
+recovery_progress:
+  notification_acknowledged: N-39901a7c595ed9fccc0f
+  milestone_step: 150725
+  milestone_at: 2026-09-07T06:07:12.025Z
+  latest_observed_step: 150742
+  latest_observed_at: 2026-09-07T06:08:19.738Z
+  LR_factor: 1.0
+  weighted_cycle: 0.0
+  milestone_step_seconds: 3.5530830789357424
+  latest_sampled_step_seconds: 3.631206827936694
+  process_peak_cuda_memory_gib: 65.11200332641602
+  latest_verified_checkpoint_step: 150500
+  decision: continue_unchanged_next151000_checkpoint_then151500_primary_metric_review
+  caveat: progress_beyond_old150722_not_crash_fix_bitwise_replay_full_horizon_stability_or_quality_evidence
 first_update:
   notification_acknowledged: N-a4d8c5ff5c10ed6feccf
   at: 2026-09-07T05:35:32.725Z

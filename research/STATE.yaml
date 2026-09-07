@@ -543,9 +543,9 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: Continue RGB1x same-trajectory recovery on physical2/3 toward152500.
-  Resumed150501 completed with LR factor1 and matching initial XYZ/EPE; no rewarmup.
-  Inspect150725 and checkpoint151000, then full-LR metrics at151500. SIGSEGV root
-  cause remains unresolved; do not change the scientific config on short windows.
+  Completed150725 and observed150742 at full LR beyond the old last logged150722.
+  Next verify and preserve checkpoint151000, then review full-LR metrics at151500.
+  SIGSEGV root cause remains unresolved; keep the scientific config unchanged.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1700,7 +1700,14 @@ h030_fp32_cycle0_rgb1x_2500:
   output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15
   next_review: none_failed_run_do_not_repeat_original150k_argv
 h030_fp32_cycle0_rgb1x_recovery_r1:
-  status: running_first_resumed_update150501_verified
+  status: running_beyond_previous_last_logged_step
+  recovery_milestone_step: 150725
+  recovery_milestone_at: 2026-09-07T06:07:12.025Z
+  last_observed_step: 150742
+  last_observed_step_at: 2026-09-07T06:08:19.738Z
+  last_observed_LR_factor: 1.0
+  observed_process_peak_cuda_memory_gib: 65.11200332641602
+  recovery_boundary_caveat: progressed_beyond_old150722_not_proof_native_crash_cause_fixed
   first_update_step: 150501
   first_update_at: 2026-09-07T05:35:32.725Z
   first_update_LR_factor: 1.0
@@ -1740,5 +1747,5 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   minimum_unsaved_updates_to_replay_at_recovery: 222
   comparison_join: old_run_only_through150500_then_recovery_above150500_exclude_old_replayed_tail
   output: /data/WorldBridge4D-runs/h030-150500-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15-resume-r1
-  next_review: past150725_then_checkpoint151000_then_matched151500_and152500
-updated_at: 2026-09-07T05:35:32Z
+  next_review: checkpoint151000_then_matched151500_and152500
+updated_at: 2026-09-07T06:08:19Z
