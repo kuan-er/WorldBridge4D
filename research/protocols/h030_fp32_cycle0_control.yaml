@@ -1,4 +1,6 @@
-status: succeeded152500_full_state_preserved_successor_running
+status: succeeded152500_full_state_preserved_continuation_stopped153788
+current_control_run: R-20260907030635-631b93
+current_control_protocol: research/protocols/h030_fp32_cycle0_rgb1x.yaml
 finished_at: 2026-09-07T01:36:49.306Z
 checkpoint152500_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-step152500-reference/checkpoint-0152500.pt
 checkpoint152500_sha256: 7d4a313e069f1c66681f42c093e527bd4af7ba4a9a37051d835f3015f5f3b9ba

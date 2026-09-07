@@ -1,4 +1,36 @@
-status: running100_continuation_updates_checkpoint152600_verified
+status: checkpointed_stop153788_rgb1x_successor_running
+stop_result:
+  final_step: 153788
+  comparison_horizon: 153500
+  original_target_not_reached: 155000
+  finished_at: 2026-09-07T03:08:29.492Z
+  checkpoint_complete_marker_at: 2026-09-07T03:08:16.106Z
+  audited_signals: [SIGTERM, SIGTERM]
+  signal_times: [2026-09-07T03:07:10.568Z, 2026-09-07T03:08:16.111Z]
+  termination_trace: expected_torch_elastic_SignalException15_not_a_new_failure_to_retry
+  protected_stop_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-stopped153788-reference/checkpoint-0153788.pt
+  stop_checkpoint_status: full_metadata_verified_matching_sidecar_FP32_Adam_ages53788_to68788_not_SHA_registered
+  successor_spawned_at: 2026-09-07T03:08:47.354Z
+  exit_to_spawn_seconds: 17.862
+next_protocol: research/protocols/h030_fp32_cycle0_rgb1x.yaml
+review153500:
+  run: R-20260907024828-ab9c4b
+  result: /data/WorldBridge4D-runs/h030-cycle0-matched-through153500-20260907/vs-bf16-norm30/full_lr_1000_rollup.json
+  window: [152501, 153500]
+  all_full_LR_no_rewarmup: true
+  paired_logged_updates: 300
+  dataset_order: [kubric, pointodyssey, dynamic_replica]
+  xyz_pct_vs_bf16: [0.667593, 0.431648, 0.167135]
+  epe_pct_vs_bf16: [1.510096, 0.783901, 1.455131]
+  conclusion: continued_primary_regression_not_new_quality_gain
+  caveat: sampled_training_and_fingerprint_alignment_not_validation_or_full_clip_identity
+  protected_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-step153500-reference/checkpoint-0153500.pt
+  checkpoint_sha256: 21bbe8fcdb0294c1173fc3c2125284428178fc329ba338713212dfeb9d3600fd
+  checkpoint_artifact: artifact://H030/R-20260907005010-9de7af/checkpoint/21bbe8fcdb0294c1
+  Adam_age_range: [53500, 68500]
+  decision: terminate_155k_extension_early_after_successor_submission
+  stop_requested_at: 2026-09-07T03:07:10.441Z
+  successor_run: R-20260907030635-631b93
 review152600:
   logged_at: 2026-09-07T01:48:30.232Z
   continuation_updates: 100
