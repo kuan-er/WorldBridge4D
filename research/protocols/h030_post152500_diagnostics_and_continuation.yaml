@@ -116,7 +116,34 @@ training:
     bytes: 7864619111
   endpoint155000_preservation_run: R-20260907113731-cad04f
   endpoint_guard: success_and_future_checkpoint_hash_gate_explicit_RGB1x_rates_local_hardlink_matching_sidecar_all193_Adam_ages_plus2500
-  next_training_review: 153500
+  observed153500:
+    time: 2026-09-07T12:50:44.100Z
+    counters: [429800, 368400, 429800]
+    sampled_step_seconds: 3.4917508198414
+    process_peak_GiB: 65.44405269622803
+    verification_run: R-20260907125231-b28921
+    verification_finished_at: 2026-09-07T12:52:56.646Z
+    protected_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step153500-reference/checkpoint-0153500.pt
+    protected_checkpoint_sha256: 2b76d9f030827dbae7bf84334ebc44f5a8ff6ea904a07806ea985aebba465f2f
+    registered_artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/2b76d9f030827dba
+    all193_Adam_age_increments: 1000
+    Adam_age_range: [53500, 68500]
+    bytes: 7864619111
+  review153500:
+    run: R-20260907125230-ae53a9
+    window: [152501, 153500]
+    paired_logged_updates_per_reference: 300
+    references: [R-20260907005010-9de7af, R-20260906125858-4dd8d0]
+    rollup: per_dataset_batch_count_weighted_means_over_two_full_LR500_step_halves_not_average_percentages
+    dataset_order: [kubric, pointodyssey, dynamic_replica]
+    vs_RGB10x_XYZ_change_pct: [0.05927070132112355, 0.032716102073404585, 0.25865965170479566]
+    vs_RGB10x_EPE_change_pct: [0.04322271440952985, 0.01816652794510709, 0.029490161288325822]
+    vs_BF16_XYZ_change_pct: [0.7272591124030336, 0.46450581782089273, 0.4262274148840062]
+    vs_BF16_EPE_change_pct: [1.5539712956385454, 0.8022101640744017, 1.4850500725559712]
+    output: /data/WorldBridge4D-runs/h030-rgb1x-matched-through153500-20260907
+    decision: no_clear_gain_continue_user_authorized155000_budget_unchanged_no_midpoint_switch
+    caveat: sampled_training_not_validation_significance_complete_clip_mask_identity_or_bitwise_causal_RGB_effect
+  next_training_review: 155000_endpoint_and_fixed_validation
 caveats:
   - user_authorized_continuation_does_not_change_the_prior_no_clear_gain_finding
   - no_claim_of_uninterrupted150k_to160k_or_bitwise_FSDP_replay
