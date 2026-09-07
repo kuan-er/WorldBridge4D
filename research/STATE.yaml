@@ -542,9 +542,10 @@ h023_256_three_dataset_200m:
     canonical roots; then verify exact resume from step 2 through a Kubric
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
-next_step: Verify the first update of RGB1x same-trajectory recovery on physical2/3
-  from protected150500 after rank0 SIGSEGV. Keep the152500 budget and scientific
-  config unchanged; no rewarmup or150k restart. Review full-LR metrics at151500.
+next_step: Continue RGB1x same-trajectory recovery on physical2/3 toward152500.
+  Resumed150501 completed with LR factor1 and matching initial XYZ/EPE; no rewarmup.
+  Inspect150725 and checkpoint151000, then full-LR metrics at151500. SIGSEGV root
+  cause remains unresolved; do not change the scientific config on short windows.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1699,7 +1700,22 @@ h030_fp32_cycle0_rgb1x_2500:
   output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15
   next_review: none_failed_run_do_not_repeat_original150k_argv
 h030_fp32_cycle0_rgb1x_recovery_r1:
-  status: spawned_first_update_pending
+  status: running_first_resumed_update150501_verified
+  first_update_step: 150501
+  first_update_at: 2026-09-07T05:35:32.725Z
+  first_update_LR_factor: 1.0
+  first_update_XYZ: 0.013833020580932498
+  first_update_EPE_m: 0.12778710644422286
+  first_update_XYZ_EPE_matches_old_same_step: true
+  first_update_gradient_norm: 0.4968506693840027
+  old_same_step_gradient_norm: 0.4968509078025818
+  spawn_to_first_update_seconds: 603.463
+  master_storage_verified_at: 2026-09-07T05:31:03.991Z
+  first_step_seconds: 261.1955817020498
+  first_geometry_wait_seconds: 229.98208211385645
+  first_process_peak_cuda_memory_gib: 60.54542064666748
+  latest_verified_checkpoint_step: 150500
+  caveat: one_update_not_new_checkpoint_full_bitwise_replay_crash_resolution_or_quality_gain
   run: R-20260907052221-d438cd
   failed_parent_run: R-20260907030635-631b93
   task: T-20260901153324-39dd05
@@ -1721,8 +1737,8 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   prior_tests_reused: 100_same_training_code_and_config_no_new_algorithm_change
   checkpoint_revalidated_before_spawn: true
   checksum_seconds: 132.832
-  unsaved_logged_updates_to_replay: 222
+  minimum_unsaved_updates_to_replay_at_recovery: 222
   comparison_join: old_run_only_through150500_then_recovery_above150500_exclude_old_replayed_tail
   output: /data/WorldBridge4D-runs/h030-150500-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15-resume-r1
-  next_review: first150501_then_past150725_then_checkpoint151000_then_matched151500_and152500
-updated_at: 2026-09-07T05:25:29Z
+  next_review: past150725_then_checkpoint151000_then_matched151500_and152500
+updated_at: 2026-09-07T05:35:32Z

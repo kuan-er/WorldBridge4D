@@ -1,4 +1,29 @@
-status: spawned_first_update_pending
+status: running_first_resumed_update150501_verified
+first_update:
+  notification_acknowledged: N-a4d8c5ff5c10ed6feccf
+  at: 2026-09-07T05:35:32.725Z
+  step: 150501
+  spawn_to_first_update_seconds: 603.463
+  master_storage_verified_at: 2026-09-07T05:31:03.991Z
+  restored_master_and_Adam_dtype: float32
+  compute_precision: bf16
+  LR_factor: 1.0
+  weighted_cycle: 0.0
+  XYZ_loss: 0.013833020580932498
+  raw_EPE_m: 0.12778710644422286
+  comparison_run: R-20260907030635-631b93
+  matching_old_step: 150501
+  old_logged_at: 2026-09-07T03:49:07.381Z
+  XYZ_EPE_cycle_diagnostics_and_sampling_histograms_match: true
+  clips_seen: {kubric: 421400, pointodyssey: 361200, dynamic_replica: 421408}
+  gradient_norm: 0.4968506693840027
+  old_gradient_norm: 0.4968509078025818
+  step_seconds: 261.1955817020498
+  geometry_wait_seconds_max_rank: 229.98208211385645
+  process_peak_cuda_memory_gib: 60.54542064666748
+  caveats: one_batch_not_full_bitwise_resume_or_new_checkpoint_or_quality_crash_fix_or_memory_reduction_evidence
+  latest_verified_checkpoint_step: 150500
+  decision: continue_unchanged_check150725_then151000_checkpoint_and151500_review
 run: R-20260907052221-d438cd
 failed_parent_run: R-20260907030635-631b93
 task: T-20260901153324-39dd05
