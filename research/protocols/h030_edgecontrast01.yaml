@@ -1,20 +1,57 @@
 version: 1
 hypothesis: H030
 phase: boundary2x_plus_source_GT_neighbor_XYZ_contrast01
-status: running_first_optimizer_update_verified_fixed_midpoint_control_screen_complete
+status: running_full_LR_warmup150500_full_state_protected_no_quality_claim
 handoff_and_control_review: research/protocols/h030_boundary155000_review.yaml
 spawned_at: 2026-09-07T20:30:00.366Z
 FP32_master_storage_verified_at: 2026-09-07T20:31:46.143Z
 first_optimizer_update: 150001
 first_optimizer_update_at: 2026-09-07T20:32:20.107Z
 first_unweighted_and_boundary_objective_parity: verified_against_control_preupdate_not_a_quality_gain
-current_decision: continue_fixed01_budget_unchanged_no_midpoint_control_or_first_batch_retuning
+current_decision: continue_fixed01_budget_at_full_LR_unchanged_no_rewarmup_or_single_batch_retuning
 run: R-20260907185236-284f11
 execution_commit: 42869cccfccc316f79268e2b887b1ff78574e3e8
 queued_at: 2026-09-07T18:52:36Z
 endpoint_guard: R-20260907185445-827fc1
 user_authority: autonomous_in_scope_successors_after_boundary152500_review_on_physical_GPU2and3
 owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+warmup150500:
+  event_at: 2026-09-07T21:05:25.774Z
+  single_batch_dataset: kubric
+  unweighted_XYZ: 0.09071742370724678
+  raw_EPE_m: 0.4832167943318685
+  boundary_weighted_XYZ: 0.1180138811469078
+  contrast_loss: 0.8872617930173874
+  weighted_contrast_loss: 0.08872617930173875
+  total_optimized_loss: 0.20674006268382072
+  contrast_valid_edges: 262365
+  contrast_eligible_pairs: 120
+  occluded_valid_boundary_points: 353913
+  LR_factor: 1.0
+  preclip_gradient_norm: 4.901937007904053
+  peak_allocated_GiB: 65.57270956039429
+  latest_inspected_log: {step: 151085, at: '2026-09-07T21:44:06.742Z', verified_checkpoint: false}
+  strict_guard: R-20260907214249-e3bc1b
+  strict_guard_outcome: failed_handoff_step_mismatch_after_live_sidecar_advanced_to151000_not_training_failure
+  recovery_guard: R-20260907215116-69d8b0
+  recovery_commit: 02eb1a944a09691601caa2ded3cbba827aa7357e
+  succeeded_at: 2026-09-07T21:51:49.742Z
+  tests: {passed: 23, existing: 13, new: 10, seconds: 5.38}
+  checkpoint: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast01-step150500-reference/checkpoint-0150500.pt
+  sha256: 3df4fcb3d475d074c405b3dad71ca2ba18454414bd801a66cd728707a0829e23
+  artifact: artifact://H030/R-20260907185236-284f11/checkpoint/3df4fcb3d475d074
+  registered_at: 2026-09-07T21:54:03.884Z
+  bytes: 7864619367
+  full_state: FP32_model_Adam_world2_RNG2
+  Adam_age_range: [50500, 65500]
+  all193_Adam_age_increments_from150000: 500
+  actual_and_base_LRs: [0.000003, 0.000003, 0.000003]
+  clip_counters: [421400, 361200, 421400]
+  sidecar_provenance: reconstructed_three_fields_from_full_checkpoint_crosschecked_with_observed150500_status_not_copied_live151000_sidecar
+  sidecar_policy: explicit_opt_in_only_advanced_same_world_monotonic_B2_A2_counts_default_strict_guard_unchanged_no_producer_file_modification
+  replica: local_same_inode_hardlink_outside_rotation_not_remote
+  caveat: engineering_protection_not_quality_gain_bitwise_FSDP_replay_or_remaining_horizon_memory_guarantee
+  next: protect152500_then_matched_full_LR150501_to152500_raw_and_boundary_strata_review_with_counts
 review:
   run: R-20260907174725-f76d81
   window: [150501, 152500]

@@ -549,12 +549,15 @@ next_step: >-
   GPU2/3 fixed validation relays both succeeded. Matched boundary152500 versus
   unweighted152500 shows small raw boundary tracking gains but mixed occlusion and
   worse relative displacement; four clips per available dataset, PO still blocked.
-  Edgecontrast01 R-20260907185236-284f11 is NOW RUNNING on physical GPUs2/3, first
-  optimizer update150001 verified20:32:20.107; initial unweighted and boundary-weighted
-  metrics match the control. Keep the selected fixed01 single-factor budget unchanged:
-  original FULL150000, original500 warmup once, boundary2x retained, no architecture
-  change or repeated control training. Preserve warmup150500 and review152500 against
-  the completed boundary2x control using raw XYZ/EPE and boundary strata WITH counts.
+  Edgecontrast01 R-20260907185236-284f11 continues on physical GPUs2/3 at full LR.
+  Warmup150500 full model/Adam/world2/RNG2 is protected and SHA-registered; all193
+  Adam ages+500 and all actual/base LRs3e-6. The live sidecar had advanced to151000:
+  strict CPU guard rejected it, then tested explicit restoration reconstructed the
+  three150500 planning fields in the protected directory only. Producer files and
+  training stayed unchanged. Last inspected log151085 is not a verified checkpoint.
+  Keep fixed01 and the original150000-origin5000-update budget unchanged. At152500
+  protect its checkpoint and compare full-LR150501--152500 raw XYZ/EPE plus boundary,
+  nonboundary and occluded-boundary metrics WITH counts against the completed control.
   New155000 endpoint guard R-20260907185445-827fc1 remains queued. Endpoint validation
   is already prequeued via CPU resolver R-20260907204227-3a167e and GPU2/3 workers
   R-20260907204615-8ee7c1 / R-20260907204615-23bab2, comparing both155000 arms and
@@ -2094,11 +2097,61 @@ h030_autonomous_successors_after_next_review:
   continuity_caveat: minimize_avoidable_idle_time_checkpoint_IO_hashing_model_loading_and_lease_handoffs_are_not_zero_latency_no_occupancy_only_jobs
   next_hypothesis: retain_boundary2x_add_fixed01_GT_cross_surface_neighbor_XYZ_contrast_no_architecture_change
   new_GPU_successor_submission: R-20260907185236-284f11
-  submission_status: running_first_optimizer_update_verified150001
+  submission_status: running_full_LR_warmup150500_checkpoint_protected
   validation_relays: [R-20260907185032-7a2093, R-20260907185032-625a1a]
   production: H023_100000_unchanged_until_validated_improvement
 h030_boundary2x_edgecontrast01:
-  status: running_first_optimizer_update_verified_no_quality_claim
+  status: running_full_LR_warmup150500_full_state_protected_no_quality_claim
+  latest_verified_step: 150500
+  latest_verified_checkpoint: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast01-step150500-reference/checkpoint-0150500.pt
+  latest_verified_checkpoint_sha256: 3df4fcb3d475d074c405b3dad71ca2ba18454414bd801a66cd728707a0829e23
+  latest_verified_checkpoint_artifact: artifact://H030/R-20260907185236-284f11/checkpoint/3df4fcb3d475d074
+  latest_observed_log: {step: 151085, at: '2026-09-07T21:44:06.742Z', checkpoint_verification_claim: false}
+  early150100:
+    event_at: 2026-09-07T20:39:05.694Z
+    unweighted_XYZ: 0.0364638757891953
+    raw_EPE_m: 0.26191160678863523
+    interpretation: single_Kubric_batch_not_quality_review
+  warmup150500:
+    event_at: 2026-09-07T21:05:25.774Z
+    log_at: 2026-09-07T21:05:25.769Z
+    unweighted_XYZ: 0.09071742370724678
+    raw_EPE_m: 0.4832167943318685
+    boundary_weighted_XYZ: 0.1180138811469078
+    contrast_loss: 0.8872617930173874
+    weighted_contrast_loss: 0.08872617930173875
+    total_optimized_loss: 0.20674006268382072
+    contrast_valid_edges: 262365
+    contrast_eligible_pairs: 120
+    boundary_valid_points: 972510
+    nonboundary_valid_points: 6891810
+    occluded_valid_boundary_points: 353913
+    LR_factor: 1.0
+    preclip_gradient_norm: 4.901937007904053
+    peak_allocated_GiB: 65.57270956039429
+    step_seconds: 3.483384727034718
+    original_warmup_completed_once: true
+    interpretation: finite_single_Kubric_batch_not_quality_or_remaining_horizon_memory_proof
+  warmup_protection:
+    failed_strict_guard: R-20260907214249-e3bc1b
+    failure: handoff_step_mismatch_live_sidecar_advanced_to151000_not_a_training_failure
+    guard: R-20260907215116-69d8b0
+    execution_commit: 02eb1a944a09691601caa2ded3cbba827aa7357e
+    succeeded_at: 2026-09-07T21:51:49.742Z
+    regression_tests: 23
+    new_tests: 10
+    test_seconds: 5.38
+    registered_at: 2026-09-07T21:54:03.884Z
+    bytes: 7864619367
+    full_state: FP32_model_Adam_world2_RNG2_193_ages_plus500_all_actual_and_base_LRs3e_minus6
+    Adam_age_range: [50500, 65500]
+    clip_counters: [421400, 361200, 421400]
+    sidecar: explicitly_reconstructed_from_full_checkpoint_training_state_crosschecked_with_observed150500_status_not_copied_live151000
+    live_sidecar_step_at_read: 151000
+    live_sidecar_sha256_at_read: 10db89d63e21bb613c00b2ef5f105cd7f66442929916fac4bdc9f99f0a640bb6
+    producer_files_modified: false
+    replica: local_same_inode_hardlink_outside_rotation_not_remote
+    default_guard_policy: still_strict_explicit_opt_in_required_for_historical_sidecar_restore
   spawned_at: 2026-09-07T20:30:00.366Z
   last_diagnostic_exit_to_spawn_seconds: 25.497
   FP32_master_storage_verified_at: 2026-09-07T20:31:46.143Z
@@ -2117,8 +2170,8 @@ h030_boundary2x_edgecontrast01:
   first_LR_factor: 0.002
   first_gradient_norm: 0.45471763610839844
   first_process_peak_GiB: 60.67590951919556
-  current_decision: continue_fixed01_weight_original500_warmup_once_then_hold_no_retuning_from_first_batch
-  next_event_action: protect150500_full_state_then_matched152500_review
+  current_decision: continue_fixed01_at_full_LR_no_rewarmup_restart_or_single_batch_retuning
+  next_event_action: protect152500_then_matched150501_to152500_raw_and_boundary_strata_review_with_counts
   handoff_and_quality_review: research/protocols/h030_boundary155000_review.yaml
   protocol: research/protocols/h030_edgecontrast01.yaml
   run: R-20260907185236-284f11
@@ -2214,4 +2267,4 @@ h030_edgecontrast_endpoint_validation:
   reuse: same_eight_ready_clips_and_existing_unweighted155000_predictions_PO_four_clips_RGB_blocked
   policy: native_uncapped_single_GPU_workers_after_training_no_overlap_no_SIGKILL_no_GPU_substitution
   caveat: future_checkpoint_hashing_and_model_loading_are_not_zero_latency_no_occupancy_work
-updated_at: 2026-09-07T20:46:15Z
+updated_at: 2026-09-07T21:54:03.884Z
