@@ -1,0 +1,90 @@
+version: 1
+hypothesis: H030
+phase: boundary2x_plus_source_GT_neighbor_XYZ_contrast01
+status: CPU172_and_three_real_training_samples_passed_GPU_submission_next
+user_authority: autonomous_in_scope_successors_after_boundary152500_review_on_physical_GPU2and3
+owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+review:
+  run: R-20260907174725-f76d81
+  window: [150501, 152500]
+  paired_logs: 600
+  unweighted_reference: R-20260907052221-d438cd
+  boundary2x_candidate: R-20260907144838-4f3680
+  XYZ_change_pct_K_PO_DR: [-0.03516796647863307, 0.10994298579682926, 0.13520197600240813]
+  EPE_change_pct_K_PO_DR: [0.12861517354376684, 0.15033902504502095, 0.3452277541214466]
+  conclusion: no_clear_global_primary_training_gain_not_validation_or_disproof_of_boundary_weighting
+hypothesis_statement: point_reweighting_does_not_explicitly_preserve_cross_surface_neighbor_vectors_adding_GT_contrast_may_reduce_surface_averaging_without_changing_architecture
+causal_claim: tentative_mechanism_not_localized_or_proven_by_global_training_EPE
+single_factor:
+  control: R-20260907144838-4f3680
+  retain_boundary_supervision: {multiplier: 2.0, radius_px: 2, depth_relative_jump: 0.05}
+  source_edge_contrast_weight: 0.1
+  delta: add_fixed01_times_GT_adjacent_XYZ_vector_SmoothL1_to_existing_boundary2x_objective
+  normalized_XYZ_and_beta: same_as_primary_SmoothL1_beta005_no_detached_adaptive_scaling
+  edge_definition: oriented_horizontal_vertical_direct_neighbors_with_depth_log_jump_gt_log1p005_OR_available_dense_instance_change
+  endpoints: both_source_depths_finite_positive_depth_valid_and_source_XYZ_valid_then_both_target_XYZ_valid
+  dense_instance_labels: Kubric_only_PO_DR_depth_only_no_sparse_track_ID_raster
+  normalization: combine_two_edge_directions_normalize_by_valid_edges_in_each_pair_then_mean_eligible_pairs_within_microbatch_retain_existing_accumulation_and_rank_averaging
+  empty_edge_pairs: omit_from_microbatch_aux_mean_all_empty_is_differentiable_zero_never_clip_or_source_fallback
+  invariant_to: spatially_constant_prediction_translation_per_target_not_a_global_bias_or_global_motion_constraint
+  visibility: no_visibility_exclusion_valid_occluded_endpoints_retained
+  unchanged: architecture_primary_unweighted_logging_cycle_reference_cycle0_loading_forward_RNG_sampling_seeds_optimizer_groups_clip_native_allocator
+budget:
+  origin_step: 150000
+  endpoint: 155000
+  optimizer_updates: 5000
+  warmup_steps: 500
+  original_warmup_once: true
+  midpoint_review: 152500
+  no_new_control_training: true
+  no_155000_origin_reset: true
+  full_state_restore: model_AdamW_counters_world2_rank_RNG2
+  physical_gpus: [2, 3]
+  B_A_K_world: [2, 2, 15, 2]
+  precision: FP32_masters_Adam_BF16_compute_reductions
+  actual_peak_group_LRs: [0.000003, 0.000003, 0.000003]
+  seeds: {training: 20260812, geometry: 20260812, decoder: 424242}
+  config: configs/h030_150k_to_155k_gpu23_b2_k15_boundary2x_edgecontrast01.yaml
+  config_sha256: 1e5b879629c31c69ca3af15baf1fd57464dbf2cec286bdc0cd0f5c7f24db2b62
+  origin_checkpoint: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+  origin_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  output: /data/WorldBridge4D-runs/h030-150k-to-155k-boundary2x-edgecontrast01-gpu23-b2-k15
+preflight:
+  run: R-20260907184251-dab560
+  execution_commit: e8a97d8a9206ef94dd25b0f63efa12797eb8fec1
+  succeeded_at: 2026-09-07T18:43:41.373Z
+  tests: 172
+  test_seconds: 14.11
+  report: /data/WorldBridge4D-runs/h030-edgecontrast01-preflight-20260907/preflight.json
+  real_sample_source_edges_DR_PO_K: [1094, 100, 1895]
+  real_sample_valid_target_edges_DR_PO_K: [5625, 1500, 28425]
+  real_sample_eligible_pairs_DR_PO_K: [15, 15, 15]
+  real_sample_edges_with_occluded_valid_endpoint_DR_PO_K: [1020, 683, 17975]
+  existing_selection_arrays_boundary_masks_and_target_RNG_equal: true
+  origin_world_RNG_Adam_ages_verified: true
+  CUDA_initialized: false
+  limits: CPU_contracts_not_GPU_memory_full_horizon_capacity_quality_or_bitwise_FSDP_proof
+relay:
+  current_boundary2x_run: R-20260907144838-4f3680
+  current_run_decision: continue_unchanged_to155000_no_stop_retry_or_rewarmup
+  first: parallel_single_GPU_Kubric_and_DR_fixed_diagnostics_of_boundary152500_and_existing_unweighted155000
+  fixed_inputs: reuse_preselected_four_validation_clips_each_dataset_three_sources_all21_targets_native_uncapped_inference
+  controls: reuse_existing_unweighted152500_predictions_without_reinference
+  PO: four_selected_validation_clips_still_RGB_blocked_no_substitution
+  then: tested_edgecontrast01_world2_training_on_exact_GPU2and3
+  future_endpoint_diagnostics: compare_boundary2x155000_and_edgecontrast155000_reusing_unweighted155000_predictions
+  scheduling: prequeue_before_current155000_completion_managed_leases_relay_not_overlap
+  termination: checkpoint_first_SIGTERM_soft_torchrun_no_SIGKILL
+  allocator: native_no_caps_tuning_or_periodic_flushing_all_three_allocator_env_variables_unset
+  continuity: useful_work_only_minimize_avoidable_gaps_hashing_loading_and_lease_handoffs_not_zero_latency
+decision_criteria:
+  engineering: original150000_identity_and_193_Adam_states_preserved_first_unweighted_and_boundary_weighted_preupdate_metrics_match_control_all_LRs_and_counts_match
+  monitoring: finite_loss_gradient_memory_events_full_state_protection_at_warmup_midpoint_endpoint
+  midpoint: matched150501_to152500_unweighted_XYZ_EPE_and_boundary_nonboundary_occluded_boundary_with_counts_against_existing_boundary2x_control
+  optimized_losses: train_loss_and_edge_contrast_loss_are_objectives_not_quality_metrics
+  screening_support: fixed_screen_boundary_tracking_raw_EPE_parent_macro_improves_at_least2percent_on_both_Kubric_and_DR_vs_boundary2x_with_global_raw_and_interior_macro_EPE_regression_no_more_than1percent
+  screening_falsification: flat_or_worse_boundary_tracking_at5000_updates_or_interior_global_tradeoff_exceeding_guardrails_no_claim_of_solution
+  stratification: boundary_le2px_interior_gt10px_cross_GT_motion_le1cm_1to10cm_gt10cm_unavailable_and_target_visibility_separate_pointmap_tracking_absolute_and_relative_displacement
+  counts: identical_fixed_populations_empty_strata_null_never_silently_removed
+  uncertainty: four_parent_balanced_clips_per_ready_dataset_not_generalization_significance_or_three_dataset_validation
+  production: retain_H023_100000_even_if_small_screen_passes_require_further_validation
