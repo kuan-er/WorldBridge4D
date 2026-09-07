@@ -1,4 +1,20 @@
-status: running_warmup500_checkpoint_verified
+status: running_review151500_complete_continuation_queued
+next_protocol: research/protocols/h030_fp32_cycle0_continuation.yaml
+review151500:
+  analysis_run: R-20260907003036-f0c21b
+  output_root: /data/WorldBridge4D-runs/h030-cycle0-matched-through151500-20260907
+  paired_logged_updates: 450
+  full_LR_window: [150501, 151500]
+  dataset_order: [kubric, pointodyssey, dynamic_replica]
+  xyz_pct_vs_fp32_norm30: [-3.660001, -4.843560, -3.323155]
+  epe_pct_vs_fp32_norm30: [-1.715746, -1.798873, -1.161385]
+  xyz_pct_vs_bf16_norm30: [0.442139, 0.154430, 0.182297]
+  epe_pct_vs_bf16_norm30: [0.643662, 0.277818, 0.530159]
+  conclusion: reduced_norm30_regression_not_net_improvement_over_bf16
+  caveat: training_only_sampling_fingerprints_not_validation_or_full_clip_identity
+checkpoint151500_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-step151500-reference/checkpoint-0151500.pt
+checkpoint151500_sha256: 780a7be5f28e780b76dd5865c1e23a5679c53832c1a97c03bb540fbc732cc2da
+checkpoint151500_artifact: artifact://H030/R-20260906224802-229787/checkpoint/780a7be5f28e780b
 warmup_completed_at: 2026-09-06T23:25:43.147Z
 checkpoint150500_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-warmup-reference/checkpoint-0150500.pt
 checkpoint150500_sha256: bb09ecdb28de887589ff3ea08a65f8f928af3baf9842b2b6fb6586d0269940b0
@@ -63,5 +79,5 @@ resources:
   allow_foreign_processes: true
   min_free_memory_mib: 65536
   memory_safety_mib: 4096
-next_review: matched151500_before_terminal152500_or_failure
+next_review: matched152500_and_automatic_continuation_handoff_or_failure
 standalone_diagnostic_inference: remains_cancelled

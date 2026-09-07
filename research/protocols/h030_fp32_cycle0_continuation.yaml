@@ -1,0 +1,74 @@
+status: queued_not_started
+run: R-20260907005010-9de7af
+task: T-20260901153324-39dd05
+owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
+commit: 0e83755c08621318d2b0f15bd58e0b4adef3335f
+config: configs/h030_152500_to_155k_gpu23_b2_k15_fp32_cycle0.yaml
+preflight:
+  initial_run: R-20260907004510-0d1d4e
+  final_run: R-20260907004817-a76cbb
+  tests_passed: 98
+  passed_before_enqueue: true
+  real_metadata_fixture_step: 151500
+  real_fixture_sha256: 780a7be5f28e780b76dd5865c1e23a5679c53832c1a97c03bb540fbc732cc2da
+  real_Adam_age_range: [51500, 66500]
+  coverage: exact_config_delta_LR_continuity_native_FP32_Adam_resume_and_handoff_guard_fail_closed
+  final_record_fix: report_Run_dependency_SHA_field_without_claiming_persistence_precedes_process_spawn
+selection:
+  authority: delegated_autonomous_training_on_physical2_and3
+  review_run: R-20260907003036-f0c21b
+  reason: reduced_primary_regression_vs_fp32_norm30_but_no_net_gain_over_bf16_yet
+  plan: finish_original2500_control_then_extend_same_XYZ_trajectory_to_total5000_updates
+  purpose: assess_longer_full_LR_XYZ_optimization_not_claim_cycle0_already_wins
+  caveat: sampled_training_metrics_not_validation
+  comparison_limit: FP32_norm30_reference_ends152500_BF16_reference_covers155000
+continuation:
+  parent_run: R-20260906224802-229787
+  allowed_parent_status: succeeded
+  expected_resume_step: 152500
+  target_step: 155000
+  added_updates: 2500
+  trajectory_origin_step: 150000
+  trajectory_origin_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  repeated_warmup: false
+  lr_restart_origin: 150000
+  original_warmup_steps: 500
+  actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.00003, source_rgb_no_decay: 0.00003}
+  optimizer_reset: false
+  RNG_reset: false
+  unchanged: [cycle_weight0, cycle_inputs_forward_diagnostics, FP32_masters_Adam, BF16_compute_reduce, decoder_only, B2_A2_K15, seed_data, native_allocator_cache_reuse]
+  seed: 20260812
+  geometry_seed: 20260812
+  decoder_seed: 424242
+  source_checkpoint: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-gpu23-b2-k15/checkpoint-0152500.pt
+  protected_reference: /data/WorldBridge4D-runs/h030-fp32-cycle0-step152500-reference/checkpoint-0152500.pt
+  sha256_known_at_enqueue: false
+  sha256_resolution: PRL_waits_parent_success_and_GPU_readiness_hashes_once_before_spawn_and_persists_Run_dependency_checkpoint_checksum
+  preservation_guard: research/analysis/h030_preserve_fp32_cycle0_checkpoint.py
+  semantic_validation: format3_step152500_world2_two_RNGs_matching_sidecar_FP32_weights_and_Adam_full_LRs_original_age_offsets
+  preserve_before_training: same_inode_hardlink_and_atomic_matching_sidecar_copy
+  output: /data/WorldBridge4D-runs/h030-152500-to-155k-fp32-cycle0-gpu23-b2-k15
+resources:
+  gpu_ids: ['2', '3']
+  mode: shared
+  allow_foreign_processes: true
+  min_free_memory_mib: 65536
+  memory_safety_mib: 4096
+  wait_timeout_seconds: 14400
+  allocator: default_native_cache_reuse_no_overrides
+termination:
+  launcher: worldbridge.trainer.soft_torchrun
+  checkpoint_signal: SIGTERM
+  checkpoint_event_id: checkpoint_complete
+  terminate_signal: SIGTERM
+  graceful_timeout_seconds: 900
+  force_kill_timeout_seconds: 120
+  allow_sigkill: false
+storage:
+  path: /data/WorldBridge4D-runs
+  estimated_checkpoint_bytes: 8000000000
+  min_free_bytes: 16000000000
+  reserve_multiplier: 2
+reviews: [152501, 152600, 153500, 154500, 155000]
+watchdog: completed_global_step_only_900_seconds_record_and_wake
+standalone_diagnostic_inference: remains_cancelled

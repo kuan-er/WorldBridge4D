@@ -543,7 +543,8 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: Continue the FP32 cycle-weight0 matched control on physical GPUs2/3;
-  compare full-LR XYZ/EPE at151500 before its152500 endpoint.
+  finish the matched2500 control at152500, then use the already queued full-state
+  continuation to155000 without rewarmup. Review the152500 paired training results.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1529,15 +1530,25 @@ h030_fp32_master_5k:
   next_review: superseded_do_not_restart_on_delayed_notifications
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-fp32-master-gpu23-b2-k15
 h030_fp32_cycle0_2500:
-  status: running_warmup500_checkpoint_verified
-  last_observed_step: 150500
-  last_observed_step_at: 2026-09-06T23:25:43.147Z
+  status: running_review151500_complete_continuation_queued
+  last_observed_step: 151500
+  last_observed_step_at: 2026-09-07T00:29:37.607Z
+  review_run: R-20260907003036-f0c21b
+  paired_logged_updates: 450
+  full_LR_window: [150501, 151500]
+  epe_pct_vs_fp32_norm30: {kubric: -1.715746, pointodyssey: -1.798873, dynamic_replica: -1.161385}
+  xyz_pct_vs_fp32_norm30: {kubric: -3.660001, pointodyssey: -4.843560, dynamic_replica: -3.323155}
+  epe_pct_vs_bf16_norm30: {kubric: 0.643662, pointodyssey: 0.277818, dynamic_replica: 0.530159}
+  xyz_pct_vs_bf16_norm30: {kubric: 0.442139, pointodyssey: 0.154430, dynamic_replica: 0.182297}
+  review_conclusion: cycle0_reduces_fp32_norm30_primary_regression_but_no_net_gain_over_bf16_established
+  review_caveat: sampled_training_fingerprints_not_validation_or_complete_clip_identity
+  successor_run: R-20260907005010-9de7af
   last_observed_lr_factor: 1.0
   peak_cuda_memory_gib: 65.44205284118652
-  latest_checkpoint_step: 150500
-  latest_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-warmup-reference/checkpoint-0150500.pt
-  latest_checkpoint_sha256: bb09ecdb28de887589ff3ea08a65f8f928af3baf9842b2b6fb6586d0269940b0
-  latest_checkpoint_artifact: artifact://H030/R-20260906224802-229787/checkpoint/bb09ecdb28de8875
+  latest_checkpoint_step: 151500
+  latest_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-step151500-reference/checkpoint-0151500.pt
+  latest_checkpoint_sha256: 780a7be5f28e780b76dd5865c1e23a5679c53832c1a97c03bb540fbc732cc2da
+  latest_checkpoint_artifact: artifact://H030/R-20260906224802-229787/checkpoint/780a7be5f28e780b
   latest_checkpoint_bytes: 7864618983
   latest_checkpoint_outside_rotation: true
   latest_checkpoint_verified: full_model_FP32_Adam_world2_RNG2_cycle_weight0_matched_sidecar_full_LRs
@@ -1577,5 +1588,29 @@ h030_fp32_cycle0_2500:
   termination: checkpoint_first_SIGTERM_only_no_SIGKILL
   output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-gpu23-b2-k15
   wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/64dw4nji
-  next_review: matched151500_before_terminal152500_or_failure
-updated_at: 2026-09-06T23:28:02Z
+  next_review: matched152500_and_automatic_continuation_handoff_or_failure
+h030_fp32_cycle0_continue_to155k:
+  status: queued_not_started_waiting_parent_success
+  run: R-20260907005010-9de7af
+  task: T-20260901153324-39dd05
+  parent_run: R-20260906224802-229787
+  preflight_run: R-20260907004817-a76cbb
+  initial_preflight_run: R-20260907004510-0d1d4e
+  tests_passed: 98
+  commit: 0e83755c08621318d2b0f15bd58e0b4adef3335f
+  config: configs/h030_152500_to_155k_gpu23_b2_k15_fp32_cycle0.yaml
+  protocol: research/protocols/h030_fp32_cycle0_continuation.yaml
+  physical_gpus: [2, 3]
+  expected_resume_step: 152500
+  target_step: 155000
+  trajectory_origin_step: 150000
+  original_warmup_steps: 500
+  repeated_warmup: false
+  optimizer_and_RNG_reset: false
+  input_checkpoint_sha256: null
+  input_checkpoint_identity_resolution: future_bytes_hashed_by_PRL_gate_before_spawn_recorded_in_Run_dependency
+  input_semantic_guard: full_format3_FP32_masters_Adam_world2_RNG2_matching_sidecar_step152500_and_Adam_age_offsets
+  checkpoint_preservation: hardlink_and_matching_sidecar_before_training_subprocess
+  output: /data/WorldBridge4D-runs/h030-152500-to-155k-fp32-cycle0-gpu23-b2-k15
+  next_review: first_update152501_then152600_then153500_then154500_before155000_or_failure
+updated_at: 2026-09-07T00:50:10Z
