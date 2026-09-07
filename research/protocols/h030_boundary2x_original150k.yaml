@@ -1,0 +1,85 @@
+hypothesis: H030
+status: tested_single_new_arm_queued_not_started
+latest_user_selection: reuse_existing_unweighted_RGB1x_cycle0_trajectory_add_only_boundary2x_from150000
+supersedes: verbal_proposal_for_two_new155000_to157500_arms_not_submitted
+production: H023_100000_unchanged
+run: R-20260907144838-4f3680
+owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+execution_commit: 92aa887a5d794a771a6f5d31f22b1f46062a69ad
+config: configs/h030_150k_to_155k_gpu23_b2_k15_fp32_cycle0_rgb1x_boundary2x.yaml
+config_sha256: be7eef9bd7a67f22ab1327fc3dacea7d9b258d720b6bba5affc8de5b91101dac
+input:
+  step: 150000
+  checkpoint: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+  sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  restore: full_model_AdamW_counters_world2_rng2_same_as_original_RGB1x_control
+  optimizer_ages: [50000, 65000]
+  target_step: 155000
+  updates: 5000
+  warmup: original500_updates_once_from150000_then_hold_not_a_continuation_from155000
+  actual_peak_group_LRs: [0.000003, 0.000003, 0.000003]
+  seed: 20260812
+  geometry_seed: 20260812
+  decoder_seed: 424242
+reference_segments:
+  - {run: R-20260907030635-631b93, steps: [150001, 150500]}
+  - {run: R-20260907052221-d438cd, steps: [150501, 152500]}
+  - {run: R-20260907112245-5557b9, steps: [152501, 155000], endpoint: still_pending_at_submission}
+reference_caveat: exclude_failed_unsaved_replayed_tail_recovery_numerical_drift_precludes_bitwise_causal_claim
+single_scientific_change:
+  loss: same_validity_masked_channel_summed_SmoothL1_beta0.05
+  boundary_weight: 2.0
+  other_pixel_weight: 1.0
+  reduction: divide_valid_weighted_error_by_sum_of_valid_weights_WITHIN_EACH_source_target_pair_then_mean_eligible_pairs
+  source_band: integer_grid_Euclidean_distance_le2_from_two_sided_GT_edges_shared_across_all_targets
+  depth_edges: abs_log_depth_jump_gt_log1p0.05_or_finite_positive_depth_validity_change
+  kubric: union_depth_edges_and_adjacent_dense_GT_instance_label_changes
+  pointodyssey: depth_only_no_dense_instance_GT_contract
+  dynamic_replica: depth_only_sparse_track_IDs_are_not_dense_segmentation
+  selection: no_RGB_edges_no_prediction_dependency_no_target_visibility_filter
+  data_failures: boundary_contract_failure_is_fatal_never_choose_another_clip_or_source
+unchanged:
+  - architecture_H027_source_RGB_fusion_and_bilinear_upsampler
+  - decoder_only_B2_A2_K15_world2_FP32_masters_Adam_BF16_compute_reductions_clip1
+  - cycle_loading_forward_RNG_and_unweighted_XYZ_normalization_reference_retained_coefficient0
+  - sampling_fallback_eligibility_RGB_geometry_cameras_and_all_valid_occluded_targets
+metrics:
+  primary_comparable_training: [train/xyz_loss, train/raw_epe_m]
+  optimized_objective: train/boundary_weighted_xyz_loss_not_a_quality_metric
+  extra: boundary_and_nonboundary_and_boundary_occluded_raw_EPE_with_counts_and_pair_mean_boundary_fraction
+  nonboundary_caveat: greater_than2px_is_not_the_fixed_validation_interior_greater_than10px
+  validation_plan: same_fixed_clips_sources_targets_boundary_by_motion_by_visibility_pointmap_and_relative_displacement
+  validation_status: endpoint_comparison_and_crossed_analysis_pending_not_executed
+  PO_validation: RGB_missing_no_train_substitution
+preflight:
+  run: R-20260907140138-663230
+  status: succeeded
+  finished_at: 2026-09-07T14:03:05.278Z
+  tests_passed: 148
+  test_seconds: 17.49
+  checks: strict_Node_YAML_diff_compile_original150000_full_state_and_three_real_training_samples_no_CUDA
+  data_equality: selected_clip_source_XYZ_validity_visibility_RGB_camera_and_sampled_targets_identical_with_weighting_disabled
+  band_equality: exact_match_existing_diagnostic_depth_instance_edges_and_distance_le2
+  sample_order: [dynamic_replica, pointodyssey, kubric]
+  sample_indices: [4420, 8574, 4667]
+  sample_sources: [8, 6, 8]
+  full_source_grid_boundary_pixels: [5040, 39906, 7341]
+  source_grid_pixels: 65536
+  coverage_caveat: one_sample_per_dataset_only_PO_example_has60.89_percent_band_coverage_not_all_clips_or_supervised_pair_fraction
+  report: /data/WorldBridge4D-runs/h030-boundary2x-preflight-20260907/preflight.json
+handoff:
+  keep_current_training_unchanged_to155000: R-20260907112245-5557b9
+  current_training_latest_observed: {step: 154950, at: '2026-09-07T14:51:10.719Z'}
+  dependency_DR_GPU3_success: R-20260907113216-24a010
+  other_DR_GPU2_lease_must_release: R-20260907113216-4099b0
+  runtime_gate: assert_successful_owned148_test_commit_config_hash_and_current_baseline155000_sidecar_before_exec
+  physical_gpus: [2, 3]
+  resources: shared_managed_lease_min_free65536MiB_plus4096MiB_safety_foreign_opt_in_wait14400s
+  allocator: native_cache_zero_periodic_empty_cache_three_allocator_environment_variables_unset_no_caps
+  termination: checkpoint_SIGTERM_soft_torchrun_no_SIGKILL_no_foreign_process_control_no_GPU_substitution
+  argv_environment_events_storage: immutable_PRL_Run_record
+  endpoint_preservation: R-20260907145112-191549
+  protected_endpoint_directory: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-boundary2x-step155000-reference
+  preservation: full_state_matching_sidecar_explicit_all3e6_RATES_all193_Adam_ages_plus5000_local_hardlink_outside_rotation
+  intermediate_action: protect150500_and_review152500_on_events_before_rotation_do_not_use_pre150500_with_legacy_guard
+  caveat: queued_is_not_spawn_first_update_completed_checkpoint_or_quality_gain
