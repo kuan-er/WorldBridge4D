@@ -543,8 +543,10 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: Unweighted RGB1x continuation succeeded155000; full endpoint protected and
-  SHA-registered. DR workers have spawned on physical GPUs2/3; the tested148 single
-  boundary2x arm R-20260907144838-4f3680 remains queued behind them. It restores
+  SHA-registered. DR workers succeeded and the available Kubric/DR screen is frozen;
+  PO validation remains blocked. Boundary2x R-20260907144838-4f3680 is running on
+  physical GPUs2/3; first150001 update verified with FP32 masters, LR factor0.002,
+  and unchanged initial unweighted XYZ/EPE versus the existing control. It restores
   original FULL150000 to155000 with the original500-step warmup and reuses the
   existing unweighted trajectory; no repeated baseline or two155000-origin arms.
   The final sampled training review still establishes no quality gain. Follow the
@@ -1815,7 +1817,7 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   successor_run: R-20260907112245-5557b9
   next_review: original_budget_closed_follow_new_user_authorized_phase_below
 h030_post152500_diagnostics:
-  status: kubric_complete_DR_workers_spawned_after155000_PO_validation_RGB_blocked
+  status: kubric_DR_ready_matrix_complete_frozen_PO_validation_RGB_blocked
   user_authorized_reopening: true
   protocol: research/protocols/h030_post152500_diagnostics_and_continuation.yaml
   config: configs/h030_diagnostics_152500.yaml
@@ -1842,6 +1844,21 @@ h030_post152500_diagnostics:
   queued_DR_parent: R-20260907112245-5557b9
   DR_gpu2_spawned_at: 2026-09-07T14:57:06.755Z
   DR_gpu3_spawned_at: 2026-09-07T14:56:09.430Z
+  DR_gpu2_succeeded_at: 2026-09-07T14:59:33.251Z
+  DR_gpu3_succeeded_at: 2026-09-07T14:58:25.187Z
+  DR_source_records: 48
+  aggregate_run: R-20260907150351-1eb81c
+  aggregate_succeeded_at: 2026-09-07T15:03:56.235Z
+  combined_ready_source_records: 96
+  combined_ready_clips: 8
+  blocked_PO_clips: 4
+  DR_review: /data/WorldBridge4D-runs/diagnostics-h030-152500-20260907/reviews/dr-first-screen
+  combined_review: /data/WorldBridge4D-runs/diagnostics-h030-152500-20260907/reviews/kubric-dr-screen
+  DR_point_weighted_raw_EPE_m_rounded6: [0.228996, 0.231741, 0.233926, 0.234263]
+  DR_point_weighted_boundary_EPE_m_rounded6: [0.366379, 0.363500, 0.359285, 0.360316]
+  DR_point_weighted_interior_EPE_m_rounded6: [0.136898, 0.143571, 0.152504, 0.151838]
+  DR_interpretation: RGB1x_near_RGB10x_raw_and_interior_higher_than150k_boundary_slightly_lower_no_generalization_claim
+  completeness_caveat: ready_input_matrix_only_not_three_dataset_validation_nor155000_or_boundary_arm_evaluation
   startup_failure: four_runs_exited_before_prediction_due_to_uninitialized_CUDA_peak_stats_explicit_device_init_fixed_and_GPU_verified
 h030_fp32_cycle0_rgb1x_continue_to155k:
   status: succeeded155000_full_endpoint_protected_no_demonstrated_quality_gain
@@ -1918,7 +1935,26 @@ h030_fp32_cycle0_rgb1x_continue_to155k:
   latest_observed_log_at: 2026-09-07T14:54:28.139Z
   caveat: continued_by_user_authority_not_evidence_that_prior_no_clear_gain_finding_changed
 h030_boundary2x_original150k:
-  status: tested_single_new_arm_queued_not_started
+  status: running_first150001_update_verified
+  spawned_at: 2026-09-07T15:00:01.762Z
+  last_DR_exit_to_spawn_seconds: 28.511
+  FP32_master_storage_verified_at: 2026-09-07T15:02:28.783Z
+  first_update: 150001
+  first_update_at: 2026-09-07T15:03:08.567Z
+  spawn_to_first_update_seconds: 186.805
+  first_update_dataset: dynamic_replica
+  first_update_unweighted_XYZ: 0.01145084761083126
+  first_update_raw_EPE_m: 0.10786018638166972
+  first_unweighted_metrics_equal_existing_control: true
+  first_update_weighted_XYZ: 0.017228746553882957
+  first_update_LR_factor: 0.002
+  first_update_boundary_multiplier: 2.0
+  first_update_clip_counters: [420000, 360000, 420008]
+  first_update_pairs: 120
+  first_update_boundary_pair_mean_fraction: 0.2059619323835427
+  first_update_boundary_valid_points: 218843
+  first_update_boundary_occluded_valid_points: 12683
+  first_update_process_peak_GiB: 60.57624912261963
   latest_user_selection: one_boundary2x150000_to155000_arm_reuse_existing_unweighted_control_no_repeat_baseline
   supersedes: verbal_two_new155000_to157500_arms_never_submitted
   protocol: research/protocols/h030_boundary2x_original150k.yaml
@@ -1950,6 +1986,6 @@ h030_boundary2x_original150k:
   other_DR_GPU2_lease: R-20260907113216-4099b0
   endpoint_guard: R-20260907145112-191549
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-fp32-cycle0-rgb1x-boundary2x-gpu23-b2-k15
-  next_review: first_update_input_and_FP32_LR_check_warmup150500_then152500_unweighted_metrics_and_fixed_endpoint_validation
-  caveat: no_GPU_update_or_quality_result_yet_queued_receipt_only
-updated_at: 2026-09-07T14:59:00Z
+  next_review: early150100_then_warmup150500_preserve_and_review152500_unweighted_metrics_fixed_endpoint_validation
+  caveat: first_update_checks_do_not_establish_quality_bitwise_replay_or_full_horizon_memory_safety
+updated_at: 2026-09-07T15:03:56Z

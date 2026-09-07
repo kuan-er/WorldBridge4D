@@ -1,5 +1,5 @@
 hypothesis: H030
-status: tested_single_new_arm_queued_not_started
+status: running_first150001_update_verified
 latest_user_selection: reuse_existing_unweighted_RGB1x_cycle0_trajectory_add_only_boundary2x_from150000
 supersedes: verbal_proposal_for_two_new155000_to157500_arms_not_submitted
 production: H023_100000_unchanged
@@ -74,6 +74,29 @@ handoff:
   unweighted_reference155000_sha256: 2648be240ca7b0d852cdda0c9b7d7cd47bb3d532ab3acbf06c30de33c55d0490
   unweighted_reference155000_artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/2648be240ca7b0d8
   DR_workers_spawned_GPU2_GPU3: ['2026-09-07T14:57:06.755Z', '2026-09-07T14:56:09.430Z']
+  DR_workers_succeeded_GPU2_GPU3: ['2026-09-07T14:59:33.251Z', '2026-09-07T14:58:25.187Z']
+  boundary_spawned_at: 2026-09-07T15:00:01.762Z
+  last_DR_exit_to_spawn_seconds: 28.511
+  FP32_master_storage_verified_at: 2026-09-07T15:02:28.783Z
+  first_update:
+    step: 150001
+    at: 2026-09-07T15:03:08.567Z
+    spawn_to_update_seconds: 186.805
+    dataset: dynamic_replica
+    unweighted_XYZ: 0.01145084761083126
+    raw_EPE_m: 0.10786018638166972
+    equal_existing_control_initial_unweighted_metrics: true
+    weighted_XYZ: 0.017228746553882957
+    LR_factor: 0.002
+    boundary_multiplier: 2.0
+    gradient_norm: 0.44245344400405884
+    clip_counters: [420000, 360000, 420008]
+    pairs: 120
+    boundary_pair_mean_fraction: 0.2059619323835427
+    boundary_valid_points: 218843
+    boundary_occluded_valid_points: 12683
+    process_peak_GiB: 60.57624912261963
+    caveat: pre_update_predictions_match_but_not_a_quality_result_bitwise_replay_or_full_horizon_capacity_proof
   dependency_DR_GPU3_success: R-20260907113216-24a010
   other_DR_GPU2_lease_must_release: R-20260907113216-4099b0
   runtime_gate: assert_successful_owned148_test_commit_config_hash_and_current_baseline155000_sidecar_before_exec
