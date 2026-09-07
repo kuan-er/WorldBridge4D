@@ -1,4 +1,77 @@
-status: running_midpoint151500_review_no_clear_gain_checkpoint_preserved
+status: succeeded152500_no_clear_gain_awaiting_user_decision
+completion152500:
+  notification_acknowledged: N-7f8bb4f174ff7cecf4ad
+  final_optimizer_update_at: 2026-09-07T09:36:24.863Z
+  process_exit_at: 2026-09-07T09:38:06.106Z
+  exit_code: 0
+  agent_termination_signals: none
+  restored_segment_updates: 2000
+  selected_control_trajectory_updates: 2500
+  trajectory: original_run_through150500_plus_recovery_to152500_not_uninterrupted2500
+  LR_factor: 1.0
+  weighted_cycle: 0.0
+  final_sampled_step_seconds: 3.478575450135395
+  process_peak_cuda_memory_gib: 65.44381475448608
+  original_SIGSEGV_root_cause: still_unresolved_successful_recovery_is_not_a_root_cause_fix
+final_review152500:
+  analysis_run: R-20260907093928-af9f19
+  analysis_commit: 3f5d7b6f7a46a8822c83abe36cf67bb6549c156a
+  analysis_succeeded_at: 2026-09-07T09:39:29.562Z
+  windows: [[150501, 151500], [151501, 152500]]
+  paired_logged_updates_per_window_per_reference: 300
+  paired_logged_updates_full_LR_per_reference: 600
+  full_LR_counts: {kubric: 300, pointodyssey: 200, dynamic_replica: 100}
+  midpoint_metrics_reproduced_exactly: true
+  aggregation: batch_count_weighted_means_not_average_percentage_changes
+  warmup_and_failed_parent_unsaved_tail_excluded: true
+  output: /data/WorldBridge4D-runs/h030-rgb1x-final-fullLR-review152500-20260907
+  dataset_order: [kubric, pointodyssey, dynamic_replica]
+  primary_reference:
+    run: R-20260906224802-229787
+    label: RGB10x_FP32_cycle0
+    second_window_XYZ_change_pct: [0.03317217271161521, -0.005558830181529029, 0.07643437751465587]
+    second_window_EPE_change_pct: [0.021168943874028123, -0.015928314790403242, -0.03807536143766166]
+    full_LR2000_XYZ_change_pct: [0.0011352831817523779, -0.00019538260279672315, 0.04581679209172407]
+    full_LR2000_EPE_change_pct: [-0.0033745867925372153, -0.013339861870254044, -0.010803745216914074]
+    assessment: near_flat_tiny_EPE_mean_reductions_mixed_XYZ_and_window_directions_no_clear_gain
+    report: vs-rgb10x-cycle0/final_review.json
+  secondary_reference:
+    run: R-20260906125858-4dd8d0
+    label: BF16_norm30
+    second_window_XYZ_change_pct: [0.5650592444324198, -0.015492440632580706, 0.2112748818815957]
+    second_window_EPE_change_pct: [1.17340177783265, 0.2477705345904413, 1.1264869386219623]
+    full_LR2000_XYZ_change_pct: [0.48755222191985137, 0.07064114318326986, 0.20510043113779464]
+    full_LR2000_EPE_change_pct: [0.8923368919035335, 0.25730249990350007, 0.8344973567887992]
+    assessment: EPE_higher_all_datasets_in_both_windows_aggregate_XYZ_also_higher_all
+    report: vs-bf16-norm30/final_review.json
+  decision: no155k_extension_no_auto150k_restart_no_GPU_successor_wait_for_user
+  proposed_next_phase: small_fixed_validation_and_motion_boundary_occlusion_error_decomposition_before_another_training_change
+  proposal_requires_confirmation: true
+  cancelled_standalone_diagnostics_restarted: false
+  production_baseline: H023_100k_unchanged
+  caveats: sampled_training_fingerprints_not_validation_significance_full_clip_mask_identity_or_bitwise_causal_LR_evidence
+checkpoint152500:
+  verification_run: R-20260907094050-3b4bf8
+  verification_succeeded_at: 2026-09-07T09:41:11.594Z
+  producer_success_required_by_dependency: true
+  checksum_resolved_before_CPU_spawn: true
+  dependency_checksum_seconds: 17.815
+  checks: full_format3_FP32_model_Adam_world2_RNG2_matching_sidecar_config_model_shapes_and_all_Adam_age_increments
+  explicit_guard_rate_override: all_RGB1x_actual_and_base_rates3e-6_not_old_RGB10x_defaults
+  actual_and_base_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  trainable_tensors: 193
+  trainable_parameters: 176189067
+  Adam_age_range: [52500, 67500]
+  each_Adam_age_increment_from150500: 2000
+  clips_seen: {kubric: 427000, pointodyssey: 366000, dynamic_replica: 427000}
+  path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152500-reference/checkpoint-0152500.pt
+  sidecar: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152500-reference/train_status.json
+  checkpoint_sha256: daa38f4ae5bd07f8c97e3eeb6d27762acfa28dcc14dade1c781ff0667aa3bc84
+  checkpoint_artifact: artifact://H030/R-20260907052221-d438cd/checkpoint/daa38f4ae5bd07f8
+  bytes: 7864619047
+  registered_at: 2026-09-07T09:43:19.754Z
+  independent_registration_matches_CPU_dependency_checksum: true
+  protection: local_same_inode_hardlink_outside_rotation_with_matching_sidecar_not_off_machine_replica
 midpoint_review151500:
   notification_acknowledged: N-76ddb40bdd0d96f58e0c
   update_completed_at: 2026-09-07T08:30:30.827Z

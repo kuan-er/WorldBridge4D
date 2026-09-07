@@ -1,4 +1,4 @@
-status: checkpointed_stop153788_rgb1x_successor_running
+status: checkpointed_stop153788_RGB1x_control_completed152500
 stop_result:
   final_step: 153788
   comparison_horizon: 153500
