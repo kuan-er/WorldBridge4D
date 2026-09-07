@@ -1,4 +1,21 @@
-status: running150100_checkpoint_and_actual_RGB1x_LRs_verified
+status: running_full_LR_checkpoint150500_verified
+warmup150500:
+  completed_at: 2026-09-07T03:48:00.389Z
+  LR_factor: 1.0
+  actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  weighted_cycle: 0.0
+  checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-warmup-reference/checkpoint-0150500.pt
+  checkpoint_sha256: 589b7f5dc5de361ca426584dbd4d9d8bbff034523058167d52dbf6d08ca44763
+  checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/589b7f5dc5de361c
+  checkpoint_bytes: 7864619047
+  Adam_age_range: [50500, 65500]
+  clips_seen: {kubric: 421400, pointodyssey: 361200, dynamic_replica: 421400}
+  verified: full_FP32_model_Adam_world2_two_RNGs_matching_sidecar_config_and_actual_RGB1x_peak_rates
+  outside_rotation: true
+  peak_cuda_memory_gib: 65.43991470336914
+  sampled_step_seconds: 3.4824000359512866
+  decision: continue_unchanged_primary_matched_review151500
+  caveat: protocol_runtime_checkpoint_not_quality_or_full_horizon_stability_evidence
 runtime:
   master_storage_verified_at: 2026-09-07T03:10:35.500Z
   first_update_step: 150001

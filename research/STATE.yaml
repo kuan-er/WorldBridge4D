@@ -543,8 +543,8 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: Continue the running RGB1x matched control on physical2/3 toward152500.
-  Full150100 checkpoint and three actual LRs are verified. Check warmup150500,
-  then compare primary XYZ/EPE at151500. Old RGB10x arm stopped153788, not155000.
+  Warmup150500 full checkpoint and all three peak LRs3e-6 are verified.
+  Compare primary XYZ/EPE at151500. Old RGB10x arm stopped153788, not155000.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1655,21 +1655,21 @@ h030_fp32_cycle0_continue_to155k:
   output: /data/WorldBridge4D-runs/h030-152500-to-155k-fp32-cycle0-gpu23-b2-k15
   next_review: none_superseded_do_not_restart_on_delayed_milestones
 h030_fp32_cycle0_rgb1x_2500:
-  status: running150100_checkpoint_and_actual_RGB1x_LRs_verified
+  status: running_full_LR_checkpoint150500_verified
   started_at: 2026-09-07T03:08:47.354Z
   first_update_at: 2026-09-07T03:11:18.217Z
   first_update_step: 150001
   first_update_matches_original_XYZ_EPE: true
-  last_observed_step: 150175
-  last_observed_step_at: 2026-09-07T03:25:14.572Z
-  last_observed_lr_factor: 0.35
-  observed_peak_cuda_memory_gib: 65.11295318603516
-  verified_checkpoint_step: 150100
-  verified_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-early-reference/checkpoint-0150100.pt
-  verified_checkpoint_sha256: f283524436725fd4ebe67686e8fafc9ebe0f62094fde6db735ae7a71e27b4e7a
-  verified_checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/f283524436725fd4
-  verified_checkpoint_Adam_age_range: [50100, 65100]
-  verified_checkpoint_actual_LRs: {dense_decoder: 0.0000006, source_rgb_decay: 0.0000006, source_rgb_no_decay: 0.0000006}
+  last_observed_step: 150500
+  last_observed_step_at: 2026-09-07T03:48:00.389Z
+  last_observed_lr_factor: 1.0
+  observed_peak_cuda_memory_gib: 65.43991470336914
+  verified_checkpoint_step: 150500
+  verified_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-warmup-reference/checkpoint-0150500.pt
+  verified_checkpoint_sha256: 589b7f5dc5de361ca426584dbd4d9d8bbff034523058167d52dbf6d08ca44763
+  verified_checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/589b7f5dc5de361c
+  verified_checkpoint_Adam_age_range: [50500, 65500]
+  verified_checkpoint_actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
   checkpoint_note: full_model_Adam_counters_world2_RNG2_matching_sidecar_not_quality_or_full_horizon_proof
   task: T-20260901153324-39dd05
   run: R-20260907030635-631b93
@@ -1691,5 +1691,5 @@ h030_fp32_cycle0_rgb1x_2500:
   unchanged: FP32_masters_Adam_BF16_compute_cycle0_B2_A2_K15_seed_data_native_cache
   checkpoint_verification_note: use_explicit_RGB1x_rates_not_old_preservation_helpers_hardcoded_RGB3e-5
   output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15
-  next_review: warmup150500_then_matched151500_before152500_or_failure
-updated_at: 2026-09-07T03:30:31Z
+  next_review: matched151500_before152500_or_failure
+updated_at: 2026-09-07T03:49:59Z
