@@ -542,12 +542,13 @@ h023_256_three_dataset_200m:
     canonical roots; then verify exact resume from step 2 through a Kubric
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
-next_step: Finish current RGB1x continuation unchanged to155000 on physical GPUs2/3.
-  Latest user selection replaces the proposed two new155000-origin arms with ONE
-  boundary2x arm from original FULL150000 to155000, reusing the existing unweighted
-  trajectory and matching its original500-step warmup. R-20260907144838-4f3680 is
-  tested148_and_queued behind the already queued DR diagnostics; not started yet.
-  Protect current155000 and new boundary155000 full states via queued CPU guards.
+next_step: Unweighted RGB1x continuation succeeded155000; full endpoint protected and
+  SHA-registered. DR workers have spawned on physical GPUs2/3; the tested148 single
+  boundary2x arm R-20260907144838-4f3680 remains queued behind them. It restores
+  original FULL150000 to155000 with the original500-step warmup and reuses the
+  existing unweighted trajectory; no repeated baseline or two155000-origin arms.
+  The final sampled training review still establishes no quality gain. Follow the
+  queued boundary155000 full-state guard; keep H023 production.
   Preserve intermediate boundary checkpoints on events and compare UNWEIGHTED XYZ/EPE;
   weighted loss magnitude is not quality. Fixed boundary_motion_visibility evaluation
   remains necessary. No SIGKILL, allocator tuning or GPU substitution. PO validation
@@ -1814,7 +1815,7 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   successor_run: R-20260907112245-5557b9
   next_review: original_budget_closed_follow_new_user_authorized_phase_below
 h030_post152500_diagnostics:
-  status: kubric_complete_DR_queued_after_training_PO_validation_RGB_blocked
+  status: kubric_complete_DR_workers_spawned_after155000_PO_validation_RGB_blocked
   user_authorized_reopening: true
   protocol: research/protocols/h030_post152500_diagnostics_and_continuation.yaml
   config: configs/h030_diagnostics_152500.yaml
@@ -1839,9 +1840,13 @@ h030_post152500_diagnostics:
   PO_blocker: missing_validation_RGB_under_dataset_nas0_PointOdyssey_val_no_training_substitution
   queued_DR_GPU_runs: [R-20260907113216-4099b0, R-20260907113216-24a010]
   queued_DR_parent: R-20260907112245-5557b9
+  DR_gpu2_spawned_at: 2026-09-07T14:57:06.755Z
+  DR_gpu3_spawned_at: 2026-09-07T14:56:09.430Z
   startup_failure: four_runs_exited_before_prediction_due_to_uninitialized_CUDA_peak_stats_explicit_device_init_fixed_and_GPU_verified
 h030_fp32_cycle0_rgb1x_continue_to155k:
-  status: running_user_authorized_own152500_state_continuation
+  status: succeeded155000_full_endpoint_protected_no_demonstrated_quality_gain
+  succeeded_at: 2026-09-07T14:55:34.015Z
+  exit_code: 0
   run: R-20260907112245-5557b9
   owner_session: 01a07615-f347-712a-910e-7f7eea16d709
   user_authority: explicit_permission_to_continue_training_and_maximize_useful_GPU2and3_utilization
@@ -1864,16 +1869,19 @@ h030_fp32_cycle0_rgb1x_continue_to155k:
   first_update_at: 2026-09-07T11:28:29.216Z
   first_update_after_spawn_seconds: 234.620
   first_update_LR_factor: 1.0
-  observed_milestone: 153500
-  observed_milestone_at: 2026-09-07T12:50:44.100Z
-  checkpoint_verification_run: R-20260907125231-b28921
-  latest_verified_step: 153500
-  latest_verified_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step153500-reference/checkpoint-0153500.pt
-  latest_verified_checkpoint_sha256: 2b76d9f030827dbae7bf84334ebc44f5a8ff6ea904a07806ea985aebba465f2f
-  latest_verified_checkpoint_artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/2b76d9f030827dba
-  verified_Adam_age_range: [53500, 68500]
-  verified_all193_Adam_age_increments_from152500: 1000
-  verified_clip_counters: [429800, 368400, 429800]
+  observed_milestone: 155000
+  observed_milestone_at: 2026-09-07T14:54:28.139Z
+  checkpoint_verification_run: R-20260907113731-cad04f
+  checkpoint_verification_succeeded_at: 2026-09-07T14:56:01.001Z
+  latest_verified_step: 155000
+  latest_verified_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step155000-reference/checkpoint-0155000.pt
+  latest_verified_checkpoint_sha256: 2648be240ca7b0d852cdda0c9b7d7cd47bb3d532ab3acbf06c30de33c55d0490
+  latest_verified_checkpoint_artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/2648be240ca7b0d8
+  checkpoint_registered_at: 2026-09-07T14:59:00.592Z
+  checkpoint_bytes: 7864619111
+  verified_Adam_age_range: [55000, 70000]
+  verified_all193_Adam_age_increments_from152500: 2500
+  verified_clip_counters: [434000, 372000, 434000]
   review153500:
     analysis_run: R-20260907125230-ae53a9
     window: [152501, 153500]
@@ -1888,11 +1896,26 @@ h030_fp32_cycle0_rgb1x_continue_to155k:
     decision: no_clear_gain_continue_user_authorized155000_budget_unchanged_no_midpoint_switch
     caveat: sampled_training_fingerprints_not_validation_full_clip_mask_identity_significance_or_bitwise_causal_RGB_test
   output: /data/WorldBridge4D-runs/h030-152500-to-155k-fp32-cycle0-rgb1x-gpu23-b2-k15
-  endpoint155000_guard_queued: R-20260907113731-cad04f
+  endpoint155000_guard_succeeded: R-20260907113731-cad04f
+  final155000_review:
+    analysis_run: R-20260907145715-0e3b2a
+    succeeded_at: 2026-09-07T14:57:16.022Z
+    reference: R-20260906125858-4dd8d0
+    window: [152501, 155000]
+    paired_logged_updates: 750
+    dataset_order: [kubric, pointodyssey, dynamic_replica]
+    counts: [375, 250, 125]
+    full_LR2500_XYZ_change_pct: [0.6231831374127417, 0.18037487687461162, 0.2152179024630163]
+    full_LR2500_EPE_change_pct: [1.5895269921980981, 0.4317533275489227, 1.459883696033737]
+    last1000_XYZ_change_pct: [0.4069525190931067, 0.12033631885590701, -0.16667975438311444]
+    last1000_EPE_change_pct: [1.4578285804401236, 0.008178700058603106, 1.111954212820665]
+    output: /data/WorldBridge4D-runs/h030-rgb1x-final-through155000-20260907/vs-bf16-norm30
+    conclusion: no_demonstrated_primary_gain_use_as_existing_unweighted_reference_do_not_retrain_it
+    caveat: sampled_training_fingerprints_not_validation_or_bitwise_causality_RGB10x_ends153788_no_full155000_pairing
   queued_GPU_successors: [R-20260907113216-4099b0, R-20260907113216-24a010]
   next_review: 155000_endpoint_and_fixed_validation_boundary2x_successor_now_user_selected
-  latest_observed_log_step: 154950
-  latest_observed_log_at: 2026-09-07T14:51:10.719Z
+  latest_observed_log_step: 155000
+  latest_observed_log_at: 2026-09-07T14:54:28.139Z
   caveat: continued_by_user_authority_not_evidence_that_prior_no_clear_gain_finding_changed
 h030_boundary2x_original150k:
   status: tested_single_new_arm_queued_not_started
@@ -1929,4 +1952,4 @@ h030_boundary2x_original150k:
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-fp32-cycle0-rgb1x-boundary2x-gpu23-b2-k15
   next_review: first_update_input_and_FP32_LR_check_warmup150500_then152500_unweighted_metrics_and_fixed_endpoint_validation
   caveat: no_GPU_update_or_quality_result_yet_queued_receipt_only
-updated_at: 2026-09-07T14:51:12Z
+updated_at: 2026-09-07T14:59:00Z

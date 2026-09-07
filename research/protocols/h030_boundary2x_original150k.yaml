@@ -24,7 +24,7 @@ input:
 reference_segments:
   - {run: R-20260907030635-631b93, steps: [150001, 150500]}
   - {run: R-20260907052221-d438cd, steps: [150501, 152500]}
-  - {run: R-20260907112245-5557b9, steps: [152501, 155000], endpoint: still_pending_at_submission}
+  - {run: R-20260907112245-5557b9, steps: [152501, 155000], endpoint: succeeded155000_protected}
 reference_caveat: exclude_failed_unsaved_replayed_tail_recovery_numerical_drift_precludes_bitwise_causal_claim
 single_scientific_change:
   loss: same_validity_masked_channel_summed_SmoothL1_beta0.05
@@ -69,7 +69,11 @@ preflight:
   report: /data/WorldBridge4D-runs/h030-boundary2x-preflight-20260907/preflight.json
 handoff:
   keep_current_training_unchanged_to155000: R-20260907112245-5557b9
-  current_training_latest_observed: {step: 154950, at: '2026-09-07T14:51:10.719Z'}
+  current_training_latest_observed: {step: 155000, at: '2026-09-07T14:54:28.139Z'}
+  unweighted_reference_succeeded_at: 2026-09-07T14:55:34.015Z
+  unweighted_reference155000_sha256: 2648be240ca7b0d852cdda0c9b7d7cd47bb3d532ab3acbf06c30de33c55d0490
+  unweighted_reference155000_artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/2648be240ca7b0d8
+  DR_workers_spawned_GPU2_GPU3: ['2026-09-07T14:57:06.755Z', '2026-09-07T14:56:09.430Z']
   dependency_DR_GPU3_success: R-20260907113216-24a010
   other_DR_GPU2_lease_must_release: R-20260907113216-4099b0
   runtime_gate: assert_successful_owned148_test_commit_config_hash_and_current_baseline155000_sidecar_before_exec
