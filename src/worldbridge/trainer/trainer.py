@@ -40,7 +40,7 @@ from .lazy_vae import (
     required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
 )
 from .cycle import camera_batch, pixel_cycle_loss
-from .objective import loss_scale_to_reference, masked_pair_smooth_l1
+from .objective import boundary_weighted_pair_smooth_l1, loss_scale_to_reference, masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .precision import assert_fp32_optimizer_storage, prepare_fsdp_master_parameters
 from .schedulers import apply_cosine_schedule, apply_lr_restart_schedule, training_diagnostic_due
@@ -406,6 +406,7 @@ def main() -> None:
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     use_source_rgb = bool(config.get("source_rgb_pyramid", False))
+    boundary_supervision = config.get('boundary_supervision')
     cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
     cycle_dataset_names = tuple(str(name) for name in config.get(
         "cycle_reprojection_datasets", ["kubric"],
@@ -449,6 +450,7 @@ def main() -> None:
         use_source_rgb=use_source_rgb,
         cycle_enabled=cycle_enabled,
         cycle_dataset_names=cycle_dataset_names,
+        boundary_supervision=boundary_supervision,
         start_step=start_step,
         target_steps=target_steps,
         depth=prefetch_depth,
@@ -493,6 +495,8 @@ def main() -> None:
             cycle_scale_sum = 0.0
             cycle_pixel_error_sum = 0.0
             cycle_valid_points = 0
+            boundary_stats = (torch.zeros(7, device=device, dtype=torch.float64)
+                              if boundary_supervision is not None else None)
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
@@ -513,14 +517,14 @@ def main() -> None:
                     wait_started = time.perf_counter()
                     (
                         index, source, xyz_all, valid_all, source_rgb_np,
-                        visible_all, camera,
+                        visible_all, camera, boundary_np,
                     ), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
                     targets = sample_eligible_targets(valid_all, k, rng)
                     batch_values.append((
                         index, source, targets, xyz_all[targets], valid_all[targets],
-                        source_rgb_np, visible_all, camera, valid_all,
+                        source_rgb_np, visible_all, camera, valid_all, boundary_np,
                     ))
                     target_counts.append(len(targets))
                 if len(set(target_counts)) != 1:
@@ -559,6 +563,15 @@ def main() -> None:
                 )
                 xyz = torch.from_numpy(normalized_np).to(device, non_blocking=True)
                 valid = torch.from_numpy(valid_np).to(device, non_blocking=True)
+                boundary_t = target_visible_t = None
+                if boundary_supervision is not None:
+                    if any(value[9] is None or value[6] is None for value in batch_values):
+                        raise RuntimeError('boundary-enabled batch is missing GT masks/visibility')
+                    boundary_t = torch.from_numpy(np.stack([value[9] for value in batch_values])).to(
+                        device, non_blocking=True)
+                    target_visible_t = torch.from_numpy(np.stack([
+                        value[6][value[2]] for value in batch_values
+                    ])).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
                 cycle_batch = cycle_enabled and name in cycle_dataset_names
                 cycle_pair_indices = cycle_targets = None
@@ -613,7 +626,16 @@ def main() -> None:
                         prediction.float(), xyz.float(), valid,
                         beta=float(config.get("smooth_l1_beta", 0.05)),
                     )
-                    loss = xyz_value / accumulation
+                    optimized_xyz_value = xyz_value
+                    if boundary_supervision is not None:
+                        optimized_xyz_value = boundary_weighted_pair_smooth_l1(
+                            prediction.float(), xyz.float(), valid, boundary_t,
+                            multiplier=float(boundary_supervision['multiplier']),
+                            beta=float(config.get('smooth_l1_beta', 0.05)),
+                        )
+                    # Keep xyz_value UNWEIGHTED for cycle diagnostics and all
+                    # historical train/xyz_loss comparisons.
+                    loss = optimized_xyz_value / accumulation
                     cycle_value = prediction.new_zeros(())
                     weighted_cycle_value = prediction.new_zeros(())
                     cycle_scale = prediction.new_zeros(())
@@ -680,8 +702,20 @@ def main() -> None:
                     epe = torch.linalg.vector_norm(metric_error, dim=2)
                     update_epe += float(epe[valid].sum())
                     valid_points += int(valid.sum())
+                    if boundary_stats is not None:
+                        boundary_valid = valid & boundary_t[:, None]
+                        occluded_boundary = boundary_valid & ~target_visible_t
+                        counts = valid.sum(dim=(-2, -1))
+                        fractions = boundary_valid.sum(dim=(-2, -1)).double() / counts.clamp_min(1)
+                        boundary_stats[0] += optimized_xyz_value.detach().double() / accumulation
+                        boundary_stats[1] += epe[boundary_valid].double().sum()
+                        boundary_stats[2] += boundary_valid.sum()
+                        boundary_stats[3] += fractions[counts > 0].mean() / accumulation
+                        boundary_stats[4] += epe[occluded_boundary].double().sum()
+                        boundary_stats[5] += occluded_boundary.sum()
+                        boundary_stats[6] += epe[valid & ~boundary_t[:, None]].double().sum()
                 pair_count += sum(target_counts)
-                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all in batch_values:
+                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all, _boundary in batch_values:
                     source_hist[source] += 1
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
@@ -742,6 +776,8 @@ def main() -> None:
                 ], device=device, dtype=torch.float64)
                 dist.all_reduce(scalars, op=dist.ReduceOp.SUM)
                 dist.all_reduce(timing_max, op=dist.ReduceOp.MAX)
+                if boundary_stats is not None:
+                    dist.all_reduce(boundary_stats, op=dist.ReduceOp.SUM)
                 for histogram in (source_hist, target_hist, gap_hist):
                     dist.all_reduce(histogram, op=dist.ReduceOp.SUM)
                 rgb_alpha_names = list(fsdp.module.decoder.upsampler.source_fusions)
@@ -817,6 +853,21 @@ def main() -> None:
                     **{f"sampling/target_{index}": int(value) for index, value in enumerate(target_hist.tolist())},
                     **{f"sampling/gap_{index}": int(value) for index, value in enumerate(gap_hist.tolist())},
                 }
+                if boundary_stats is not None:
+                    weighted_xyz, boundary_epe_sum, boundary_points, pair_fraction, occluded_epe_sum, occluded_points, nonboundary_epe_sum = boundary_stats.tolist()
+                    payload.update({
+                        'train/boundary_weighted_xyz_loss': weighted_xyz / world,
+                        'train/boundary_multiplier': float(boundary_supervision['multiplier']),
+                        'train/boundary_uses_dense_instance_gt': int(name == 'kubric'),
+                        'train/boundary_raw_epe_m': boundary_epe_sum / max(boundary_points, 1),
+                        'train/boundary_valid_points': int(boundary_points),
+                        'train/boundary_pair_mean_fraction': pair_fraction / world,
+                        'train/boundary_valid_fraction': boundary_points / max(global_valid, 1),
+                        'train/nonboundary_raw_epe_m': nonboundary_epe_sum / max(global_valid - boundary_points, 1),
+                        'train/nonboundary_valid_points': int(global_valid - boundary_points),
+                        'train/boundary_occluded_raw_epe_m': occluded_epe_sum / max(occluded_points, 1),
+                        'train/boundary_occluded_valid_points': int(occluded_points),
+                    })
                 print(json.dumps(payload), flush=True)
                 if run is not None and completed > args.wandb_log_after_step:
                     run.log(payload, step=completed)

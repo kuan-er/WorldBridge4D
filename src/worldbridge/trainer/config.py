@@ -104,6 +104,19 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             raise ValueError("cycle_reprojection_normalization_epsilon must be positive")
         if float(config.get("cycle_reprojection_normalization_max_scale", 1000.0)) <= 0.0:
             raise ValueError("cycle_reprojection_normalization_max_scale must be positive")
+    boundary = config.get('boundary_supervision')
+    if boundary is not None:
+        if (not isinstance(boundary, dict)
+                or set(boundary) != {'multiplier', 'radius_px', 'depth_relative_jump'}
+                or float(boundary['multiplier']) not in (1.0, 2.0)
+                or boundary['radius_px'] != 2
+                or float(boundary['depth_relative_jump']) != 0.05):
+            raise ValueError('boundary control requires multiplier1or2 radius2 depth_jump0.05')
+        if (mode != 'decoder_only' or master_precision != 'fp32'
+                or config.get('precision') != 'bf16' or not cycle_enabled
+                or set(cycle_names) != supported_cycle_names
+                or float(config.get('cycle_reprojection_weight', 0.0)) != 0.0):
+            raise ValueError('boundary control requires FP32/BF16 decoder and all-dataset cycle0 paths')
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
     cycle_b2_k19 = bool(config.get("cycle_b2_a2_k19", False))

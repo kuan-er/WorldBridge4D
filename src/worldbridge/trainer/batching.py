@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from ..data.boundaries import source_boundary_band
 from ..data.sampling import deterministic_sample_plan, source_with_eligible_targets
 from ..data.types import TrainingDataset
 from .schedulers import dataset_for_step
@@ -16,7 +17,7 @@ from .schedulers import dataset_for_step
 SamplePlan = tuple[int, int, np.random.Generator]
 GeometryValue = tuple[
     int, int, np.ndarray, np.ndarray, np.ndarray | None,
-    np.ndarray | None, dict[str, Any] | None,
+    np.ndarray | None, dict[str, Any] | None, np.ndarray | None,
 ]
 TimedGeometryValue = tuple[GeometryValue, float]
 
@@ -44,6 +45,7 @@ def load_geometry(
     fallback_seed: int,
     use_source_rgb: bool,
     use_cycle: bool = False,
+    boundary_supervision: Mapping[str, Any] | None = None,
 ) -> TimedGeometryValue:
     """Load one eligible clip/source pair and report worker execution time."""
     task_started = time.perf_counter()
@@ -93,8 +95,23 @@ def load_geometry(
         # deterministic geometry fallback clip/source.
         source_rgb = dataset.source_rgb(candidate, source) if use_source_rgb else None
         camera = camera_loader(candidate) if use_cycle else None
+        boundary = None
+        if boundary_supervision is not None:
+            loader = getattr(dataset, 'source_boundary_context', None)
+            if loader is None:
+                raise ValueError('boundary supervision requires GT source boundary context')
+            # Like RGB failures, a boundary contract failure MUST NOT select a
+            # different clip/source or alter the deterministic fallback/RNG path.
+            depth, depth_valid, segmentation = loader(candidate, source)
+            boundary = source_boundary_band(
+                depth, depth_valid, segmentation,
+                radius_px=boundary_supervision['radius_px'],
+                relative_jump=boundary_supervision['depth_relative_jump'],
+            )
+            if boundary.shape != valid.shape[-2:]:
+                raise ValueError('source boundary and XYZ grids differ')
         return (
-            (candidate, source, xyz, valid, source_rgb, visible, camera),
+            (candidate, source, xyz, valid, source_rgb, visible, camera, boundary),
             time.perf_counter() - task_started,
         )
     raise ValueError(
@@ -117,6 +134,7 @@ class GeometryPrefetcher:
         use_source_rgb: bool,
         cycle_enabled: bool = False,
         cycle_dataset_names: tuple[str, ...] = ("kubric",),
+        boundary_supervision: Mapping[str, Any] | None = None,
         start_step: int,
         target_steps: int,
         depth: int,
@@ -130,6 +148,7 @@ class GeometryPrefetcher:
         self.use_source_rgb = bool(use_source_rgb)
         self.cycle_enabled = bool(cycle_enabled)
         self.cycle_dataset_names = frozenset(str(name) for name in cycle_dataset_names)
+        self.boundary_supervision = None if boundary_supervision is None else dict(boundary_supervision)
         self.target_steps = int(target_steps)
         self.depth = int(depth)
         self.next_step = int(start_step)
@@ -163,6 +182,7 @@ class GeometryPrefetcher:
                 ]).generate_state(1)[0]),
                 self.use_source_rgb,
                 self.cycle_enabled and dataset_name in self.cycle_dataset_names,
+                self.boundary_supervision,
             )
             for slot, (index, _source, _rng) in enumerate(sample_plans)
         ]

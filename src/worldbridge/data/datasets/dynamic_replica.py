@@ -316,6 +316,11 @@ class DynamicReplicaDataset:
         ])
         return intrinsics, camera_to_world, np.stack(depth), np.stack(depth_valid)
 
+    def source_boundary_context(self, index: int, source: int):
+        path = self.raw_train_root / self.rows[int(index)]['frames'][int(source)]['depth']
+        depth, valid = _depth(path, self.image_size, getattr(self, 'depth_cache_root', DEPTH_CACHE_ROOT))
+        return depth, valid, None  # Sparse track IDs are not dense segmentation.
+
     def cycle_camera(self, index: int) -> dict[str, np.ndarray | float]:
         """Return the camera contract used by differentiable pixel cycles."""
         row = self.rows[int(index)]
