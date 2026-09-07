@@ -120,3 +120,59 @@ def test_chunked_decoder_is_equivalent_to_batched_pairs():
         pieces = torch.cat([decoder(z, torch.tensor([[1]]), torch.tensor([[t]])).normalized_xyz
                             for t in (0, 1, 20)], dim=1)
     torch.testing.assert_close(batched, pieces, atol=2e-6, rtol=2e-5)
+
+
+def test_motion_populations_are_gt_fixed_and_partition_tracking():
+    target, valid, distance = scene()
+    target[1:, 0, 0, 0] += 0.005
+    target[1:, 0, 0, 1] += 0.05
+    target[1:, 0, 0, 2] += 0.2
+    valid[0, 0, 3] = False
+    a = stratified_epe(target, target, valid, valid, 0, distance)
+    b = stratified_epe(target + 3, target, valid, valid, 0, distance)
+    expected = {'motion_le_1cm': 900, 'motion_1to10cm': 20,
+                'motion_gt_10cm': 20, 'motion_unavailable': 20}
+    for group, count in expected.items():
+        key = f'tracking/{group}/all'
+        assert a['groups'][key]['count'] == b['groups'][key]['count'] == count
+    assert sum(expected.values()) == a['groups']['tracking/all/all']['count']
+    with pytest.raises(ValueError, match='motion thresholds'):
+        stratified_epe(target, target, valid, valid, 0, distance,
+                       motion_static_m=0.2, motion_large_m=0.1)
+
+
+def test_diagnostic_worker_rejects_old_memory_cap_before_cuda(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from worldbridge.evaluation import diagnostics as d
+    spec = {'seed': 1, 'cuda_allocator_budget_gib': 12}
+    manifest = {'spec': spec, 'data_config': {}}
+    manifest['protocol'] = d.json_digest({'spec': spec, 'data_config': {}})
+    path = tmp_path / 'manifest.json'
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(d, 'output_root', lambda _: tmp_path)
+    monkeypatch.setattr(torch.cuda, 'device_count', lambda: pytest.fail('CUDA reached'))
+    with pytest.raises(ValueError, match='without a memory cap'):
+        d.run(SimpleNamespace(output_root=str(tmp_path), manifest=str(path), gate=False))
+
+
+def test_prepare_filters_dataset_and_cohort_before_loading(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from worldbridge.evaluation import diagnostics as d
+    selection = tmp_path / 'historical.json'
+    selection.write_text('{}')
+    spec = {'checkpoints': {}, 'historical_selection': str(selection)}
+    train = {'dataset': 'kubric', 'split': 'train', 'cohort': 'historical_train_replay', 'index': 0, 'sources': [0]}
+    val = {**train, 'split': 'validation', 'cohort': 'validation_screen', 'index': 7}
+    po = {**val, 'dataset': 'pointodyssey'}
+    monkeypatch.setattr(d, 'output_root', lambda _: tmp_path)
+    monkeypatch.setattr(d, 'protocol_config', lambda _: (spec, {}))
+    monkeypatch.setattr(d, 'planned_clips', lambda *_: [train, val, po])
+    monkeypatch.setattr(d, 'load_dataset', lambda *a, **kw: object())
+    monkeypatch.setattr(d, 'prepare_clip', lambda item, *a: item)
+    d.prepare(SimpleNamespace(output_root=str(tmp_path), protocol='unused',
+                             datasets=['kubric'], cohorts=['validation_screen'],
+                             limit_clips=None, manifest_name='manifest.json'))
+    manifest = json.loads((tmp_path / 'manifest.json').read_text())
+    assert manifest['planned'] == manifest['ready'] == [val]
+    assert not manifest['limited_gate_manifest']
+

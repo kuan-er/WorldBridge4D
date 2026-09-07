@@ -63,7 +63,8 @@ def statistics(values, mask):
 
 
 def stratified_epe(prediction, target, valid, visible, source, distance, *,
-                   boundary_px=2, interior_px=10, minimum_frames=5):
+                   boundary_px=2, interior_px=10, minimum_frames=5,
+                   motion_static_m=0.01, motion_large_m=0.1):
     prediction, target = np.asarray(prediction), np.asarray(target)
     valid, visible = np.asarray(valid, bool), np.asarray(visible, bool)
     if prediction.shape != target.shape or target.ndim != 4 or target.shape[1] != 3:
@@ -84,6 +85,19 @@ def stratified_epe(prediction, target, valid, visible, source, distance, *,
     # This is an operational diagnostic, not an object-level late-appearance label.
     late = (valid[source] & visible[source] & valid[0] & ~visible[0]) if source > 0 else np.zeros(distance.shape, bool)
     spatial["not_visible_at_frame0"] = late
+    if not 0 <= motion_static_m < motion_large_m:
+        raise ValueError("motion thresholds must satisfy 0 <= static < large")
+    # Fixed source-camera GT displacement, not predicted motion or semantic identity.
+    motion_valid = valid & valid[source][None]
+    anchored = valid[source] & (motion_valid & (gap > 0)[:, None, None]).any(axis=0)
+    displacement_gt = np.linalg.norm(target - target[source:source + 1], axis=1)
+    maximum_motion = np.where(motion_valid, displacement_gt, 0).max(axis=0)
+    spatial.update({
+        "motion_le_1cm": anchored & (maximum_motion <= motion_static_m),
+        "motion_1to10cm": anchored & (maximum_motion > motion_static_m) & (maximum_motion <= motion_large_m),
+        "motion_gt_10cm": anchored & (maximum_motion > motion_large_m),
+        "motion_unavailable": ~anchored,
+    })
     result = {}
     for time_name, time_mask in temporal.items():
         for space_name, space_mask in spatial.items():

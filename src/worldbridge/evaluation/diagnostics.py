@@ -167,7 +167,9 @@ def prepare(args):
     root = output_root(args.output_root)
     spec, config = protocol_config(args.protocol)
     protocol = json_digest({"spec": spec, "data_config": config})
-    plan = planned_clips(spec, config)
+    plan = [item for item in planned_clips(spec, config)
+            if (not args.datasets or item["dataset"] in args.datasets)
+            and (not args.cohorts or item["cohort"] in args.cohorts)]
     if args.limit_clips:
         plan = plan[:args.limit_clips]
     atomic_json(root / (args.manifest_name + ".plan.json"), {"protocol": protocol, "planned": plan})
@@ -249,14 +251,19 @@ def run(args):
     root = output_root(args.output_root)
     manifest = json.loads(Path(args.manifest).read_text())
     spec = manifest["spec"]
+    if manifest["protocol"] != json_digest({"spec": spec, "data_config": manifest["data_config"]}):
+        raise ValueError("manifest protocol checksum mismatch")
+    if "cuda_allocator_budget_gib" in spec:
+        raise ValueError("diagnostics must use native caching without a memory cap")
+    if spec["targets"] != list(range(21)) or spec["target_chunk"] != 1 or spec["pixel_stride"] != 1:
+        raise ValueError("diagnostics require all21 targets, chunk1 and native pixel stride1")
+    np.random.seed(int(spec["seed"]))
+    torch.manual_seed(int(spec["seed"]))
     if not args.gate and manifest["limited_gate_manifest"]:
         raise ValueError("a gate-only input manifest cannot be used as a full diagnostic")
     if torch.cuda.device_count() != 1:
         raise RuntimeError("each diagnostic worker requires exactly one explicitly leased physical GPU")
     device = torch.device("cuda:0")
-    total = torch.cuda.get_device_properties(device).total_memory
-    budget = float(spec["cuda_allocator_budget_gib"]) * 2 ** 30
-    torch.cuda.set_per_process_memory_fraction(budget / total, device)
     labels = args.labels or list(manifest["checkpoints"])
     items = [item for item in manifest["ready"] if not args.datasets or item["dataset"] in args.datasets]
     if args.gate:
@@ -268,7 +275,8 @@ def run(args):
         checkpoint_spec = manifest["checkpoints"][label]
         if file_identity(checkpoint_spec["path"]) != checkpoint_spec["identity"]:
             raise ValueError(f"immutable checkpoint identity changed: {label}; reverify SHA-256")
-        checkpoint = torch.load(checkpoint_spec["path"], map_location="cpu", mmap=True, weights_only=True)
+        # Local full training checkpoints include trusted, SHA-verified RNG metadata.
+        checkpoint = torch.load(checkpoint_spec["path"], map_location="cpu", mmap=True, weights_only=False)
         if checkpoint["training_state"]["global_step"] != checkpoint_spec["step"]:
             raise ValueError("checkpoint step mismatch")
         config = dict(checkpoint["config"])
@@ -311,6 +319,8 @@ def run(args):
                 if digest(item["prepared"]) != item["prepared_sha256"]:
                     raise ValueError("prepared marker changed")
                 metadata = json.loads(Path(item["prepared"]).read_text())
+                if metadata["protocol"] != item.get("prepared_protocol", manifest["protocol"]):
+                    raise ValueError("prepared input protocol mismatch")
                 clip = load_arrays(metadata["files"]["clip"])
                 camera = {key.removeprefix("camera_"): value for key, value in clip.items() if key.startswith("camera_")}
                 name = item["dataset"]
@@ -328,7 +338,9 @@ def run(args):
                     metrics = stratified_epe(prediction, data["xyz"], data["valid"], data["visible"], source,
                                              data["depth_distance"], boundary_px=spec["boundary_distance_px"],
                                              interior_px=spec["interior_distance_px"],
-                                             minimum_frames=spec["minimum_track_valid_frames"])
+                                             minimum_frames=spec["minimum_track_valid_frames"],
+                                             motion_static_m=spec.get("motion_static_m", 0.01),
+                                             motion_large_m=spec.get("motion_large_m", 0.1))
                     metrics["cycle"] = cycle_diagnostic(prediction, reverse[0], data, camera, source)
                     if "segmentation" in data:
                         metrics["cross_instance"] = cross_instance_neighbor_proxy(
@@ -353,8 +365,7 @@ def run(args):
                     del data, normalized, prediction, reverse, metrics
                 del clip, camera, latent, z4d
         del model, conditions
-        gc.collect()
-        torch.cuda.empty_cache()
+        gc.collect()  # Keep the native allocator cache for the next checkpoint.
     emit("DIAGNOSTIC_GATE_OK" if args.gate else "DIAGNOSTIC_WORKER_OK", labels=labels, clips=len(items))
 
 
@@ -393,8 +404,9 @@ def aggregate(args):
                 records[(label, key)] = record
     summary = {"protocol": manifest["protocol"], "complete": not missing,
                "blocked_inputs": manifest["blocked"], "missing_results": missing, "groups": {}}
-    comparisons = [("h027_130k", "h023_100k"), ("h030_150k_w03", "h027_130k"),
-                   ("h030_150k_norm30", "h030_150k_w03"), ("h030_150k_norm30", "h023_100k")]
+    comparisons = manifest["spec"].get("comparisons", [
+        ["h027_130k", "h023_100k"], ["h030_150k_w03", "h027_130k"],
+        ["h030_150k_norm30", "h030_150k_w03"], ["h030_150k_norm30", "h023_100k"]])
     lines = ["# Matched checkpoint diagnostics", "", f"Complete ready-input matrix: {not missing}",
              f"Blocked planned clips: {len(manifest['blocked'])}; missing results: {len(missing)}", "",
              "Historical replay is TRAIN data, not held-out generalization. Validation is a small screen.",
@@ -403,7 +415,9 @@ def aggregate(args):
     primary = ["all/all/all", "all/boundary/all", "all/interior/all", "pointmap/boundary/all",
                "tracking/all/all", "gap8plus/boundary/all", "tracking/all/occluded",
                "track_mean_epe/boundary", "displacement_epe/boundary", "sim3/all",
-               "cross_instance/neighbor_closer", "cycle/pixel_error"]
+               "cross_instance/neighbor_closer", "cycle/pixel_error",
+               "tracking/motion_le_1cm/all", "tracking/motion_1to10cm/all",
+               "tracking/motion_gt_10cm/all"]
     for cohort in ("historical_train_replay", "validation_screen"):
         for name in DATASET_NAMES:
             keys = sorted({key for label, key in records if key[:2] == (cohort, name)})
@@ -485,6 +499,7 @@ def main():
     parser.add_argument("--limit-clips", type=int)
     parser.add_argument("--labels", nargs="+")
     parser.add_argument("--datasets", nargs="+", choices=DATASET_NAMES)
+    parser.add_argument("--cohorts", nargs="+", choices=("historical_train_replay", "validation_screen"))
     parser.add_argument("--gate", action="store_true")
     parser.add_argument("--allow-partial", action="store_true")
     args = parser.parse_args()
