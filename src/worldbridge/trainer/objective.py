@@ -67,3 +67,40 @@ def boundary_weighted_pair_smooth_l1(prediction: torch.Tensor, target: torch.Ten
         raise ValueError('batch contains no pair with a valid XYZ target')
     per_pair = (error * mask).sum(dim=(-2, -1)) / weight_sum.clamp_min(1.0)
     return per_pair[eligible].mean()
+
+
+def source_edge_contrast_loss(prediction: torch.Tensor, target: torch.Tensor,
+                              validity: torch.Tensor, edges: torch.Tensor,
+                              beta: float = 0.05):
+    """GT neighbor-vector SmoothL1 in the SAME normalized XYZ coordinates.
+
+    For each source-target pair, combine horizontal/vertical oriented edges,
+    requiring valid XYZ at BOTH target endpoints (including occluded-valid).
+    Average over its edge count, then equally over pairs with >=1 valid edge.
+    Empty edge populations contribute differentiable zero, NOT sample fallback.
+    Return loss, total valid edges, eligible pair count. No adaptive loss scaling.
+    This term is invariant to a spatially constant prediction translation; it
+    penalizes collapsing the GT cross-surface contrast rather than absolute bias.
+    """
+    if prediction.shape != target.shape or prediction.ndim != 5 or prediction.shape[2] != 3:
+        raise ValueError('prediction/target must match [B,K,3,H,W]')
+    if validity.shape != prediction.shape[:2] + prediction.shape[-2:] or validity.dtype != torch.bool:
+        raise ValueError('contrast validity must be bool [B,K,H,W]')
+    if edges.shape != (prediction.shape[0], 2, *prediction.shape[-2:]) or edges.dtype != torch.bool:
+        raise ValueError('GT contrast edges must be bool [B,2,H,W]')
+    totals = prediction.new_zeros(prediction.shape[:2])
+    counts = torch.zeros(prediction.shape[:2], device=prediction.device, dtype=torch.long)
+    for axis in (0, 1):
+        a, b = [slice(None)] * 2, [slice(None)] * 2
+        a[axis], b[axis] = slice(None, -1), slice(1, None)
+        a, b = tuple(a), tuple(b)
+        pa, pb = (Ellipsis, *a), (Ellipsis, *b)
+        mask = edges[:, axis, None][pa].detach() & validity[pa] & validity[pb]
+        error = F.smooth_l1_loss(prediction[pb] - prediction[pa],
+                                 target[pb] - target[pa], beta=beta, reduction='none').sum(dim=2)
+        totals = totals + (error * mask).sum(dim=(-2, -1))
+        counts = counts + mask.sum(dim=(-2, -1))
+    eligible = counts > 0
+    per_pair = totals / counts.clamp_min(1)
+    loss = per_pair.sum() / eligible.sum().clamp_min(1)
+    return loss, counts.sum(), eligible.sum()

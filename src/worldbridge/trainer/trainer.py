@@ -40,7 +40,8 @@ from .lazy_vae import (
     required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
 )
 from .cycle import camera_batch, pixel_cycle_loss
-from .objective import boundary_weighted_pair_smooth_l1, loss_scale_to_reference, masked_pair_smooth_l1
+from .objective import (boundary_weighted_pair_smooth_l1, loss_scale_to_reference,
+                        masked_pair_smooth_l1, source_edge_contrast_loss)
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .precision import assert_fp32_optimizer_storage, prepare_fsdp_master_parameters
 from .schedulers import apply_cosine_schedule, apply_lr_restart_schedule, training_diagnostic_due
@@ -407,6 +408,7 @@ def main() -> None:
     k = int(config["targets_per_source"])
     use_source_rgb = bool(config.get("source_rgb_pyramid", False))
     boundary_supervision = config.get('boundary_supervision')
+    edge_contrast_weight = float(config.get('source_edge_contrast_weight', 0.0))
     cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
     cycle_dataset_names = tuple(str(name) for name in config.get(
         "cycle_reprojection_datasets", ["kubric"],
@@ -451,6 +453,7 @@ def main() -> None:
         cycle_enabled=cycle_enabled,
         cycle_dataset_names=cycle_dataset_names,
         boundary_supervision=boundary_supervision,
+        edge_contrast_enabled=edge_contrast_weight > 0,
         start_step=start_step,
         target_steps=target_steps,
         depth=prefetch_depth,
@@ -497,6 +500,8 @@ def main() -> None:
             cycle_valid_points = 0
             boundary_stats = (torch.zeros(7, device=device, dtype=torch.float64)
                               if boundary_supervision is not None else None)
+            contrast_stats = (torch.zeros(3, device=device, dtype=torch.float64)
+                              if edge_contrast_weight > 0 else None)
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
@@ -517,14 +522,14 @@ def main() -> None:
                     wait_started = time.perf_counter()
                     (
                         index, source, xyz_all, valid_all, source_rgb_np,
-                        visible_all, camera, boundary_np,
+                        visible_all, camera, boundary_np, contrast_edges_np,
                     ), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
                     targets = sample_eligible_targets(valid_all, k, rng)
                     batch_values.append((
                         index, source, targets, xyz_all[targets], valid_all[targets],
-                        source_rgb_np, visible_all, camera, valid_all, boundary_np,
+                        source_rgb_np, visible_all, camera, valid_all, boundary_np, contrast_edges_np,
                     ))
                     target_counts.append(len(targets))
                 if len(set(target_counts)) != 1:
@@ -571,6 +576,13 @@ def main() -> None:
                         device, non_blocking=True)
                     target_visible_t = torch.from_numpy(np.stack([
                         value[6][value[2]] for value in batch_values
+                    ])).to(device, non_blocking=True)
+                contrast_edges_t = None
+                if edge_contrast_weight > 0:
+                    if any(value[10] is None for value in batch_values):
+                        raise RuntimeError('edge contrast batch is missing GT neighbor masks')
+                    contrast_edges_t = torch.from_numpy(np.stack([
+                        value[10] for value in batch_values
                     ])).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
                 cycle_batch = cycle_enabled and name in cycle_dataset_names
@@ -636,6 +648,15 @@ def main() -> None:
                     # Keep xyz_value UNWEIGHTED for cycle diagnostics and all
                     # historical train/xyz_loss comparisons.
                     loss = optimized_xyz_value / accumulation
+                    if edge_contrast_weight > 0:
+                        contrast_value, contrast_edges_count, contrast_pairs = source_edge_contrast_loss(
+                            prediction.float(), xyz.float(), valid, contrast_edges_t,
+                            beta=float(config.get('smooth_l1_beta', 0.05)),
+                        )
+                        loss = loss + edge_contrast_weight * contrast_value / accumulation
+                        contrast_stats[0] += contrast_value.detach().double() / accumulation
+                        contrast_stats[1] += contrast_edges_count.detach()
+                        contrast_stats[2] += contrast_pairs.detach()
                     cycle_value = prediction.new_zeros(())
                     weighted_cycle_value = prediction.new_zeros(())
                     cycle_scale = prediction.new_zeros(())
@@ -715,7 +736,7 @@ def main() -> None:
                         boundary_stats[5] += occluded_boundary.sum()
                         boundary_stats[6] += epe[valid & ~boundary_t[:, None]].double().sum()
                 pair_count += sum(target_counts)
-                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all, _boundary in batch_values:
+                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all, _boundary, _contrast_edges in batch_values:
                     source_hist[source] += 1
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
@@ -778,6 +799,8 @@ def main() -> None:
                 dist.all_reduce(timing_max, op=dist.ReduceOp.MAX)
                 if boundary_stats is not None:
                     dist.all_reduce(boundary_stats, op=dist.ReduceOp.SUM)
+                if contrast_stats is not None:
+                    dist.all_reduce(contrast_stats, op=dist.ReduceOp.SUM)
                 for histogram in (source_hist, target_hist, gap_hist):
                     dist.all_reduce(histogram, op=dist.ReduceOp.SUM)
                 rgb_alpha_names = list(fsdp.module.decoder.upsampler.source_fusions)
@@ -867,6 +890,15 @@ def main() -> None:
                         'train/nonboundary_valid_points': int(global_valid - boundary_points),
                         'train/boundary_occluded_raw_epe_m': occluded_epe_sum / max(occluded_points, 1),
                         'train/boundary_occluded_valid_points': int(occluded_points),
+                    })
+                if contrast_stats is not None:
+                    contrast_loss, edge_count, eligible_pairs = contrast_stats.tolist()
+                    payload.update({
+                        'train/source_edge_contrast_loss': contrast_loss / world,
+                        'train/weighted_source_edge_contrast_loss': edge_contrast_weight * contrast_loss / world,
+                        'train/source_edge_contrast_weight': edge_contrast_weight,
+                        'train/source_edge_contrast_valid_edges': int(edge_count),
+                        'train/source_edge_contrast_eligible_pairs': int(eligible_pairs),
                     })
                 print(json.dumps(payload), flush=True)
                 if run is not None and completed > args.wandb_log_after_step:
