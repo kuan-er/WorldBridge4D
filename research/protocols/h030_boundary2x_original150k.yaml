@@ -1,5 +1,5 @@
 hypothesis: H030
-status: running_full_LR_warmup150500_verified_protected
+status: running152500_review_complete_no_clear_primary_training_gain_successors_prequeued
 latest_user_selection: reuse_existing_unweighted_RGB1x_cycle0_trajectory_add_only_boundary2x_from150000
 supersedes: verbal_proposal_for_two_new155000_to157500_arms_not_submitted
 production: H023_100000_unchanged
@@ -16,7 +16,10 @@ post_review_authority:
   allocator: native_reuse_no_caps_no_tuning_no_empty_cache_no_GPU_substitution
   diagnostics: relay_not_overlay_on_memory_heavy_training_preserve_PO_validation_blocker
   caveat: minimize_avoidable_idle_not_claim_zero_IO_or_loading_latency_never_run_occupancy_only_work
-  next_factor: undecided_pending_review
+  next_factor: retain_boundary2x_add_fixed01_GT_cross_surface_neighbor_XYZ_contrast
+  selected_successor: R-20260907185236-284f11
+  successor_protocol: research/protocols/h030_edgecontrast01.yaml
+  validation_relays_GPU2_GPU3: [R-20260907185032-7a2093, R-20260907185032-625a1a]
 run: R-20260907144838-4f3680
 owner_session: 01a07615-f347-712a-910e-7f7eea16d709
 execution_commit: 92aa887a5d794a771a6f5d31f22b1f46062a69ad
@@ -122,7 +125,7 @@ handoff:
   endpoint_preservation: R-20260907145112-191549
   protected_endpoint_directory: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-boundary2x-step155000-reference
   preservation: full_state_matching_sidecar_explicit_all3e6_RATES_all193_Adam_ages_plus5000_local_hardlink_outside_rotation
-  intermediate_action: warmup150500_protected_review_and_preserve152500_on_event_before_rotation
+  intermediate_action: warmup150500_and_review152500_full_state_protected_and_SHA_registered
   caveat: queued_is_not_spawn_first_update_completed_checkpoint_or_quality_gain
 warmup150500:
   completed_update_at: 2026-09-07T15:36:19.298Z
@@ -152,3 +155,26 @@ warmup150500:
   replica: local_same_inode_hardlink_outside_rotation_not_remote_copy
   guard_scope: intermediate_owned_producer_hash_gated_after_CPU_preflight_success_not_producer_exit
   decision: continue_selected_budget_unchanged_review152500_unweighted_metrics_no_quality_claim_from_one_warmup_batch
+review152500:
+  guard_run: R-20260907174803-d60129
+  guard_succeeded_at: 2026-09-07T17:48:30.039Z
+  protected_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-boundary2x-step152500-reference/checkpoint-0152500.pt
+  checkpoint_sha256: 4dce1bd38bb96ca0003feb45ca7f86cbe1b7623b0677618def0ef835c1551842
+  artifact: artifact://H030/R-20260907144838-4f3680/checkpoint/4dce1bd38bb96ca0
+  registered_at: 2026-09-07T17:56:28.832Z
+  checkpoint_bytes: 7864619303
+  Adam_age_range: [52500, 67500]
+  all193_Adam_age_increments_from150500: 2000
+  full_state: FP32_model_Adam_world2_RNG2_all_actual_base_LRs3e6_matching_sidecar
+  clip_counters: [427000, 366000, 427000]
+  replica: local_same_inode_hardlink_outside_rotation_not_remote_copy
+  guard_scope: intermediate_owned_running_producer_hash_gated_not_producer_exit
+  comparison_run: R-20260907174725-f76d81
+  reference_run: R-20260907052221-d438cd
+  window: [150501, 152500]
+  paired_logs: 600
+  XYZ_change_pct_K_PO_DR: [-0.03516796647863307, 0.10994298579682926, 0.13520197600240813]
+  EPE_change_pct_K_PO_DR: [0.12861517354376684, 0.15033902504502095, 0.3452277541214466]
+  frozen_review: /data/WorldBridge4D-runs/h030-boundary2x-review152500-20260907/vs-rgb1x-cycle0
+  conclusion: no_clear_global_primary_training_gain_not_held_out_validation_or_disproof_of_boundary_mechanism
+  decision: continue_unchanged_to155000_no_stop_or_retry_prepare_single_factor_successor_under_user_authority

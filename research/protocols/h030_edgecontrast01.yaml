@@ -1,7 +1,11 @@
 version: 1
 hypothesis: H030
 phase: boundary2x_plus_source_GT_neighbor_XYZ_contrast01
-status: CPU172_and_three_real_training_samples_passed_GPU_submission_next
+status: CPU172_and_three_real_training_samples_passed_GPU_successor_prequeued
+run: R-20260907185236-284f11
+execution_commit: 42869cccfccc316f79268e2b887b1ff78574e3e8
+queued_at: 2026-09-07T18:52:36Z
+endpoint_guard: R-20260907185445-827fc1
 user_authority: autonomous_in_scope_successors_after_boundary152500_review_on_physical_GPU2and3
 owner_session: 01a07615-f347-712a-910e-7f7eea16d709
 review:
@@ -71,7 +75,16 @@ relay:
   fixed_inputs: reuse_preselected_four_validation_clips_each_dataset_three_sources_all21_targets_native_uncapped_inference
   controls: reuse_existing_unweighted152500_predictions_without_reinference
   PO: four_selected_validation_clips_still_RGB_blocked_no_substitution
+  diagnostic_manifest_gate: R-20260907184857-562715
+  diagnostic_manifest_sha256: 90164efc08eabc5647c4986ae4e8c75b8700467c65c112efe5a9a32c29f2c769
+  diagnostic_runs_GPU2_GPU3: [R-20260907185032-7a2093, R-20260907185032-625a1a]
+  diagnostic_root: /data/WorldBridge4D-runs/diagnostics-h030-boundary152500-20260907
+  diagnostic_labels: [h030_boundary2x_152500, h030_rgb1x_155000]
   then: tested_edgecontrast01_world2_training_on_exact_GPU2and3
+  training_dependency: GPU3_diagnostic_success_or_nonzero_exit_original150000_pinned_SHA_and_independent_CPU172_gate_required
+  runtime_gate: source_tests_config_unchanged_from_CPU_preflight_both_owned_diagnostics_terminal_no_blanket_training_retry
+  other_GPU2_lease: must_release_before_two_rank_training_can_acquire_GPU2and3
+  identities_resources_events_environment_termination: immutable_PRL_Run_records
   future_endpoint_diagnostics: compare_boundary2x155000_and_edgecontrast155000_reusing_unweighted155000_predictions
   scheduling: prequeue_before_current155000_completion_managed_leases_relay_not_overlap
   termination: checkpoint_first_SIGTERM_soft_torchrun_no_SIGKILL
