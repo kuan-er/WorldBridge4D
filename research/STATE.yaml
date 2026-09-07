@@ -543,9 +543,9 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: Continue RGB1x same-trajectory recovery on physical2/3 toward152500.
-  Completed150725 and observed150742 at full LR beyond the old last logged150722.
-  Next verify and preserve checkpoint151000, then review full-LR metrics at151500.
-  SIGSEGV root cause remains unresolved; keep the scientific config unchanged.
+  Full151000 checkpoint is verified, protected outside rotation and SHA-registered;
+  all three actual LRs remain3e-6 and all Adam ages advanced500 since resume150500.
+  Latest observed151085. Review150501-151500 primary metrics at151500; no config change.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1700,11 +1700,11 @@ h030_fp32_cycle0_rgb1x_2500:
   output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15
   next_review: none_failed_run_do_not_repeat_original150k_argv
 h030_fp32_cycle0_rgb1x_recovery_r1:
-  status: running_beyond_previous_last_logged_step
+  status: running_checkpoint151000_verified_preserved_registered
   recovery_milestone_step: 150725
   recovery_milestone_at: 2026-09-07T06:07:12.025Z
-  last_observed_step: 150742
-  last_observed_step_at: 2026-09-07T06:08:19.738Z
+  last_observed_step: 151085
+  last_observed_step_at: 2026-09-07T06:37:51.252Z
   last_observed_LR_factor: 1.0
   observed_process_peak_cuda_memory_gib: 65.11200332641602
   recovery_boundary_caveat: progressed_beyond_old150722_not_proof_native_crash_cause_fixed
@@ -1721,8 +1721,19 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   first_step_seconds: 261.1955817020498
   first_geometry_wait_seconds: 229.98208211385645
   first_process_peak_cuda_memory_gib: 60.54542064666748
-  latest_verified_checkpoint_step: 150500
-  caveat: one_update_not_new_checkpoint_full_bitwise_replay_crash_resolution_or_quality_gain
+  latest_verified_checkpoint_step: 151000
+  latest_verified_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step151000-reference/checkpoint-0151000.pt
+  latest_verified_checkpoint_sha256: 225e055576aada6d05aab6648b865738f393edbb5e33017a814abebc1a32af82
+  latest_verified_checkpoint_artifact: artifact://H030/R-20260907052221-d438cd/checkpoint/225e055576aada6d
+  latest_verified_checkpoint_bytes: 7864619047
+  latest_verified_checkpoint_registered_at: 2026-09-07T06:38:49.229Z
+  checkpoint_verification_run: R-20260907063521-b0e43a
+  checkpoint_verification: full_FP32_model_Adam_world2_RNG2_matching_sidecar_config_shapes_and_original_ages
+  checkpoint_outside_rotation: true
+  checkpoint_Adam_ages: [51000, 66000]
+  checkpoint_all_Adam_age_increments_from150500: 500
+  checkpoint_actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  caveat: checkpoint_protocol_evidence_not_full_bitwise_replay_native_crash_resolution_or_quality_gain
   run: R-20260907052221-d438cd
   failed_parent_run: R-20260907030635-631b93
   task: T-20260901153324-39dd05
@@ -1735,9 +1746,9 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   expected_resume_step: 150500
   target_step: 152500
   full_restore: current_RGB1x_model_Adam_counters_two_rank_RNG_not_original150k_or_weights_only
-  checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-warmup-reference/checkpoint-0150500.pt
-  checkpoint_sha256: 589b7f5dc5de361ca426584dbd4d9d8bbff034523058167d52dbf6d08ca44763
-  checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/589b7f5dc5de361c
+  input_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-warmup-reference/checkpoint-0150500.pt
+  input_checkpoint_sha256: 589b7f5dc5de361ca426584dbd4d9d8bbff034523058167d52dbf6d08ca44763
+  input_checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/589b7f5dc5de361c
   repeated_warmup: false
   scientific_config_changed: false
   observation_change: PYTHONFAULTHANDLER1_and_native_failure_early_events
@@ -1747,5 +1758,5 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
   minimum_unsaved_updates_to_replay_at_recovery: 222
   comparison_join: old_run_only_through150500_then_recovery_above150500_exclude_old_replayed_tail
   output: /data/WorldBridge4D-runs/h030-150500-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15-resume-r1
-  next_review: checkpoint151000_then_matched151500_and152500
-updated_at: 2026-09-07T06:08:19Z
+  next_review: matched151500_and152500_no_short_window_switch
+updated_at: 2026-09-07T06:38:49Z
