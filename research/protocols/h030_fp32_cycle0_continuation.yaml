@@ -1,4 +1,22 @@
-status: queued_not_started
+status: running_first_optimizer_update_verified
+handoff_result:
+  predecessor_finished_at: 2026-09-07T01:36:49.306Z
+  spawned_at: 2026-09-07T01:37:16.450Z
+  exit_to_spawn_seconds: 27.144
+  checkpoint_guard_at: 2026-09-07T01:37:19.044Z
+  input_checkpoint_sha256: 7d4a313e069f1c66681f42c093e527bd4af7ba4a9a37051d835f3015f5f3b9ba
+  input_checkpoint_artifact: artifact://H030/R-20260906224802-229787/checkpoint/7d4a313e069f1c66
+  original_Adam_age_range_restored: [52500, 67500]
+  master_storage_verified_at: 2026-09-07T01:39:10.115Z
+  first_optimizer_update: 152501
+  first_optimizer_update_at: 2026-09-07T01:39:52.890Z
+  spawn_to_first_update_seconds: 156.440
+  first_update_lr_factor: 1.0
+  first_update_loss_equals_xyz: true
+  first_update_xyz_loss: 0.0056982496753335
+  first_update_raw_epe_m: 0.08518120996757836
+  weighted_cycle: 0.0
+  note: first_update_and_storage_checks_not_quality_or_full_horizon_stability
 run: R-20260907005010-9de7af
 task: T-20260901153324-39dd05
 owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
@@ -17,6 +35,9 @@ preflight:
 selection:
   authority: delegated_autonomous_training_on_physical2_and3
   review_run: R-20260907003036-f0c21b
+  phase_end_review_run: R-20260907013705-16d272
+  last1k_epe_pct_vs_bf16_dataset_order_K_PO_DR: [1.151989, 0.263741, 1.165006]
+  decision_after2500: continue_bounded_extension_unchanged_review153500
   reason: reduced_primary_regression_vs_fp32_norm30_but_no_net_gain_over_bf16_yet
   plan: finish_original2500_control_then_extend_same_XYZ_trajectory_to_total5000_updates
   purpose: assess_longer_full_LR_XYZ_optimization_not_claim_cycle0_already_wins

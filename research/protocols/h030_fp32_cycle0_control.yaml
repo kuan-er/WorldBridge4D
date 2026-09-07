@@ -1,4 +1,21 @@
-status: running_review151500_complete_continuation_queued
+status: succeeded152500_full_state_preserved_successor_running
+finished_at: 2026-09-07T01:36:49.306Z
+checkpoint152500_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-step152500-reference/checkpoint-0152500.pt
+checkpoint152500_sha256: 7d4a313e069f1c66681f42c093e527bd4af7ba4a9a37051d835f3015f5f3b9ba
+checkpoint152500_artifact: artifact://H030/R-20260906224802-229787/checkpoint/7d4a313e069f1c66
+review152500:
+  analysis_run: R-20260907013705-16d272
+  output_root: /data/WorldBridge4D-runs/h030-cycle0-matched-through152500-20260907
+  paired_logged_updates: 750
+  full_LR_window: [151501, 152500]
+  dataset_order: [kubric, pointodyssey, dynamic_replica]
+  xyz_pct_vs_fp32_norm30: [-7.957151, -10.590605, -5.202386]
+  epe_pct_vs_fp32_norm30: [-3.650262, -3.650312, -1.640073]
+  xyz_pct_vs_bf16_norm30: [0.531711, -0.009934, 0.134738]
+  epe_pct_vs_bf16_norm30: [1.151989, 0.263741, 1.165006]
+  conclusion: cycle0_reduces_norm30_regression_but_no_net_gain_over_bf16
+  decision: keep_bounded_same_trajectory_continuation_to155000_with153500_review
+  caveat: sampled_training_not_validation_or_full_clip_identity_proof
 next_protocol: research/protocols/h030_fp32_cycle0_continuation.yaml
 review151500:
   analysis_run: R-20260907003036-f0c21b
@@ -79,5 +96,5 @@ resources:
   allow_foreign_processes: true
   min_free_memory_mib: 65536
   memory_safety_mib: 4096
-next_review: matched152500_and_automatic_continuation_handoff_or_failure
+next_review: complete_follow_successor_R-20260907005010-9de7af
 standalone_diagnostic_inference: remains_cancelled
