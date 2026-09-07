@@ -1,14 +1,14 @@
 version: 1
 hypothesis: H030
 phase: boundary2x_plus_source_GT_neighbor_XYZ_contrast01
-status: running_full_LR_warmup150500_full_state_protected_no_quality_claim
+status: running152500_review_complete_no_primary_or_overall_boundary_gain_weaker_dose_successor_prequeued
 handoff_and_control_review: research/protocols/h030_boundary155000_review.yaml
 spawned_at: 2026-09-07T20:30:00.366Z
 FP32_master_storage_verified_at: 2026-09-07T20:31:46.143Z
 first_optimizer_update: 150001
 first_optimizer_update_at: 2026-09-07T20:32:20.107Z
 first_unweighted_and_boundary_objective_parity: verified_against_control_preupdate_not_a_quality_gain
-current_decision: continue_fixed01_budget_at_full_LR_unchanged_no_rewarmup_or_single_batch_retuning
+current_decision: continue_fixed01_unchanged_to155000_then_fixed_endpoint_screen_and_tested001_dose_relay
 run: R-20260907185236-284f11
 execution_commit: 42869cccfccc316f79268e2b887b1ff78574e3e8
 queued_at: 2026-09-07T18:52:36Z
@@ -52,6 +52,33 @@ warmup150500:
   replica: local_same_inode_hardlink_outside_rotation_not_remote
   caveat: engineering_protection_not_quality_gain_bitwise_FSDP_replay_or_remaining_horizon_memory_guarantee
   next: protect152500_then_matched_full_LR150501_to152500_raw_and_boundary_strata_review_with_counts
+midpoint152500:
+  event_at: 2026-09-07T23:13:40.324Z
+  guard: R-20260907231637-82ea48
+  guard_succeeded_at: 2026-09-07T23:16:59.303Z
+  checkpoint: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast01-step152500-reference/checkpoint-0152500.pt
+  sha256: 9c19ef639e724a871f163562ed438c66744c66f864cb0e5f3458a3a08a55cc14
+  artifact: artifact://H030/R-20260907185236-284f11/checkpoint/9c19ef639e724a87
+  registered_at: 2026-09-07T23:21:12.414Z
+  full_state: FP32_model_Adam_world2_RNG2_all193_ages_plus2000_from150500_range52500_to67500_all_actual_base_LRs3e_minus6
+  clip_counters: [427000, 366000, 427000]
+  sidecar: copied_matching_live152500_not_reconstructed
+  replica: local_same_inode_protection_outside_rotation_not_remote
+  raw_review: R-20260907231502-8efa9d
+  count_gated_review: R-20260907232029-421c94
+  count_gated_tests: 13
+  output: /data/WorldBridge4D-runs/h030-edgecontrast01-review152500-20260907/vs-boundary2x/boundary_count_rollup.json
+  full_LR_window: [150501, 152500]
+  paired_logs: 600
+  raw_EPE_change_pct_K_PO_DR: [0.9517313888464107, 0.09482486128271628, 0.3045348525932079]
+  boundary_batch_macro_EPE_change_pct_K_PO_DR: [0.39542363684321735, 0.019578705681499997, 0.16292685847676402]
+  nonboundary_batch_macro_EPE_change_pct_K_PO_DR: [1.3648341752879878, 0.23071970845298662, 0.45070375267042273]
+  occluded_boundary_batch_macro_EPE_change_pct_K_PO_DR: [-0.25866693111511463, -0.07921196587117318, 0.6008809215660493]
+  counts_and_eligible_empty_populations: research/protocols/h030_edgecontrast0p01.yaml
+  conclusion: no_primary_or_overall_boundary_training_gain_small_K_PO_occluded_boundary_gain_with_nonboundary_cost_and_DR_occluded_regression
+  limitation: sampled_training_not_validation_or_gradient_conflict_proof_counts_not_complete_clip_mask_identity
+  successor: R-20260907233132-73044b
+  successor_protocol: research/protocols/h030_edgecontrast0p01.yaml
 review:
   run: R-20260907174725-f76d81
   window: [150501, 152500]
@@ -138,6 +165,9 @@ relay:
   future_GPU2_GPU3: [R-20260907204615-8ee7c1, R-20260907204615-23bab2]
   future_control_sha256: fb9b0a8199385ec3c0cd45a64ffa9abe358970ea4b545924b99a8605d5be1555
   future_candidate_sha256: unresolved_until_full_state155000_guard
+  future_CPU_crossed_endpoint_reviews_K_DR: [R-20260907233722-6fb24f, R-20260907233722-eeacee]
+  then_tested_GPU23_successor: R-20260907233132-73044b
+  successor_status: CPU215_passed_one001_dose_prequeued_not_started_no_current_arm_change
   scheduling: prequeue_before_current155000_completion_managed_leases_relay_not_overlap
   termination: checkpoint_first_SIGTERM_soft_torchrun_no_SIGKILL
   allocator: native_no_caps_tuning_or_periodic_flushing_all_three_allocator_env_variables_unset
