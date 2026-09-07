@@ -1702,7 +1702,7 @@ h030_fp32_cycle0_rgb1x_2500:
   output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15
   next_review: none_failed_run_do_not_repeat_original150k_argv
 h030_fp32_cycle0_rgb1x_recovery_r1:
-  status: succeeded152500_no_clear_gain_awaiting_user_decision
+  status: succeeded152500_no_clear_gain_followup_now_user_authorized
   finished_at: 2026-09-07T09:38:06.106Z
   exit_code: 0
   termination_audit: []
@@ -1808,7 +1808,73 @@ h030_fp32_cycle0_rgb1x_recovery_r1:
     output: /data/WorldBridge4D-runs/h030-rgb1x-final-fullLR-review152500-20260907
     decision: no_clear_gain_no155k_extension_no_new150k_restart_without_user_decision
     caveat: sampled_training_not_validation_significance_full_clip_mask_identity_or_bitwise_causal_LR_test
-  continuation_to155k_selected: false
-  successor_run: null
-  next_review: none_budget_complete_await_user_approval_for_next_phase
-updated_at: 2026-09-07T09:43:19Z
+  continuation_to155k_selected: true
+  successor_run: R-20260907112245-5557b9
+  next_review: original_budget_closed_follow_new_user_authorized_phase_below
+h030_post152500_diagnostics:
+  status: kubric_complete_DR_queued_after_training_PO_validation_RGB_blocked
+  user_authorized_reopening: true
+  protocol: research/protocols/h030_post152500_diagnostics_and_continuation.yaml
+  config: configs/h030_diagnostics_152500.yaml
+  config_sha256: d30ddf4871cde8e436d66e80f16092fa985c7a174866bf427814220e592602eb
+  execution_commit: 9a47a1cd9244f553cac617fbef817def0627890b
+  preflight: R-20260907111947-7018cf
+  tests_passed: 123
+  physical_gpus: [2, 3]
+  inference: one_leased_GPU_per_worker_BF16_eval_strict_loading_no_optimizer_native_cache_no_cap
+  fixed_selection: validation4_parent_balanced_clips_per_dataset_seed20260907_sources0_10_20_all21_targets
+  kubric_prepare: R-20260907110105-d61ab3
+  kubric_GPU_runs: [R-20260907112117-03b949, R-20260907112117-767643]
+  kubric_complete_source_records: 48
+  kubric_review_run: R-20260907112704-23a649
+  kubric_review: /data/WorldBridge4D-runs/diagnostics-h030-152500-20260907/reviews/kubric-first-screen
+  checkpoint_order: [h023_100k, h030_150k_norm30, h030_rgb10x_152500, h030_rgb1x_152500]
+  kubric_point_weighted_raw_EPE_m_rounded6: [0.911520, 0.906423, 0.920155, 0.919558]
+  kubric_interpretation: small_screen_RGB1x_near_RGB10x_raw_EPE_higher_than_origin150k_no_production_promotion
+  external_prepare: R-20260907112444-685113
+  DR_ready_indices: [492, 548, 526, 233]
+  PO_blocked_indices: [1441, 1234, 256, 405]
+  PO_blocker: missing_validation_RGB_under_dataset_nas0_PointOdyssey_val_no_training_substitution
+  queued_DR_GPU_runs: [R-20260907113216-4099b0, R-20260907113216-24a010]
+  queued_DR_parent: R-20260907112245-5557b9
+  startup_failure: four_runs_exited_before_prediction_due_to_uninitialized_CUDA_peak_stats_explicit_device_init_fixed_and_GPU_verified
+h030_fp32_cycle0_rgb1x_continue_to155k:
+  status: running_user_authorized_own152500_state_continuation
+  run: R-20260907112245-5557b9
+  owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+  user_authority: explicit_permission_to_continue_training_and_maximize_useful_GPU2and3_utilization
+  execution_commit: 9a47a1cd9244f553cac617fbef817def0627890b
+  config: configs/h030_152500_to_155k_gpu23_b2_k15_fp32_cycle0_rgb1x.yaml
+  config_sha256: 82060c4b3c657b48b2a1198a7d511d3122fe18da60965d9d83c4ed4fac6385e1
+  physical_gpus: [2, 3]
+  input_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152500-reference/checkpoint-0152500.pt
+  input_checkpoint_sha256: daa38f4ae5bd07f8c97e3eeb6d27762acfa28dcc14dade1c781ff0667aa3bc84
+  input_step: 152500
+  target_step: 155000
+  restore: full_model_AdamW_counters_world2_rng2
+  LR_origin_step: 150000
+  original_warmup_steps: 500
+  repeated_warmup: false
+  actual_group_LRs: [0.000003, 0.000003, 0.000003]
+  scientific_policy: decoder_only_B2_A2_K15_FP32_masters_BF16_compute_clip1_cycle_paths_retained_weight0_native_cache
+  spawned_at: 2026-09-07T11:24:34.596Z
+  first_update: 152501
+  first_update_at: 2026-09-07T11:28:29.216Z
+  first_update_after_spawn_seconds: 234.620
+  first_update_LR_factor: 1.0
+  observed_milestone: 152600
+  observed_milestone_at: 2026-09-07T11:35:38.230Z
+  checkpoint_verification_run: R-20260907113957-63c35b
+  latest_verified_step: 152600
+  latest_verified_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152600-reference/checkpoint-0152600.pt
+  latest_verified_checkpoint_sha256: 18f41ea210acc8051dfd31c82c5b599aa8635093c15faac9f2bb6417a34445dc
+  latest_verified_checkpoint_artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/18f41ea210acc805
+  verified_Adam_age_range: [52600, 67600]
+  verified_all193_Adam_age_increments_from152500: 100
+  verified_clip_counters: [427280, 366240, 427280]
+  output: /data/WorldBridge4D-runs/h030-152500-to-155k-fp32-cycle0-rgb1x-gpu23-b2-k15
+  endpoint155000_guard_queued: R-20260907113731-cad04f
+  queued_GPU_successors: [R-20260907113216-4099b0, R-20260907113216-24a010]
+  next_review: 153500_training_window_and_fixed_validation_decomposition_before_further_adjustments
+  caveat: continued_by_user_authority_not_evidence_that_prior_no_clear_gain_finding_changed
+updated_at: 2026-09-07T11:42:57Z
