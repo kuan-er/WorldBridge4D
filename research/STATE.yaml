@@ -542,24 +542,27 @@ h023_256_three_dataset_200m:
     canonical roots; then verify exact resume from step 2 through a Kubric
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
-next_step: Unweighted RGB1x continuation succeeded155000; full endpoint protected and
-  SHA-registered. DR workers succeeded and the available Kubric/DR screen is frozen;
-  PO validation remains blocked. Boundary2x R-20260907144838-4f3680 is running on
-  physical GPUs2/3;150500 warmup is complete and its full checkpoint is protected
-  and SHA-registered. All193 Adam ages advanced500; actual/base group LRs are3e-6.
-  Continue unchanged to152500 review; user now authorizes autonomous hypotheses and
-  experiments after that comparison without another approval round. Use remaining
-  training time to test and enqueue useful GPU2and3 successors BEFORE completion
-  or any checkpoint-first deliberate switch, rather than waiting with idle GPUs.
-  The current selected endpoint is155000; no new factor is selected before review. It restores
-  original FULL150000 to155000 with the original500-step warmup and reuses the
-  existing unweighted trajectory; no repeated baseline or two155000-origin arms.
-  The final sampled training review still establishes no quality gain. Follow the
-  queued boundary155000 full-state guard; keep H023 production.
-  Preserve intermediate boundary checkpoints on events and compare UNWEIGHTED XYZ/EPE;
-  weighted loss magnitude is not quality. Fixed boundary_motion_visibility evaluation
-  remains necessary. No SIGKILL, allocator tuning or GPU substitution. PO validation
-  RGB remains missing; no training substitution. H023 remains production.
+next_step: >-
+  Boundary2x R-20260907144838-4f3680 continues unchanged on physical GPUs2/3
+  to155000. Its full152500 checkpoint is protected/SHA-registered;600 paired full-LR
+  logs show no clear primary training gain over existing unweighted RGB1x. Protect
+  and review155000 on its event; endpoint guard R-20260907145112-191549 stays queued.
+  User-authorized successors are ALREADY tested and prequeued before completion:
+  fixed Kubric/DR diagnostics R-20260907185032-7a2093 and R-20260907185032-625a1a,
+  then edgecontrast01 R-20260907185236-284f11 from the same FULL150000 with original
+  500-step warmup once, boundary2x retained, only fixed01 GT-neighbor XYZ loss added.
+  CPU172 and three real GT sampling tests passed; no repeated baseline training,
+  architecture change or155000-origin reset. Queued is not spawned or first update.
+  Observe first actual optimizer update and protect new warmup/midpoint/endpoint;
+  new endpoint guard R-20260907185445-827fc1 is queued. Original four-label96-record
+  crossed fixed validation is now complete via R-20260907190909-ac98a3; no boundary2x
+  quality result yet. Once both new diagnostic workers succeed, use the tested
+  h030_crossed_validation.py with original and new manifests to compare boundary152500
+  with existing RGB1x152500 predictions; unweighted155000 is a different-step label,
+  not its same-step causal control. Later compare both155000 boundary/contrast arms.
+  Maintain useful prequeued relay work, not occupancy jobs or memory-heavy overlap.
+  No SIGKILL, allocator changes or GPU substitution. PO validation RGB remains missing;
+  no training substitution. Weighted objectives are not quality; H023 stays production.
 h013_default_policy_change:
   status: implemented_not_quality_validated
   task: T-20260810022349-e4aabd
@@ -2085,7 +2088,7 @@ h030_boundary2x_edgecontrast01:
   physical_gpus: [2, 3]
   control_reused: R-20260907144838-4f3680
   only_scientific_change: add_fixed01_GT_adjacent_XYZ_contrast_to_boundary2x_no_architecture_change
-  preserve: full_model_Adam_counters_rng2_native_cache_B2_A2_K15_FP32_BF16_cycle0_all_actual_LRs3e6
+  preserve: full_model_Adam_counters_rng2_native_cache_B2_A2_K15_FP32_BF16_cycle0_all_actual_LRs3e_minus6
   preflight: R-20260907184251-dab560
   preflight_commit: e8a97d8a9206ef94dd25b0f63efa12797eb8fec1
   tests_passed: 172
@@ -2105,4 +2108,39 @@ h030_boundary2x_edgecontrast01:
   protected_endpoint_directory: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast01-step155000-reference
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-boundary2x-edgecontrast01-gpu23-b2-k15
   caveat: queued_is_not_spawn_first_update_or_quality_gain_CPU_tests_not_memory_proof_no_blanket_training_crash_retry
-updated_at: 2026-09-07T18:54:45Z
+h030_crossed_fixed_validation:
+  status: original_four_checkpoints_complete_new_boundary2x_predictions_pending
+  run: R-20260907190909-ac98a3
+  execution_commit: 3bca0573afe438b219d7a6e8a2e246966e2f74aa
+  succeeded_at: 2026-09-07T19:09:38.748Z
+  tests_passed: 22
+  test_seconds: 3.19
+  code: research/analysis/h030_crossed_validation.py
+  output: /data/WorldBridge4D-runs/h030-crossed-fixed-validation-20260907/original-four
+  checkpoint_labels: [h023_100k, h030_150k_norm30, h030_rgb10x_152500, h030_rgb1x_152500]
+  source_records: 96
+  ready_clips_K_DR: [4, 4]
+  PO_validation_blocked: 4
+  inference_reused: true
+  CUDA_used: false
+  axes: pointmap_tracking_absolute_and_anchored_relative_displacement_cross_boundary_buffer_interior_GT_motion_and_target_visibility
+  metric_populations: 180_per_source_fixed_GT_empty_null_same_counts_between_labels
+  uncertainty: paired_parent_macro_and_parent_bootstrap_not_pixel_resampling
+  illustrative_label: h030_rgb1x_152500_NOT_boundary2x
+  Kubric_GTmotion_gt10cm_occluded:
+    boundary_tracking_count: 264255
+    interior_tracking_count: 314034
+    boundary_tracking_EPE_m: 1.5999545183134076
+    interior_tracking_EPE_m: 1.043750979683591
+    boundary_displacement_EPE_m: 1.2801794044441586
+    interior_displacement_EPE_m: 1.0836407076039773
+  DR_GTmotion_gt10cm_occluded:
+    boundary_tracking_count: 16489
+    interior_tracking_count: 176
+    boundary_tracking_EPE_m: 0.45233337126549816
+    interior_tracking_EPE_m: 0.1252953586253253
+    interior_parents: 3
+    caveat: tiny_interior_population_pointweighted_and_parent_macro_changes_can_have_different_signs
+  interpretation: conditional_boundary_error_remains_high_on_this_Kubric_screen_but_does_not_identify_architecture_or_motion_module_root_cause_or_remove_depth_identity_geometry_confounding
+  next: reuse_same_tested_analysis_after_queued_boundary152500_RGB1x155000_inference_without_reinferring_existing_controls
+updated_at: 2026-09-07T19:15:00Z

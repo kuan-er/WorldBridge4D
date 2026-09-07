@@ -66,7 +66,9 @@ metrics:
   extra: boundary_and_nonboundary_and_boundary_occluded_raw_EPE_with_counts_and_pair_mean_boundary_fraction
   nonboundary_caveat: greater_than2px_is_not_the_fixed_validation_interior_greater_than10px
   validation_plan: same_fixed_clips_sources_targets_boundary_by_motion_by_visibility_pointmap_and_relative_displacement
-  validation_status: endpoint_comparison_and_crossed_analysis_pending_not_executed
+  validation_status: old_four_label_crossed_analysis_complete_new_boundary2x_inference_queued_endpoint_comparison_pending
+  original_four_crossed_analysis: R-20260907190909-ac98a3
+  original_four_crossed_results: /data/WorldBridge4D-runs/h030-crossed-fixed-validation-20260907/original-four
   PO_validation: RGB_missing_no_train_substitution
 preflight:
   run: R-20260907140138-663230
@@ -165,7 +167,7 @@ review152500:
   checkpoint_bytes: 7864619303
   Adam_age_range: [52500, 67500]
   all193_Adam_age_increments_from150500: 2000
-  full_state: FP32_model_Adam_world2_RNG2_all_actual_base_LRs3e6_matching_sidecar
+  full_state: FP32_model_Adam_world2_RNG2_all_actual_base_LRs3e_minus6_matching_sidecar
   clip_counters: [427000, 366000, 427000]
   replica: local_same_inode_hardlink_outside_rotation_not_remote_copy
   guard_scope: intermediate_owned_running_producer_hash_gated_not_producer_exit
