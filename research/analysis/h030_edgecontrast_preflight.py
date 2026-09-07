@@ -16,6 +16,7 @@ FILES = [
 CONFIG = Path('configs/h030_150k_to_155k_gpu23_b2_k15_boundary2x_edgecontrast01.yaml')
 ROOT = Path('/data/WorldBridge4D-runs/h030-edgecontrast01-preflight-20260907')
 OUTPUT = Path('/data/WorldBridge4D-runs/h030-150k-to-155k-boundary2x-edgecontrast01-gpu23-b2-k15')
+SUCCESS_MARKER = 'EDGE_CONTRAST01_PREFLIGHT_OK'
 
 
 def main():
@@ -92,9 +93,10 @@ def main():
     assert not OUTPUT.exists()
     atomic_json(ROOT / 'preflight.json', dict(config_sha256=hashlib.sha256(CONFIG.read_bytes()).hexdigest(),
                 checkpoint_sha256=cfg['selected_checkpoint_sha256'], checkpoint_step=150000,
+                source_edge_contrast_weight=cfg['source_edge_contrast_weight'],
                 adam_age_range=[min(ages), max(ages)], samples=samples,
                 scope='CPU_loss_gradient_and_real_GT_sampling_gate_not_quality_or_GPU_memory_proof'))
-    print('EDGE_CONTRAST01_PREFLIGHT_OK', flush=True)
+    print(SUCCESS_MARKER, flush=True)
 
 
 if __name__ == '__main__':

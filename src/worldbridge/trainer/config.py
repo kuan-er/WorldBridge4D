@@ -118,8 +118,8 @@ def validate_config(config: dict[str, Any], world: int) -> None:
                 or float(config.get('cycle_reprojection_weight', 0.0)) != 0.0):
             raise ValueError('boundary control requires FP32/BF16 decoder and all-dataset cycle0 paths')
     contrast_weight = float(config.get('source_edge_contrast_weight', 0.0))
-    if contrast_weight not in (0.0, 0.1):
-        raise ValueError('audited source edge contrast weight must be 0 or 0.1')
+    if contrast_weight not in (0.0, 0.01, 0.1):
+        raise ValueError('audited source edge contrast weight must be 0, 0.01 or 0.1')
     if contrast_weight > 0 and (boundary is None or float(boundary['multiplier']) != 2.0):
         raise ValueError('source edge contrast control requires boundary2x')
     accumulation = int(config.get("gradient_accumulation", 0))
