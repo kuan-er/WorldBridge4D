@@ -543,8 +543,8 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: Continue the running FP32 cycle0 full-state continuation on physical2/3
-  toward155000 without rewarmup. First152501 is verified; check152600 and compare
-  full-LR primary metrics at153500. The2500 control still shows no net BF16 gain.
+  toward155000 without rewarmup. Checkpoint152600 is verified; compare full-LR
+  primary metrics at153500. The2500 control still shows no net BF16 gain.
   Enqueue a tested successor before any deliberate stop. No SIGKILL or GPU substitution.
   Training metrics are not validation; retain the H005 architecture and H023 production baseline.
 h013_default_policy_change:
@@ -1591,7 +1591,19 @@ h030_fp32_cycle0_2500:
   wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/64dw4nji
   next_review: complete_do_not_restart_on_delayed_notifications
 h030_fp32_cycle0_continue_to155k:
-  status: running_first_optimizer_update_verified
+  status: running100_continuation_updates_checkpoint152600_verified
+  last_observed_step: 152600
+  last_observed_step_at: 2026-09-07T01:48:30.232Z
+  last_observed_lr_factor: 1.0
+  observed_peak_cuda_memory_gib_this_process: 60.54592990875244
+  latest_checkpoint_step: 152600
+  latest_checkpoint_path: /data/WorldBridge4D-runs/h030-fp32-cycle0-step152600-reference/checkpoint-0152600.pt
+  latest_checkpoint_sha256: 784c60217add9f3995a01fb46a387a0365e16996d8f5a6c2b4efeffbafef801f
+  latest_checkpoint_artifact: artifact://H030/R-20260907005010-9de7af/checkpoint/784c60217add9f39
+  latest_checkpoint_bytes: 7864619047
+  latest_checkpoint_Adam_age_range: [52600, 67600]
+  latest_checkpoint_verified: full_FP32_model_Adam_world2_RNG2_matched_sidecar_cycle0_full_LRs
+  latest_checkpoint_outside_rotation: true
   started_at: 2026-09-07T01:37:16.450Z
   predecessor_exit_to_spawn_seconds: 27.144
   first_update_at: 2026-09-07T01:39:52.890Z
@@ -1623,5 +1635,5 @@ h030_fp32_cycle0_continue_to155k:
   input_semantic_guard: full_format3_FP32_masters_Adam_world2_RNG2_matching_sidecar_step152500_and_Adam_age_offsets
   checkpoint_preservation: hardlink_and_matching_sidecar_before_training_subprocess
   output: /data/WorldBridge4D-runs/h030-152500-to-155k-fp32-cycle0-gpu23-b2-k15
-  next_review: checkpoint152600_then153500_then154500_before155000_or_failure
-updated_at: 2026-09-07T01:42:16Z
+  next_review: matched153500_then154500_before155000_or_failure
+updated_at: 2026-09-07T01:51:10Z

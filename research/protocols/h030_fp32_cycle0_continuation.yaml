@@ -1,4 +1,21 @@
-status: running_first_optimizer_update_verified
+status: running100_continuation_updates_checkpoint152600_verified
+review152600:
+  logged_at: 2026-09-07T01:48:30.232Z
+  continuation_updates: 100
+  lr_factor: 1.0
+  loss_equals_xyz: true
+  weighted_cycle: 0.0
+  sampled_step_seconds: [3.4853658168576658, 3.4464334240183234]
+  peak_cuda_memory_gib_this_process: 60.54592990875244
+  memory_caveat: restarted_peak_counter_not_evidence_of_smaller_full_horizon_requirement
+  protected_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-step152600-reference/checkpoint-0152600.pt
+  checkpoint_sha256: 784c60217add9f3995a01fb46a387a0365e16996d8f5a6c2b4efeffbafef801f
+  checkpoint_artifact: artifact://H030/R-20260907005010-9de7af/checkpoint/784c60217add9f39
+  checkpoint_bytes: 7864619047
+  Adam_age_range: [52600, 67600]
+  verified: full_FP32_model_Adam_world2_RNG2_matched_sidecar_cycle0_full_LRs
+  decision: continue_unchanged_review_matched_primary_metrics153500
+  quality_conclusion: no_new_quality_claim
 handoff_result:
   predecessor_finished_at: 2026-09-07T01:36:49.306Z
   spawned_at: 2026-09-07T01:37:16.450Z
