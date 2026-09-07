@@ -247,6 +247,15 @@ def cycle_diagnostic(pred, reverse, data, camera, source):
             "caveat": "training-compatible prediction-dependent in-bounds mask; report coverage; sparse raster GT cycle need not be zero"}
 
 
+def diagnostic_device():
+    if torch.cuda.device_count() != 1:
+        raise RuntimeError("each diagnostic worker requires exactly one explicitly leased physical GPU")
+    device = torch.device("cuda:0")
+    # device_count can use NVML without initializing CUDA. Peak-stat reset cannot.
+    torch.cuda.set_device(device)
+    return device
+
+
 def run(args):
     root = output_root(args.output_root)
     manifest = json.loads(Path(args.manifest).read_text())
@@ -261,9 +270,7 @@ def run(args):
     torch.manual_seed(int(spec["seed"]))
     if not args.gate and manifest["limited_gate_manifest"]:
         raise ValueError("a gate-only input manifest cannot be used as a full diagnostic")
-    if torch.cuda.device_count() != 1:
-        raise RuntimeError("each diagnostic worker requires exactly one explicitly leased physical GPU")
-    device = torch.device("cuda:0")
+    device = diagnostic_device()
     labels = args.labels or list(manifest["checkpoints"])
     items = [item for item in manifest["ready"] if not args.datasets or item["dataset"] in args.datasets]
     if args.gate:
