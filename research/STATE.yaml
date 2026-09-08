@@ -1,4 +1,17 @@
 current_task: T-20260908032232-e95da1
+h031_DR_native_VAE_complete_20260908:
+  run: R-20260908053440-b8f756
+  status: succeeded_exit0_214549138Z
+  bulk_complete_at: 2026-09-08T21:45:30.955Z
+  processed: 6090
+  written: 6064
+  reused: 26
+  manifest_sha256: bfc8e394a73243cff4050430c013f420efe44e36fe43a0eaeda9128f78051011
+  marker: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1/dynamic_replica/bfc8e394a73243cff4050430c013f420efe44e36fe43a0eaeda9128f78051011/bulk_complete.json
+  marker_checked: all_existing_training_index_entries_verified_true_training_ready_false
+  elapsed_seconds: 58110.30573727796
+  peak_cuda_GiB: 14.13058853149414
+  decision: retain_completed_native720x1280_cache_no_new_GPU7_job_no_midrun_resolution_switch_current_GPU23_training_DR_remains256
 h031_native512_10k_20260908:
   authority: user_reaffirms_longtrain_start_page_faults_may_be_normal_page_cache_not_a_failure
   GT_mode: explicit_verified_published_cache_or_original_native512_raw_no_subset_no256_no_missing_source_fallback
