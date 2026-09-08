@@ -2,7 +2,7 @@ version: 1
 hypothesis: H031
 task: T-20260908032232-e95da1
 authority: user_requests_completed_DR_mmap_training_and_K5
-status: GPU_started143847752Z_initializing_no_update_confirmed
+status: first_native512_update150005_completed144233557Z_peak39p182GiB_continue_to10step_endpoint_review
 code_commit: 6ed0002f6bff0d6bc64aef34546d33f479016f19
 config: configs/h031_k512_po256_dr256_b1_a4_k5_dr_mmap.yaml
 config_sha256: 4464c92e536053dd22361c93339f8802428481076f132ae77c07e15bb37bb31e
