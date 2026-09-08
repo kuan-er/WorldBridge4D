@@ -2,8 +2,8 @@ version: 2
 hypothesis: H031
 task: T-20260908032232-e95da1
 authority: user_requests_additional10k_to_check_Kubric_improvement_after_K5_capacity_pass
-status: user_reaffirms_start_page_faults_not_failure_original_prefetch_longtrain_submitted
-execution_commit: 8bd71a5c03171f84c9591638e7087414304f5517
+status: original_prefetch_longtrain_queued_wait_GPU23_after_foreign_memory_growth_no_pagefault_auto_stop
+execution_commit: 4ea2561b68006b42382a49cc92c149b7b3b9d081
 config: configs/h031_k512_po256_dr256_k5_10k_ondemand.yaml
 config_sha256: 9e507e46ff25deb68f67c1848ded63eb9aeea2b7ae12f825e61dbfb66d9dcb4d
 GT_reader_mode: explicit_verified_cache_or_original_native_raw_no_full_publication_wait
@@ -48,10 +48,10 @@ GT:
   estimate_caveat: three_samples_max_not_proven_full_corpus_upper_bound_runtime_reserve_checks_enforced
 CPU_unit_gate: R-20260908145447-8aac4c_144passed22p50s
 CPU_after_GT: superseded_cancelled643755_not_required_for_explicit_on_demand_reader
-GPU: R-20260908174842-60b9e0
-CPU_endpoint_review: R-20260908174920-10e2f7
+GPU: R-20260908175858-c11e3e
+CPU_endpoint_review: R-20260908175931-b2c7b8
 output: /data/WorldBridge4D-runs/h031-k512-k5-original-prefetch-150012-to160010-gpu23-20260908
-retired_long_runs: [R-20260908151342-7904e6, R-20260908171616-0af2ad]
+retired_long_runs: [R-20260908151342-7904e6, R-20260908171616-0af2ad, R-20260908174842-60b9e0, R-20260908175634-bdd4c7]
 quiescent_variant: retained_diagnostic_only_strict_Adam_gate_failed_not_used_for_longtrain
 endpoint_acceptance: model_names_shapes_Adam193_allsteps_plus10000_world2_RNG2_cycle_offset10_dataset_counts_SHA
 quality_plan:
