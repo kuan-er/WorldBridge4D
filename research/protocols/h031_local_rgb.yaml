@@ -1,0 +1,70 @@
+version: 1
+hypothesis: H031
+scope: user_authorized_Kubric_RGB_only_local_staging_then_local_VAE_GPU6
+owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
+execution_commit: 71fa350a9b95d34cc3a24767cbbc84f6b70135b6
+seed: 20260908
+supersedes: h031_gpu67_split_Kubric_input_path_only
+unchanged:
+  DR_GPU7: R-20260908053440-b8f756
+  H030_GPU23: R-20260908051017-18ab7d
+  PO: original256_retained
+  manifest_sha256: aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+  VAE_sha256: 38071ab59bd94681c686fa51d75a1968f64e470262043be31f7a094e442fd981
+  posterior: FP32_mean_no_resize_crop_padding_tiling_or_temporal_resampling
+input:
+  raw_root: /dataset/nas0/yejun/MOVi-F/512x512
+  manifest: /data/WorldBridge4D-runs/h031-native-gpu6-handoff-20260908/kubric/kubric.json
+  config: configs/h031_native_cache_gpu6.yaml
+  config_sha256: d3a8f25849af850c1249a4ce0f9e8aa7881c5f337313d746b20480aa61cfeee8
+  clips: 5737
+  RGB_shape: [21, 512, 512, 3]
+  RGB_dtype: uint8
+  required_raw_shards: 1024
+  raw_shard_bytes: 577184289217
+  local_RGB_payload_bytes: 94746968064
+local_snapshot:
+  root: /data/WorldBridge4D-persistent/worldbridge4d-native-rgb-v1
+  format: one_atomic_locked_write_once_safetensors_per_clip_with_embedded_identity
+  identity: original_manifest_digest_index_clip_id_source_row_SHA_and_decoded_RGB_SHA256
+  source_gate: original_path_size_mtime_before_read_and_after_decode_before_publication
+  resume: reuse_SHA_verified_local_RGB_snapshot_without_redecoding_NAS
+  caveat: snapshot_semantics_not_a_fresh_revalidation_of_NAS_on_every_future_VAE_run
+  completion: all_requested_entries_verified_and_exact_publication_coverage_then_atomic_bulk_complete_json
+  no_fallback: missing_corrupt_or_mismatched_local_RGB_is_fatal_never_open_raw_source_in_local_VAE
+storage:
+  available_before_staging_GiB_approx: 291
+  minimum_free_bytes: 68719476736
+  initial_extraction_gate: remaining_RGB_payload_times1p2_plus_minimum_free
+  per_clip_gate: minimum_free_plus_twice_RGB_bytes
+  existing_outputs_deleted: false
+relay:
+  old_NAS_producer: R-20260908053354-7cfeeb
+  old_result: checkpointed_stop_exit3_at20260908T060527Z
+  CPU_tests_and_real_smoke: R-20260908061911-7c2f0b
+  CPU_result: 50tests_and_first_middle_last_raw_RGB_SHA_exact_match_with_original_preflight_and_existing_latent_metadata
+  CPU_RGB_bulk: R-20260908061931-15439f
+  GPU6_local_smoke: R-20260908061953-4935ee
+  GPU6_local_bulk: R-20260908062016-9f34d7
+  dependencies: old_checkpointed_stop_then_CPU_gate_then_full_RGB_then_GPU_smoke_then_GPU_bulk_all_success_only
+  GPU_smoke: three_local_RGB_clips_reencoded_exactly_match_existing_latents_first_input_repeated_exactly
+  GPU_bulk: existing_latents_verified_with_local_RGB_identity_others_encoded_to_original_latent_namespace
+  GPU_resources: physical6_shared_min16384MiB_plus4096MiB_safety_allow_foreign_wait172800s
+  termination: clip_boundary_SIGTERM_only_no_SIGKILL
+  events: one_shot_max_triggers1_progress_fatal_completion_and_process_exit
+  watchdog_seconds: 900
+implementation:
+  - src/worldbridge/data/cache/native_rgb.py
+  - src/worldbridge/data/commands/extract_native_rgb.py
+  - src/worldbridge/data/commands/precompute_native_latents.py
+  - tests/test_native_rgb.py
+measurements:
+  stage_timer_added: read_decode_hash_RGB_vs_latent_read_or_encode_write_not_individual_kernel_profile
+  throughput: first42_RGB_entries_in40p47seconds_not_a_robust_full_dataset_ETA
+  benefits_unproven: staging_pays_one_NAS_pass_and_local_HDD_writes_no_guaranteed_end_to_end_speedup
+initial_management_failures:
+  - R-20260908061516-552941_wrong_readRun_argument_order
+  - R-20260908061712-ea0c10_wrong_expected_terminal_status
+  - their_success_only_descendants_do_not_start
+  - no_CPU_tests_or_data_work_in_these_two_failed_gates
+training_ready: false
