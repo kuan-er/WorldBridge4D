@@ -4,7 +4,11 @@ h031_native512_capacity_20260908:
   scope: bounded_full150000_to150010_only_not_formal_long_training
   original_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
   config: configs/h031_k512_po256_dr256_b1_a4_k15_capacity.yaml
-  code_commit: 7a37a111811dfc81a00d9570d3d52e5bcadb3c8b
+  code_commit: 0612fa5b2312f8231cc54a3dda76ead8c627a071
+  live_start_authority: user_explicitly_requests_GPU_start_without_waiting_all80_replay_entries
+  live_readiness_CPU: R-20260908120520-cae898_49passed24p64s_CLI_checked_OK
+  live_readiness: Gloo900s_before_each_micro_FSDP_forward_original_live_geometry_NCCL180s_unchanged
+  replay_policy: producer_continues_independent_no_partial_replay_or_mid_run_switch
   replay_authority: user_approved_bounded_geometry_snapshot_and_CPU_rank_readiness_fix_then_same_GPU23_capacity_retry
   replay_CPU: R-20260908115826-c7e473
   replay_CPU_observation: 49tests_passed23p18s_including_two_rank_Gloo_success_and_timeout_real80_geometry_staging_pending
@@ -20,13 +24,14 @@ h031_native512_capacity_20260908:
   correction: discover_existing_PO_DR_per_clip256_tier_only_in_native_profile_actual_missing_reads_still_fatal_no_VAE_generation
   CPU_corrected_gate: R-20260908093507-6980a5
   CPU_observation: succeeded_exit0_20260908T094010Z_301tests_and_real_both_rank_10step_inputs_NATIVE512_CAPACITY_CPU_OK
-  GPU_test: R-20260908115928-3e16b6
-  CPU_fullstate_review: R-20260908115958-b40da8
+  GPU_test: R-20260908120609-c620f9
+  CPU_fullstate_review: R-20260908120644-04ad1f
+  superseded_replay_GPU_review: R-20260908115928-3e16b6_cancelled_before_start_R-20260908115958-b40da8_dependency_branch
   failed_initial_capacity: R-20260908113732-aad79b
   superseded_initial_review: R-20260908113801-b13edd
   previous_GPU: R-20260908093602-618730_terminated_not_started
   previous_review: R-20260908093635-750669_superseded_dependency_branch_do_not_retry
-  GPU_state: replay_retry_queued_success_only_CPU49_and80_real_input_staging_no_new_GPU_start
+  GPU_state: live_readiness_run_started20260908T120641735Z_initializing_no_update_confirmed
   failure_evidence: rank0_geometry_wait355s_then_forward114657Z_rank1_last_phase_geometry_wait_from114053Z_no_OOM_evidence
   stop_request: TERM-20260908115017-c190e9_SIGTERM_only_terminated_exit1_at115514Z_no_checkpoint_or_completed_update
   next_capacity_action: fix_or_stage_bounded_DR_geometry_and_verify_rank_readiness_before_retry_no_automatic_K_or_GPU_change
@@ -44,7 +49,7 @@ h031_native512_capacity_20260908:
   minimum_plus_safety_MiB_each: [49152, 0]
   capacity_budget: experimental_not_measured512_peak_no_K_reduction_or_other_GPU_fallback
   native_GT_snapshot: /data/WorldBridge4D-runs/h031-native512-capacity-inputs-20260908
-  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-replay-capacity-20260908
+  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-live-ready-capacity-20260908
   protocol: research/protocols/h031_native512_capacity.yaml
   DR_GPU7_unchanged: R-20260908053440-b8f756
   training_ready: false
