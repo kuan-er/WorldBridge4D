@@ -1,0 +1,23 @@
+version: 1
+seed: 20260908
+cache_gpu: '0'
+cache_root: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1
+vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
+source_inventory: /data/WorldBridge4D-runs/h031-native-inventory-20260908/inventory.json
+minimum_free_bytes: 68719476736
+transform: identity_no_resize_crop_pad_or_temporal_resampling
+datasets:
+  kubric:
+    raw_root: /dataset/nas0/yejun/MOVi-F/512x512
+    index: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/kubric/splits/train.jsonl
+    native_hw: [512, 512]
+  dynamic_replica:
+    raw_root: /dataset/data/Dynamic_dataset/dynamic_stereo
+    index: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica/splits/train.jsonl
+    native_hw: [720, 1280]
+blocked:
+  pointodyssey:
+    raw_root: /dataset/nas0/PointOdyssey
+    index: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/pointodyssey/splits/train.jsonl
+    reason: native_RGB_root_missing_no_256_upsampling_or_clip_substitution
+    native_hw: null
