@@ -92,6 +92,8 @@ def main() -> None:
     parser.add_argument("--input-readiness", action="store_true",
                         help="CPU rank readiness guard with original live geometry readers")
     parser.add_argument("--input-readiness-timeout-seconds", type=float, default=120)
+    parser.add_argument('--quiesce-geometry-before-forward', action='store_true',
+                        help='finish current/lookahead CPU futures before GPU compute; retain all inputs/RNG')
     parser.add_argument(
         "--finetune-from",
         help="load an audited structural extension and retained optimizer moments",
@@ -123,6 +125,8 @@ def main() -> None:
     if args.stop_after_updates is not None and (args.stop_after_updates < 1 or not args.resume
             or args.lazy_vae_cache or args.lazy_vae_pipeline or args.no_checkpoint):
         parser.error('--stop-after-updates requires positive full-resume, checkpointed, non-lazy diagnosis')
+    if args.quiesce_geometry_before_forward and not args.input_readiness:
+        parser.error('--quiesce-geometry-before-forward requires CPU input readiness')
     if args.pipeline_lookahead_steps < 1:
         parser.error("--pipeline-lookahead-steps must be positive")
     for value in (signal.SIGINT, signal.SIGTERM, signal.SIGUSR1):
@@ -533,6 +537,14 @@ def main() -> None:
                 faulthandler.dump_traceback_later(stall_seconds, repeat=True)
             trace_phase("update_start", step)
             planned = prefetcher.pop(step)
+            quiesce_seconds = 0.0
+            if args.quiesce_geometry_before_forward:
+                quiesce_start = time.perf_counter()
+                read_count = prefetcher.quiesce(planned)
+                quiesce_seconds = time.perf_counter() - quiesce_start
+                print(json.dumps({'event': 'GEOMETRY_PREFETCH_QUIESCENT', 'rank': rank,
+                                  'update_number': step + 1, 'read_count': read_count,
+                                  'seconds': quiesce_seconds}), flush=True)
             name = planned.dataset_name
             dataset = planned.dataset
             image_size = int(getattr(dataset, 'image_size', config['image_size']))
@@ -560,8 +572,8 @@ def main() -> None:
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
-            step_started = time.perf_counter()
-            geometry_wait_seconds = 0.0
+            step_started = time.perf_counter() - quiesce_seconds
+            geometry_wait_seconds = quiesce_seconds
             geometry_task_max_seconds = 0.0
             latent_load_seconds = 0.0
             for micro in range(accumulation):
@@ -937,6 +949,8 @@ def main() -> None:
                     "system/latent_load_seconds_max_rank": float(timing_max[2]),
                     "system/geometry_prefetch_depth": prefetch_depth,
                     "system/geometry_prefetch_workers": prefetch_workers,
+                    "system/geometry_quiesce_seconds_rank0": quiesce_seconds,
+                    "system/geometry_quiesce_enabled": int(args.quiesce_geometry_before_forward),
                     "system/diagnostic_dataset_coverage": int(ensure_dataset_diagnostics),
                     "system/elapsed_seconds": elapsed, "train/lr_factor": lr_factor,
                     "train/fresh_group_warmup_factor": fresh_group_warmup_factor,
@@ -1049,6 +1063,7 @@ def main() -> None:
         result = {
             "completed_steps": completed, "target_steps": target_steps, "world_size": world,
             "execution_end": execution_end, "diagnostic_stop_after_updates": args.stop_after_updates,
+            "quiesce_geometry_before_forward": bool(args.quiesce_geometry_before_forward),
             "clips_seen": clips_seen, "non_wan_parameters": non_wan_count,
             "targets_per_source": k, "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,
             "elapsed_seconds": time.perf_counter() - started,

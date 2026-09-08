@@ -225,5 +225,19 @@ class GeometryPrefetcher:
         self.refill()
         return planned
 
+    def quiesce(self, current: PlannedStep) -> int:
+        """Finish submitted CPU reads before GPU compute, without replanning.
+
+        The main thread is the only submitter. Waiting for current and lookahead
+        futures leaves workers idle until the next pop/refill; results, caches,
+        source/target RNG and queue order are retained, not consumed or replaced.
+        """
+        futures = list(current.geometry_futures)
+        for planned in self.pending:
+            futures.extend(planned.geometry_futures)
+        for future in futures:
+            future.result()  # propagate input failures; never eligibility fallback
+        return len(futures)
+
     def close(self) -> None:
         self.pool.shutdown(wait=True)
