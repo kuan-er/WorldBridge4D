@@ -1,0 +1,41 @@
+version: 1
+hypothesis: H031
+authority: user_requests_background_DR_3D_GT_conversion_and_space_estimate
+scope: shared_frame_addressable_DR_trajectory_NPY_not_duplicated_dense_GT_per_clip
+owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
+implementation_commit: 58195b8fc4a6ada050d0a501c73ebd29a17eb068
+inventory_run: R-20260908121545-03b5cd
+inventory_result: succeeded_readonly_435streams_6090clips
+compressed_bytes: 63783156783
+expanded_NPY_bytes: 76416943008
+observed_free_bytes_at121549Z: 186626809856
+space_policy: reserve64GiB_plus_remaining_payload_times1p2_before_bulk_and_each_stream
+source: /data/WorldBridge4D-persistent/worldbridge4d-cache/trajectories
+index: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica/splits/train.jsonl
+output: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1
+smoke_run: R-20260908121923-1c5b46
+bulk_run: R-20260908121942-4d75ac
+smoke: unit_tests_then_first_middle_last_streams
+bulk_dependency: smoke_success_and_atomic_smoke_complete_marker
+conversion:
+  original_archives: retained_no_deletion
+  members: [traj_3d_world.npy, traj_2d.npy, verts_inds_vis.npy, instances.npy, paths.npy]
+  numeric_policy: copy_original_NPY_member_bytes_no_cast_resize_reprojection_or_resampling
+  integrity: ZIP_CRC_SHA256_extraction_plus_independent_file_readback_array_shape_dtype_validation_source_stat_before_after_source_SHA_index_SHA
+  publish: fsync_atomic_per_stream_directory_complete_marker_write_once_single_producer_flock
+  resume: verify_existing_member_hashes_and_source_archive_SHA_before_reuse
+  sampler: no_changes_clip_frame_indices_lookup_original_paths
+  reader: mmap_only_requested_frame_indices_instances_broadcast_readonly
+  training_adapter_switch: not_enabled_in_current_running_GPU_test
+resources:
+  CPU_only: true
+  CUDA_VISIBLE_DEVICES: empty
+  nice: 10
+  ionice_class: 2
+  ionice_priority: 7
+  OMP_MKL_threads: 1
+  seed: 20260908
+termination: SIGTERM_finish_current_stream_then_exit3_no_SIGKILL
+cache_completion_not_training_quality_or_full_training_readiness: true
+DR_GPU7_native_VAE: unchanged
+GPU23_capacity_test: unchanged_original_live_geometry_readiness_path

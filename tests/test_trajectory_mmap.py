@@ -12,7 +12,7 @@ def fixture(tmp_path,monkeypatch):
                         lambda _:SimpleNamespace(free=2**40))
     arrays=dict(traj_3d_world=np.arange(5*4*3,dtype=np.float32).reshape(5,4,3),
                 traj_2d=np.arange(5*4*2,dtype=np.float32).reshape(5,4,2),
-                verts_inds_vis=np.ones((5,4),bool),instances=np.arange(4,dtype=np.int64),
+                verts_inds_vis=np.ones((5,4),np.uint8),instances=np.arange(4,dtype=np.int64),
                 paths=np.array(json.dumps([f'{i}.pth' for i in range(5)])))
     source=tmp_path/'stream.npz';np.savez_compressed(source,**arrays)
     return source,tmp_path/'mmap',arrays
@@ -29,6 +29,7 @@ def test_exact_shared_clip_and_resume(tmp_path,monkeypatch):
     clip=load_clip(directory,['3.pth','1.pth'],verified_report=checked)
     np.testing.assert_array_equal(clip['trajs_3d_world'],arrays['traj_3d_world'][[3,1]])
     np.testing.assert_array_equal(clip['visible'],arrays['verts_inds_vis'][[3,1]])
+    assert clip['visible'].dtype == np.bool_
     assert all(not v.flags.writeable for v in clip.values())
     _,written=convert_stream(source,root,'idx');assert not written
     assert source.exists()

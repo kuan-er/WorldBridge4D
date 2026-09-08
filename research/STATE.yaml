@@ -1,4 +1,20 @@
 current_task: T-20260908032232-e95da1
+h031_DR_trajectory_mmap_20260908:
+  authority: user_requests_background_DR_GT_conversion_and_space_estimate
+  inventory: R-20260908121545-03b5cd_435streams_6090clips
+  compressed_bytes: 63783156783
+  expanded_bytes: 76416943008
+  free_bytes_observed121549Z: 186626809856
+  implementation_commit: 58195b8fc4a6ada050d0a501c73ebd29a17eb068
+  smoke: R-20260908121923-1c5b46
+  bulk: R-20260908121942-4d75ac
+  status: tests_plus_three_stream_smoke_submitted_bulk_success_gated_not_complete
+  output: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1
+  protocol: research/protocols/h031_dr_trajectory_mmap.yaml
+  policy: copy_original_NPY_member_bytes_shared_across_overlapping_clips_no_dtype_or_GT_change_no_source_deletion
+  integrity: atomic_write_once_per_stream_SHA_CRC_readback_index_source_binding
+  resources: CPU_only_nice10_ionice2priority7_reserve64GiB_plus20pct_remaining_payload_SIGTERM_only
+  current_GPU23_and_DR7: unchanged_no_midrun_input_switch
 h031_native512_capacity_20260908:
   authority: user_authorized_implement_then_stop_current_GPU23_training_and_test512_B1_A4_K15
   scope: bounded_full150000_to150010_only_not_formal_long_training

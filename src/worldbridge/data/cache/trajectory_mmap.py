@@ -42,7 +42,8 @@ def validate_arrays(directory):
     if (world.ndim != 3 or world.shape[-1] != 3 or uv.shape != (*world.shape[:2],2)
             or vis.shape != world.shape[:2] or instances.shape != (world.shape[1],)):
         raise ValueError('unexpected DR trajectory array shapes')
-    if world.dtype.kind != 'f' or uv.dtype.kind != 'f' or vis.dtype.kind != 'b':
+    if (world.dtype.kind != 'f' or uv.dtype.kind != 'f'
+            or vis.dtype not in (np.dtype('bool'), np.dtype('uint8'))):
         raise ValueError('unexpected DR trajectory dtypes')
     paths = json.loads(str(arrays['paths.npy']))
     if len(paths) != world.shape[0] or len(set(paths)) != len(paths):
@@ -123,6 +124,8 @@ def load_clip(directory, frame_paths, *, verified_report):
     for key,filename in [('trajs_3d_world','traj_3d_world.npy'),('trajs_2d','traj_2d.npy'),
                          ('visible','verts_inds_vis.npy')]:
         result[key] = np.load(directory/filename,mmap_mode='r',allow_pickle=False)[indices]
+    # Match the existing NPZ loader's uint8 -> bool interpretation; files stay byte-exact.
+    result['visible'] = result['visible'].astype(bool, copy=False)
     instances = np.load(directory/'instances.npy',mmap_mode='r',allow_pickle=False)
     result['instances'] = np.broadcast_to(instances,(len(indices),len(instances)))
     for value in result.values(): value.setflags(write=False)
