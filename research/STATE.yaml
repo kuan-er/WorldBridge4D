@@ -1,4 +1,32 @@
 current_task: T-20260908032232-e95da1
+h031_native512_capacity_20260908:
+  authority: user_authorized_implement_then_stop_current_GPU23_training_and_test512_B1_A4_K15
+  scope: bounded_full150000_to150010_only_not_formal_long_training
+  original_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  config: configs/h031_k512_po256_dr256_b1_a4_k15_capacity.yaml
+  code_commit: f573376436c47d4100dfd9ea29cc94395723f0fa
+  dataset_resolutions: K512_PO256_DR256
+  native_decoder: spatial_grids64_to512_parameter_names_shapes_preserved_no_interpolated256_output
+  batching: B1_A4_K15_world2_8clips_120pairs_same4slots_per_rank_as_oldB2A2
+  objective: ordinary_XYZ_no_boundary_or_contrast_cycle0_paths_retained_RGB1x_restart500warmup_all3e-6
+  CPU_initial_tests: R-20260908092837-e86c91_300passed
+  CPU_initial_data_failure: R-20260908092904-52c706_PO_uses_existing_per_clip_latents_not_compact_shards
+  correction: discover_existing_PO_DR_per_clip256_tier_only_in_native_profile_actual_missing_reads_still_fatal_no_VAE_generation
+  CPU_corrected_gate: R-20260908093507-6980a5
+  CPU_observation: 301tests_passed15p78s_real_both_rank_plans_testing_no_GPU_yet
+  GPU_test: R-20260908093602-618730
+  CPU_fullstate_review: R-20260908093635-750669
+  GPU_state: queued_success_gated_not_started
+  old_H030: R-20260908051017-18ab7d
+  stop_policy: after_CPU_gate_success_full_update_checkpoint_SIGTERM_only
+  exact_GPUs: [2, 3]
+  minimum_plus_safety_MiB_each: [49152, 4096]
+  capacity_budget: experimental_not_measured512_peak_no_K_reduction_or_other_GPU_fallback
+  native_GT_snapshot: /data/WorldBridge4D-runs/h031-native512-capacity-inputs-20260908
+  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-capacity-20260908
+  protocol: research/protocols/h031_native512_capacity.yaml
+  DR_GPU7_unchanged: R-20260908053440-b8f756
+  training_ready: false
 h031_stream_local_rgb_20260908:
   authority: user_requested_simultaneous_RGB_extraction_and_local_GPU6_VAE
   supersedes: h031_local_rgb_full_extraction_barrier_only

@@ -1,0 +1,92 @@
+version: 1
+hypothesis: H031
+scope: user_authorized_code_then_safe_stop_current_training_then_test_native512_B1_A4_K15
+owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
+status: implementation_and_CPU_gates_before_old_training_stop_GPU_test_prequeued
+implementation_commit: f573376436c47d4100dfd9ea29cc94395723f0fa
+config: configs/h031_k512_po256_dr256_b1_a4_k15_capacity.yaml
+seed: 20260812
+geometry_seed: 20260812
+decoder_seed: 424242
+origin:
+  path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+  sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  mode: strict_full_model_Adam193_states_world2_rng2_counters_preserved_no_weights_only
+control:
+  historical: ordinary_XYZ_RGB1x_155000
+  not_plain_old_schedule: explicit150000_LR_restart500warmup_then_hold_all_decoder_RGB_rates3e-6
+  cycle: retain_input_forward_backward_RNG_path_with_coefficient0
+  boundary_weighting: absent
+  edgecontrast: 0
+  new_256_training: not_requested
+capacity:
+  microbatch_per_gpu: 1
+  accumulation: 4
+  K: 15
+  world: 2
+  clips_per_update: 8
+  pairs_per_update: 120
+  start: 150000
+  stop: 150010
+  precision: BF16_compute_FP32_decoder_masters_and_Adam
+  trainable: decoder_only
+  Wan_and_geometry: frozen
+  no_automatic_K_or_batch_change: true
+  no_long_training: true
+  caveat: ten_warmup_updates_not_full_LR_stability_or_quality_estimate
+  sampling: identical4slots_per_rank_to_old_B2A2_same_clip_plan_source_permutation_target_RNG_algorithm
+  qualification: changed_GT_validity_can_change_eligibility_and_floating_point_accumulation_is_not_bitwise_equal
+resolution:
+  kubric: native512_RGB_GT_decoder_output_native16x6x64x64_latents_dense512x21x64x64_queries64x64
+  PO_DR: unchanged256_original_caches_not_native_DR
+  learned_parameters: identical_names_shapes_no_new_head_width_depth_or_position_parameter_table
+  source_RGB_stage_keys: retain_checkpoint_labels32_64_128_256_but_actual512_stage_grids64_128_256_512
+  decoder: native_grid_prediction_not_interpolated256_output
+  coordinates: per_forward_native_grid_RoPE_and_camera512_same_native_radial_depth_geometry
+  normalization: original_coordinate_stats_per_pair_valid_mean_no_4x_Kubric_loss_weight
+  regression: native_enabled256_path_exact_CPU_match_and512_backward_without_mutating_base_grid
+inputs:
+  native_RGB_and_latents: full5737_completed_and_hash_verified_local_only
+  manifest_sha256: aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+  native_GT: pre_stage_only_bounded_Kubric_planned_clips_from_NAS_TFRecords_no_resize
+  GT_snapshot: /data/WorldBridge4D-runs/h031-native512-capacity-inputs-20260908
+  gate: original_raw_file_identity_RGB_SHA_against_local_snapshot_native_depth_valid_segmentation_cam_roundtrip_and_source_pointmap
+  runtime: no_raw_NAS_GT_or_RGB_fallback_for_Kubric_missing_staged_geometry_is_fatal
+  external_latents: discover_existing_per_clip256_tier_then_pre_read_every_planned_latent_no_VAE_generation
+  long_training_blocker: full_native_GT_access_and_native_validation_still_not_admitted
+runs:
+  initial_CPU_tests: R-20260908092837-e86c91
+  initial_tests_result: 300passed14p40s
+  initial_real_inputs: R-20260908092904-52c706
+  initial_gate_failure: required_PO_compact_latent_shards_although_actual_existing_cache_is_lazy_per_clip_no_GPU_started
+  correction: isolated_native_profile_allows_existing_external_per_clip_tier_discovery_missing_reads_remain_fatal_no_256_global_relaxation
+  corrected_CPU_gate: R-20260908093507-6980a5
+  corrected_GPU: R-20260908093602-618730
+  corrected_CPU_fullstate_review: R-20260908093635-750669
+  superseded_GPU_and_review: [R-20260908093221-3e2263, R-20260908093321-78d45c]
+  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-capacity-20260908
+handoff:
+  current_H030: R-20260908051017-18ab7d
+  stop_only_after: code_CPU_tests_and_real_input_gate_succeeded
+  old_stop: user_authorized_full_update_checkpoint_then_SIGTERM_only_no_SIGKILL
+  new_GPU_start: CPU_success_and_origin_checksum_complete_gate_and_exact_GPU23_lease_and_old_run_terminal_checkpoint_exists
+  resources:
+    physical_gpu_ids: ['2', '3']
+    mode: shared
+    allow_foreign_processes: true
+    minimum_free_memory_mib_each: 49152
+    memory_safety_mib_each: 4096
+    budget_type: experimental_admission_not_measured_native512_peak_not_guaranteed_fit
+    wait_timeout_seconds: 172800
+  termination: SIGTERM_checkpoint_first900s_no_SIGKILL_soft_torchrun_NCCL_timeout180s
+  progress_watchdog_seconds: 900
+  minimum_disk_free_bytes: 68719476736
+  expected_checkpoint_bytes: 16000000000
+  listeners: max_triggers1_resume_first_update_first_K_update_endpoint_fatal_process_exit
+  first_shape_log_is_not: completed_optimizer_update
+review:
+  require: completed150010_checkpoint_full_model_shapes_same_Adam193_all_steps_plus10_world2_rng2_exact_clip_counts
+  generic_trainer_marker: THREE_DATASET_256_FSDP_OK_is_historical_name_not_a_native_capacity_result_by_itself
+  evidence: NATIVE_TRAIN_SHAPES_plus_completed_optimizer_metrics_plus_successful_CPU_capacity_review
+DR_GPU7: R-20260908053440-b8f756_unchanged
+training_ready: false
