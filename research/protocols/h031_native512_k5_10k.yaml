@@ -2,9 +2,13 @@ version: 1
 hypothesis: H031
 task: T-20260908032232-e95da1
 authority: user_requests_additional10k_to_check_Kubric_improvement_after_K5_capacity_pass
-status: submitted_waiting_full_native_GT_not_GPU_started
-execution_commit: 522f470a8afcc76ceaf92f97e92b13a8cc99b152
-config: configs/h031_k512_po256_dr256_k5_150010_to160010.yaml
+status: user_requests_immediate_start_GPU_started151423978Z_initializing
+execution_commit: 600ea4abd33e619eb2b3e95f389bac2f0aa2daa3
+config: configs/h031_k512_po256_dr256_k5_10k_ondemand.yaml
+config_sha256: 9e507e46ff25deb68f67c1848ded63eb9aeea2b7ae12f825e61dbfb66d9dcb4d
+GT_reader_mode: explicit_verified_cache_or_original_native_raw_no_full_publication_wait
+GT_reader_contract: published_sidecar_SHA_or_original_TFRecord_CRC_source_stat_RGB_identity_no_corrupt_or_missing_source_fallback
+GT_reader_CPU: R-20260908151246-15dd7a_149tests_plus3real_full_fields_geometry_sampling_RNG_exact
 origin: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k5-dr-mmap-capacity-20260908/checkpoint-0150010.pt
 origin_sha256: 8118157202157c9836912f4b2473d840816ef6de59d555b75e0cb1919419f3c9
 origin_artifact: artifact://H031/R-20260908143820-96f650/checkpoint/8118157202157c98
@@ -34,10 +38,10 @@ GT:
   sample_based_payload_estimate_bytes: 75429760465
   estimate_caveat: three_samples_max_not_proven_full_corpus_upper_bound_runtime_reserve_checks_enforced
 CPU_unit_gate: R-20260908145447-8aac4c_144passed22p50s
-CPU_after_GT: R-20260908145331-643755
-GPU: R-20260908145416-683836
-CPU_endpoint_review: R-20260908145520-6232ab
-output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-k5-150010-to160010-gpu23-20260908
+CPU_after_GT: superseded_cancelled643755_not_required_for_explicit_on_demand_reader
+GPU: R-20260908151342-7904e6
+CPU_endpoint_review: R-20260908151414-49b6b8
+output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-k5-10k-ondemand-gpu23-20260908
 endpoint_acceptance: model_names_shapes_Adam193_allsteps_plus10000_world2_RNG2_cycle_offset10_dataset_counts_SHA
 quality_plan:
   baseline: protected_native_model150010
