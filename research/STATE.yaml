@@ -16,10 +16,13 @@ h031_native512_capacity_20260908:
   CPU_observation: succeeded_exit0_20260908T094010Z_301tests_and_real_both_rank_10step_inputs_NATIVE512_CAPACITY_CPU_OK
   GPU_test: R-20260908093602-618730
   CPU_fullstate_review: R-20260908093635-750669
-  GPU_state: queued_waiting_GPU23_not_started_after_CPU_success
+  GPU_state: queued_after_K9_exit_GPU2_free52104MiB_below53248MiB_admission_GPU3_free81036MiB_no_foreign_control_or_safety_reduction
   old_H030: R-20260908051017-18ab7d
   old_H030_observation: last_confirmed_update154055_at110801Z_progress_stalled900s_geometry_future_wait_later_backward_stack_not_proven_OOM
-  old_H030_stop_request: TERM-20260908112401-04f92d_SIGTERM_sent_to_both_ranks_terminal_and_checkpoint_not_yet_confirmed
+  old_H030_stop_request: TERM-20260908112401-04f92d_checkpointed_stop_exit1_at113511Z_SIGTERM_SignalException_no_SIGKILL
+  old_H030_final_step: 154059
+  old_H030_checkpoint_sha256: a2960acab5731b58aaaf1f5d8a84ab1007ca656f2ac54acd07288cddd3b6df7d
+  old_H030_checkpoint_bytes: 7864619431
   stop_policy: after_CPU_gate_success_full_update_checkpoint_SIGTERM_only
   exact_GPUs: [2, 3]
   minimum_plus_safety_MiB_each: [49152, 4096]
