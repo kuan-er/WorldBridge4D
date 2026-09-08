@@ -148,8 +148,10 @@ class GeometryPrefetcher:
         target_steps: int,
         depth: int,
         workers: int,
+        geometry_replay=None,
     ) -> None:
         self.datasets = datasets
+        self.geometry_replay = geometry_replay
         self.seed = int(seed)
         self.rank = int(rank)
         self.slots_per_rank = int(accumulation) * int(microbatch_per_gpu)
@@ -178,6 +180,12 @@ class GeometryPrefetcher:
             )
             for slot in range(self.slots_per_rank)
         ]
+        if self.geometry_replay is not None:
+            from .geometry_replay import request_for
+            futures = [self.pool.submit(self.geometry_replay.load,
+                        request_for(self, step, slot, dataset_name, index))
+                       for slot, (index, _source, _rng) in enumerate(sample_plans)]
+            return PlannedStep(step, dataset_name, dataset, sample_plans, futures)
         geometry_futures = [
             self.pool.submit(
                 load_geometry,

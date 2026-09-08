@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import timedelta
 from contextlib import nullcontext
 import faulthandler
 import json
@@ -78,6 +79,7 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--resume")
+    parser.add_argument("--geometry-replay", help="hash-verified bounded native512 CPU geometry snapshot")
     parser.add_argument(
         "--finetune-from",
         help="load an audited structural extension and retained optimizer moments",
@@ -113,6 +115,18 @@ def main() -> None:
         timeout_seconds=float(config.get("distributed_timeout_seconds", 86400)),
     )
     validate_config(config, world)
+    geometry_replay = None
+    input_ready_group = None
+    if args.geometry_replay:
+        if not config.get('native_kubric512_b1_a4_k15', False):
+            raise ValueError('geometry replay is restricted to bounded native512 admission')
+        from .geometry_replay import GeometryReplay
+        from ..data.cache.native import file_sha256
+        indexes = {name: file_sha256(Path(values['cache_root']) / 'splits/train.jsonl')
+                   for name, values in config['datasets'].items()}
+        geometry_replay = GeometryReplay(args.geometry_replay, file_sha256(args.config),
+                                         indexes=indexes, expected_count=80)
+        input_ready_group = dist.new_group(backend='gloo', timeout=timedelta(seconds=120))
     seed = int(config.get("seed", 20260812))
     random.seed(seed + rank); np.random.seed(seed + rank); torch.manual_seed(seed + rank)
     torch.cuda.manual_seed_all(seed + rank)
@@ -463,6 +477,7 @@ def main() -> None:
         target_steps=target_steps,
         depth=prefetch_depth,
         workers=prefetch_workers,
+        geometry_replay=geometry_replay,
     )
     optimizer.zero_grad(set_to_none=True)
     trace_updates = int(config.get("trace_first_updates", 0))
@@ -633,6 +648,10 @@ def main() -> None:
                     cycle_cameras = camera_batch(
                         [value[7] for value in batch_values], device, torch.float32,
                     )
+                if input_ready_group is not None:
+                    from .geometry_replay import input_ready
+                    input_ready(input_ready_group, rank=rank, step=step, micro=micro,
+                                dataset=name, clips=[int(v[0]) for v in batch_values])
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
                     trace_phase("forward_start", step, micro)
