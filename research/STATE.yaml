@@ -11,7 +11,12 @@ h031_DR_trajectory_mmap_20260908:
   initial_smoke: R-20260908121923-1c5b46_failed_uint8_visibility_schema_guard_no_stream_published
   initial_bulk: R-20260908121942-4d75ac_dependency_failed_not_started
   correction: preserve_real_uint8_visibility_NPY_bytes_reader_matches_original_astype_bool
-  status: smoke_succeeded_three_streams_exact129p046s_bulk_started122413Z_first_stream_reused_not_full_complete
+  status: bulk_succeeded_exit0_all435streams_cover6090clips_complete_marker_published
+  bulk_finished_at: 2026-09-08T14:19:45.274Z
+  bulk_counts: written432_reused3_total435
+  bulk_elapsed_seconds: 6922.666271717055
+  complete_marker: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1/bulk_complete.json
+  completion_decision: preserve_original_NPZ_no_retry_no_automatic_training_switch_adapter_and_input_parity_validation_still_pending
   smoke_completed_at: 2026-09-08T12:24:12.490Z
   bulk_started_at: 2026-09-08T12:24:13.277Z
   output: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1
