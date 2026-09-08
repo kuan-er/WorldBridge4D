@@ -126,21 +126,23 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     microbatch = int(config.get("microbatch_per_gpu", 0))
     cycle_b2_k19 = bool(config.get("cycle_b2_a2_k19", False))
     cycle_b2_k15 = bool(config.get("cycle_b2_a2_k15", False))
+    cycle_b2_k9 = bool(config.get("cycle_b2_a2_k9", False))
     xyz_b2_k15 = bool(config.get("xyz_b2_a2_k15", False))
-    if xyz_b2_k15 and (cycle_enabled or cycle_b2_k19 or cycle_b2_k15):
+    if xyz_b2_k15 and (cycle_enabled or cycle_b2_k19 or cycle_b2_k15 or cycle_b2_k9):
         raise ValueError("XYZ-only B2/A2/K15 requires cycle disabled and no cycle profile")
-    if cycle_b2_k19 and cycle_b2_k15:
+    if sum((cycle_b2_k19, cycle_b2_k15, cycle_b2_k9)) > 1:
         raise ValueError("select only one B2/A2 cycle target profile")
-    if (cycle_b2_k19 or cycle_b2_k15) and not cycle_enabled:
+    cycle_b2_profile = cycle_b2_k19 or cycle_b2_k15 or cycle_b2_k9
+    if cycle_b2_profile and not cycle_enabled:
         raise ValueError("B2/A2 cycle profiles require the cycle objective")
-    allowed_batching = {(2, 2)} if cycle_b2_k19 or cycle_b2_k15 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})
+    allowed_batching = {(2, 2)} if cycle_b2_profile else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})
     if (accumulation, microbatch) not in allowed_batching:
         expected = " or ".join(
             f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 15 if cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)
+    required_targets = 9 if cycle_b2_k9 else (15 if cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19))
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
