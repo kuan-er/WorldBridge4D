@@ -1,4 +1,29 @@
 current_task: T-20260908032232-e95da1
+h031_native512_10k_20260908:
+  authority: user_requests_additional10k_to_check_Kubric_improvement
+  protocol: research/protocols/h031_native512_k5_10k.yaml
+  config: configs/h031_k512_po256_dr256_k5_150010_to160010.yaml
+  code_commit: 522f470a8afcc76ceaf92f97e92b13a8cc99b152
+  origin: verified_full150010_8118157202157c9836912f4b2473d840816ef6de59d555b75e0cb1919419f3c9
+  target: 160010
+  additional_updates: 10000
+  batching: B1_A4_K5_world2_8clips_40pairs
+  LR: preserve150000_warmup500_then3e-6_hold_no_new_restart
+  datasets: Kubric512_PO256_DR256_shared_mmap_GT
+  native_GT_requirement: full5737_not_capacity24_no_missing_subset_or256_fallback
+  GT_probe: R-20260908144719-9ba392_exact_compression_three_samples_estimated75429760465bytes
+  GT_producer: R-20260908145020-2e286e
+  GT_latest_observation: processed120of5737_at145537923Z_elapsed309p721s_not_complete
+  GT_output: /data/WorldBridge4D-persistent/worldbridge4d-native-gt-v1/kubric/aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+  CPU_tests: R-20260908145447-8aac4c_144passed22p50s
+  CPU_after_GT: R-20260908145331-643755
+  GPU: R-20260908145416-683836
+  GPU_state: queued_dependency_full_GT_then_CPU_no_training_process_started
+  fullstate_review: R-20260908145520-6232ab
+  output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-k5-150010-to160010-gpu23-20260908
+  resource_policy: physical2and3_shared49152plus0MiB_64GiB_disk_reserve_checkpoint_budget38p4GB_no_SIGKILL_or_foreign_control
+  evaluation: fixed_heldout_native_Kubric150010_vs160010_inputs_and_evaluator_pending_not_training_loss
+  next_action: full_GT_success_auto_CPU_then_GPU_first_update_fullLR150500_half155010_endpoint160010_prepare_fixed_validation_in_parallel
 h031_DR_trajectory_mmap_20260908:
   authority: user_requests_background_DR_GT_conversion_and_space_estimate
   inventory: R-20260908121545-03b5cd_435streams_6090clips
@@ -78,7 +103,10 @@ h031_native512_capacity_20260908:
   superseded_initial_review: R-20260908113801-b13edd
   previous_GPU: R-20260908093602-618730_terminated_not_started
   previous_review: R-20260908093635-750669_superseded_dependency_branch_do_not_retry
-  GPU_state: K5_completed150010_at144321609Z_all10updates_process_exit_and_fullstate_review_pending
+  GPU_state: K5_capacity_succeeded_exit0_144432750Z_fullstate_review_succeeded_all193Adam_plus10_RNG2
+  K5_final_checkpoint_sha256: 8118157202157c9836912f4b2473d840816ef6de59d555b75e0cb1919419f3c9
+  K5_final_checkpoint_bytes: 7864619623
+  K5_final_artifact: artifact://H031/R-20260908143820-96f650/checkpoint/8118157202157c98
   K5_endpoint_peak_GiB: 39.18330669403076
   K5_endpoint_loss: 1.143874280154705
   K5_endpoint_gradient_norm: 25.30592155456543

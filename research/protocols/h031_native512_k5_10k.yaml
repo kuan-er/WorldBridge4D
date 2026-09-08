@@ -1,0 +1,49 @@
+version: 1
+hypothesis: H031
+task: T-20260908032232-e95da1
+authority: user_requests_additional10k_to_check_Kubric_improvement_after_K5_capacity_pass
+status: submitted_waiting_full_native_GT_not_GPU_started
+execution_commit: 522f470a8afcc76ceaf92f97e92b13a8cc99b152
+config: configs/h031_k512_po256_dr256_k5_150010_to160010.yaml
+origin: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k5-dr-mmap-capacity-20260908/checkpoint-0150010.pt
+origin_sha256: 8118157202157c9836912f4b2473d840816ef6de59d555b75e0cb1919419f3c9
+origin_artifact: artifact://H031/R-20260908143820-96f650/checkpoint/8118157202157c98
+origin_verification: R-20260908143851-3e354d_succeeded_fullmodel_Adam193_plus10_world2_RNG2
+steps: {start: 150010, stop: 160010, additional_updates: 10000}
+batching: {B: 1, A: 4, K: 5, world: 2, clips_per_update: 8, pairs_per_update: 40}
+seed: 20260812
+decoder_seed: 424242
+resolutions: {kubric: 512, pointodyssey: 256, dynamic_replica: 256}
+precision: FP32_masters_Adam_BF16_compute_decoder_only_Wan_and_geometry_frozen
+objective: ordinary_XYZ_no_boundary_no_contrast_cycle0_full_paths_retained
+learning_rates: all_decoder_RGB_groups3e-6
+LR_schedule: preserve_start150000_warmup500_then_hold_extend_end160010_no_new_restart
+checkpoint_policy: every500_plus150011_155010_160010_keep_last3_protect_external_origin150010
+NCCL_and_Gloo_timeout_seconds: 900
+resources: {gpu_ids: [2, 3], mode: shared, min_free_memory_mib: 49152, memory_safety_mib: 0, allow_foreign_processes: true}
+termination: checkpoint_first_SIGTERM_only_no_SIGKILL_no_foreign_control
+storage: {reserve_bytes: 68719476736, checkpoint_budget_bytes: 38400000000, remaining_GT_payload_multiplier: 1.2}
+GT:
+  reason: capacity_GT_only24_clips_does_not_cover_10k_no_subset_or256_fallback
+  root: /data/WorldBridge4D-persistent/worldbridge4d-native-gt-v1/kubric/aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+  count: 5737
+  format: lossless_npz_original21frame512_radial_depth_segmentation_camera_instances_all_fields_exact
+  identity: manifest_source_before_after_RGB_SHA_every_field_readback_SHA_perclip_ready_only_after_full_corpus
+  producer: R-20260908145020-2e286e
+  compression_probe: R-20260908144719-9ba392
+  sample_based_payload_estimate_bytes: 75429760465
+  estimate_caveat: three_samples_max_not_proven_full_corpus_upper_bound_runtime_reserve_checks_enforced
+CPU_unit_gate: R-20260908145447-8aac4c_144passed22p50s
+CPU_after_GT: R-20260908145331-643755
+GPU: R-20260908145416-683836
+CPU_endpoint_review: R-20260908145520-6232ab
+output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-k5-150010-to160010-gpu23-20260908
+endpoint_acceptance: model_names_shapes_Adam193_allsteps_plus10000_world2_RNG2_cycle_offset10_dataset_counts_SHA
+quality_plan:
+  baseline: protected_native_model150010
+  endpoint: 160010
+  evaluation: fixed_heldout_Kubric_clips_sources_targets_and_common_GT_rays
+  native512_validation_inputs_and_evaluator: pending_preparation_not_yet_submitted
+  restriction: do_not_replace_missing_validation_with_training_clips_or_infer_quality_from_training_loss
+production: H023_step100000_unchanged
+DR_GPU7_cache: unchanged
