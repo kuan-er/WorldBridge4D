@@ -1,14 +1,17 @@
 version: 1
 hypothesis: H030
 phase: boundary2x_plus_source_GT_neighbor_XYZ_contrast01
-status: running152500_review_complete_no_primary_or_overall_boundary_gain_weaker_dose_successor_prequeued
+status: succeeded155000_full_state_registered_training_and_fixed_boundary_screen_not_supportive
+endpoint_review: research/protocols/h030_edgecontrast155000_review.yaml
+normal_exit_at: 2026-09-08T01:57:04.246Z
+protected155000_sha256: 97f4ebe189ce0c24d6f546c5929a862678938582541645ecbe656365b4fc214d
 handoff_and_control_review: research/protocols/h030_boundary155000_review.yaml
 spawned_at: 2026-09-07T20:30:00.366Z
 FP32_master_storage_verified_at: 2026-09-07T20:31:46.143Z
 first_optimizer_update: 150001
 first_optimizer_update_at: 2026-09-07T20:32:20.107Z
 first_unweighted_and_boundary_objective_parity: verified_against_control_preupdate_not_a_quality_gain
-current_decision: continue_fixed01_unchanged_to155000_then_fixed_endpoint_screen_and_tested001_dose_relay
+current_decision: completed01_not_supported_preserve_control_tested001_running_same_full150000_origin_budget5000_no_inplace_retune_or_automatic_grid
 run: R-20260907185236-284f11
 execution_commit: 42869cccfccc316f79268e2b887b1ff78574e3e8
 queued_at: 2026-09-07T18:52:36Z
@@ -92,10 +95,14 @@ phase_end155000:
   action: no_signal_restart_extension_existing_success_dependent_guard_and_validation_then001_relay
   CPU_training_review: R-20260908015753-ea2594
   CPU_training_review_commit: b9159c9c289041c7ab08c8933a8c441b6cb96595
-  CPU_training_review_status: submitted_after_producer_success_no_inspected_result_yet
+  CPU_training_review_status: succeeded1350_count_gated_logs_equal_disjoint_frozen600_plus_final750_no_primary_or_overall_boundary_gain
+  normal_exit_verified_at: 2026-09-08T01:57:04.246Z
+  full_state_guard_succeeded_at: 2026-09-08T01:57:29.548Z
+  protected_sha256: 97f4ebe189ce0c24d6f546c5929a862678938582541645ecbe656365b4fc214d
+  registered_at: 2026-09-08T02:04:16.870Z
   CPU_training_review_output: /data/WorldBridge4D-runs/h030-edgecontrast01-final155000-20260908
   final_and_full_LR_windows: [[152501, 155000], [150501, 155000]]
-  expected_paired_logs: [750, 1350]
+  actual_paired_logs: [750, 1350]
   required_identity: exact_frozen_midpoint600_plus_final750_disjoint_equals_full1350_with_equal_GT_counts_and_sampling_fingerprints
   caveat: sampled_unweighted_count_gated_training_not_optimized_loss_quality_heldout_validation_or_checkpoint_verification
 review:
@@ -179,14 +186,16 @@ relay:
   runtime_gate: source_tests_config_unchanged_from_CPU_preflight_both_owned_diagnostics_terminal_no_blanket_training_retry
   other_GPU2_lease: must_release_before_two_rank_training_can_acquire_GPU2and3
   identities_resources_events_environment_termination: immutable_PRL_Run_records
-  future_endpoint_diagnostics: prequeued_compare_boundary2x155000_and_edgecontrast155000_reusing_unweighted155000_predictions
+  future_endpoint_diagnostics: now_both_GPU_and_CPU_succeeded_compare_boundary2x155000_and_edgecontrast155000_reusing_unweighted155000_predictions
   future_CPU_manifest: R-20260907204227-3a167e
   future_GPU2_GPU3: [R-20260908005010-1c2ad3, R-20260908005010-8446b9]
   future_control_sha256: fb9b0a8199385ec3c0cd45a64ffa9abe358970ea4b545924b99a8605d5be1555
-  future_candidate_sha256: unresolved_until_full_state155000_guard
+  future_candidate_sha256: 97f4ebe189ce0c24d6f546c5929a862678938582541645ecbe656365b4fc214d
   future_CPU_crossed_endpoint_reviews_K_DR: [R-20260908005353-efd18f, R-20260908005353-f131ba]
   then_tested_GPU23_successor: R-20260908005122-ee663c
-  successor_status: CPU215_reused_one001_dose_requeued_after_prestart_dependency_timeout_no_current_arm_change
+  successor_status: CPU215_reused_one001_dose_running_first150001_and_FP32_storage_verified_not_quality
+  successor_spawned_at: 2026-09-08T02:01:05.854Z
+  successor_first_update_at: 2026-09-08T02:03:32.348Z
   queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
   GPU_wait_timeout_seconds: 172800
   scheduling: prequeue_before_current155000_completion_managed_leases_relay_not_overlap

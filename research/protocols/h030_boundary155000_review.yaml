@@ -119,7 +119,8 @@ new_edgecontrast_training:
   caveat: engineering_parity_and_actual_progress_not_quality_gain_bitwise_FSDP_proof_or_remaining_horizon_memory_guarantee
   next: preserve_full_warmup150500_then_matched152500_review_with_existing_boundary2x_control
 future_endpoint_validation:
-  status: requeued_after_prestart_dependency_timeout_before_edge_training_completion_no_extra_training_arm
+  status: both_GPU_and_CPU_now_succeeded_same_step_boundary_small_gains_contrast01_boundary_regression_no_promotion
+  results_protocol: research/protocols/h030_edgecontrast155000_review.yaml
   queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
   CPU_manifest_resolver: R-20260907204227-3a167e
   CPU_manifest_execution_commit: 561a7cb571e7adfb6c084af32aefc5e4fc4dc099
@@ -131,7 +132,7 @@ future_endpoint_validation:
   physical_gpus_K_DR: [2, 3]
   labels: [h030_boundary2x_155000, h030_edgecontrast01_155000]
   control_sha256: fb9b0a8199385ec3c0cd45a64ffa9abe358970ea4b545924b99a8605d5be1555
-  candidate_SHA: unresolved_until_future_complete_guard_and_verified_handoff
+  candidate_SHA: 97f4ebe189ce0c24d6f546c5929a862678938582541645ecbe656365b4fc214d
   output: /data/WorldBridge4D-runs/diagnostics-h030-edgecontrast-endpoints-20260907
   fixed_inputs: same_eight_ready_clips_three_sources_all21_targets_four_PO_clips_still_blocked
   reuse: already_computed_unweighted155000_predictions
