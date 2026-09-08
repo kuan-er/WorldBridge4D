@@ -28,7 +28,8 @@ AUDITED_PATHS = [
     'configs/h031_native_cache.yaml',
     'src/worldbridge/data/cache/native_rgb.py',
     'src/worldbridge/data/commands/extract_native_rgb.py',
-    'tests/test_native_rgb.py',
+    'tests/test_native_rgb.py', 'tests/test_native_rgb_stream.py',
+    'src/worldbridge/data/cache/native_rgb_stream.py',
 ]
 
 
@@ -41,7 +42,11 @@ def main():
     p.add_argument('--dataset', choices=['kubric', 'dynamic_replica'], required=True)
     p.add_argument('--stage', choices=['smoke', 'bulk'], required=True)
     p.add_argument('--rgb-root', type=Path, help='Verified local RGB snapshot; no raw-source fallback')
+    p.add_argument('--rgb-producer-run', help='Stream local atomic publications from this owned PRL Run')
+    p.add_argument('--rgb-wait-timeout', type=float, default=900)
     args = p.parse_args()
+    assert args.rgb_wait_timeout > 0
+    assert not args.rgb_producer_run or args.rgb_root is not None
     config = yaml.safe_load(Path(args.config).read_text())
     meta = yaml.safe_load((Path('/data/WorldBridge4D/runs') / args.cpu_gate / 'run.yaml').read_text())
     assert meta['status'] == 'succeeded' and meta['owner']['session_id'] == args.owner_session
@@ -54,11 +59,18 @@ def main():
     assert manifest['sha256'] == ready['datasets'][args.dataset]['manifest_sha256']
     assert manifest['vae_sha256'] == ready['vae_sha256']
     local_rgb = None
+    producer_status = None
     if args.rgb_root is not None:
         from worldbridge.data.cache.native_rgb import NativeRGBCache
         assert args.dataset == 'kubric', 'local migration is authorized for Kubric only'
         local_rgb = NativeRGBCache(args.rgb_root, manifest)
-        local_rgb.require_complete()
+        if args.rgb_producer_run:
+            from worldbridge.data.cache.native_rgb_stream import producer_probe, checked_status
+            producer_status = producer_probe(args.rgb_producer_run, args.owner_session,
+                                             args.rgb_root, args.config, args.preflight)
+            checked_status(producer_status)
+        else:
+            local_rgb.require_complete()
     assert os.environ.get('CUDA_VISIBLE_DEVICES') == config['cache_gpu']
     assert all(not os.environ.get(k) for k in ['PYTORCH_CUDA_ALLOC_CONF', 'PYTORCH_ALLOC_CONF', 'PYTORCH_NO_CUDA_MEMORY_CACHING'])
     assert torch.cuda.device_count() == 1
@@ -75,6 +87,8 @@ def main():
         assert smoke['manifest_sha256'] == manifest['sha256'] and smoke['repeat_max_abs_error'] == 0
         if local_rgb is not None:
             assert smoke.get('rgb_input_root') == str(args.rgb_root.resolve())
+            if producer_status is not None:
+                assert smoke.get('rgb_producer_run') == args.rgb_producer_run
     stopping = False
     def request_stop(_signum, _frame):
         nonlocal stopping
@@ -97,8 +111,14 @@ def main():
     summary = {'manifest_sha256': manifest['sha256'], 'stage': args.stage, 'dataset': args.dataset,
                'requested': len(indices), 'processed': 0, 'written': 0, 'reused': 0,
                'repeat_max_abs_error': None, 'training_ready': False,
-               'rgb_input_root': str(args.rgb_root.resolve()) if local_rgb is not None else None}
-    inputs = local_rgb.iter_rgb(indices) if local_rgb is not None else iter_rgb(manifest, indices)
+               'rgb_input_root': str(args.rgb_root.resolve()) if local_rgb is not None else None,
+               'rgb_producer_run': args.rgb_producer_run}
+    if producer_status is not None:
+        from worldbridge.data.cache.native_rgb_stream import iter_stream
+        inputs = iter_stream(local_rgb, indices, producer_status=producer_status,
+                             stopped=lambda: stopping, timeout=args.rgb_wait_timeout)
+    else:
+        inputs = local_rgb.iter_rgb(indices) if local_rgb is not None else iter_rgb(manifest, indices)
     input_begin = time.monotonic()
     for row, rgb, identity in inputs:
         input_seconds = time.monotonic() - input_begin
@@ -137,8 +157,26 @@ def main():
         atomic_json(cache.root / f'{args.stage}_progress.json', summary)
         print(json.dumps({'event': 'NATIVE_CACHE_PROGRESS', 'index': i, **summary}), flush=True)
         input_begin = time.monotonic()
+    if stopping:
+        atomic_json(cache.root / f'{args.stage}_partial_stop.json', summary)
+        print('NATIVE_CACHE_PARTIAL_STOP', flush=True)
+        return 3
     assert summary['processed'] == len(indices)
     if args.stage == 'bulk':
+        if producer_status is not None:
+            from worldbridge.data.cache.native_rgb_stream import (
+                wait_for_publication, wait_for_success, RGBStreamStopped,
+            )
+            try:
+                kwargs = dict(producer_status=producer_status, stopped=lambda: stopping,
+                              timeout=args.rgb_wait_timeout)
+                wait_for_publication(local_rgb.root / 'bulk_complete.json', **kwargs)
+                local_rgb.require_complete()
+                wait_for_success(**kwargs)
+            except RGBStreamStopped:
+                atomic_json(cache.root / 'bulk_partial_stop.json', summary)
+                print('NATIVE_CACHE_PARTIAL_STOP', flush=True)
+                return 3
         expected = {cache.path(i).name for i in indices}
         assert {p.name for p in cache.root.glob('latent_*.safetensors')} == expected
         # Every cache was verified against freshly decoded or SHA-verified staged RGB.
