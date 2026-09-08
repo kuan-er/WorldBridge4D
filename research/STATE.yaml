@@ -549,12 +549,17 @@ next_step: >-
   GPU2/3 fixed validation relays both succeeded. Matched boundary152500 versus
   unweighted152500 shows small raw boundary tracking gains but mixed occlusion and
   worse relative displacement; four clips per available dataset, PO still blocked.
-  Edgecontrast01 R-20260907185236-284f11 continues unchanged on physical GPUs2/3 to155000.
+  Edgecontrast01 R-20260907185236-284f11 logged completed155000 at01:55:52.085Z.
+  At this event inspection process exit and full155000 protection were not yet verified;
+  do not signal, restart or extend it. Full152500 remains the latest verified protected
+  checkpoint. CPU final training review R-20260908015753-ea2594 is submitted after
+  producer success, covering final750 and full1350 count-gated logs with an exact
+  disjoint600-plus750 check against the frozen midpoint. No final result is claimed yet.
   Full152500 state is protected/SHA-registered with matching copied sidecar.600 paired
   full-LR logs have identical GT counts/fingerprints but worse primary EPE on all
   three datasets and no overall boundary improvement; small K/PO occluded-boundary
   gains trade against nonboundary error. This is sampled training, not held-out proof.
-  Keep the fixed0.1 arm to its endpoint; guard R-20260907185445-827fc1, manifest
+  Follow normal exit and full-state guard R-20260907185445-827fc1, manifest
   R-20260907204227-3a167e remain queued. The original GPU diagnostics exhausted their
   four-hour DEPENDENCY wait without spawning; four downstream jobs also failed before
   starting. Requeued GPU2/3 diagnostics R-20260908005010-1c2ad3 /
@@ -2110,7 +2115,44 @@ h030_autonomous_successors_after_next_review:
   queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
   production: H023_100000_unchanged_until_validated_improvement
 h030_boundary2x_edgecontrast01:
-  status: running152500_review_complete_primary_and_overall_boundary_no_gain_one_lower_dose_successor_prequeued
+  status: completed155000_update_observed_normal_exit_and_full_state_guard_not_yet_verified_in_phase_end_review
+  phase_end155000:
+    notification: N-14ddd66a34e794be45b7
+    event: contrast_phase_end155000
+    log_at: 2026-09-08T01:55:52.085Z
+    completed_log_step: 155000
+    at_event_inspection: process_running_guard_queued_not_yet_success_or_protected_checkpoint_proof
+    final_batch_dataset: kubric
+    unweighted_XYZ: 0.05841770116239786
+    raw_EPE_m: 0.33872005144755046
+    optimized_loss_not_quality: 0.1446504443883896
+    boundary_weighted_XYZ: 0.07823122199624777
+    contrast_loss: 0.6641922071576118
+    contrast_weight: 0.1
+    contrast_valid_edges: 250245
+    contrast_eligible_pairs: 120
+    boundary_nonboundary_occluded_boundary_points: [947910, 6916410, 270515]
+    clip_counters_K_PO_DR: [434000, 372000, 434000]
+    world: 2
+    lr_factor: 1.0
+    cycle_weighted_loss: 0.0
+    peak_GiB: 65.57492351531982
+    step_seconds: 3.4765205061994493
+    caveat: last_batch_is_not_endpoint_quality_or_checkpoint_publication_verification_registration_or_normal_exit
+    action: no_signal_restart_extension_follow_existing_success_dependent_guard_validation_and001_relay
+  final_training_review:
+    run: R-20260908015753-ea2594
+    execution_commit: b9159c9c289041c7ab08c8933a8c441b6cb96595
+    status: submitted_after_producer_success_results_not_yet_inspected
+    output: /data/WorldBridge4D-runs/h030-edgecontrast01-final155000-20260908
+    control: R-20260907144838-4f3680
+    final_window: [152501, 155000]
+    expected_final_paired_logs: 750
+    full_LR_window: [150501, 155000]
+    expected_full_LR_paired_logs: 1350
+    required: exact_disjoint_frozen_midpoint600_plus_final750_identity_equal_logged_GT_counts_and_sampling_fingerprints_CPU215_tested_unchanged_analysis
+    metrics: unweighted_XYZ_raw_EPE_boundary_nonboundary_gt2px_occluded_boundary_eligible_empty_batch_and_reconstructed_pointweighted_means
+    not_claimed: heldout_validation_new_GPU_computation_significance_or_equivalent_optimized_losses
   observed_during_queue_timeout_recovery: {completed_log_step: 153950, at: '2026-09-08T00:47:33.088Z', factor: 1.0, contrast_weight: 0.1, checkpoint_verification_claim: false}
   latest_verified_step: 152500
   latest_verified_checkpoint: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast01-step152500-reference/checkpoint-0152500.pt
@@ -2368,4 +2410,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-08T01:20:11Z
+updated_at: 2026-09-08T01:57:53Z

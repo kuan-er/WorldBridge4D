@@ -80,6 +80,24 @@ midpoint152500:
   successor: R-20260908005122-ee663c
   successor_protocol: research/protocols/h030_edgecontrast0p01.yaml
   successor_queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
+phase_end155000:
+  notification: N-14ddd66a34e794be45b7
+  log_at: 2026-09-08T01:55:52.085Z
+  completed_update: 155000
+  state_at_event_inspection: process_running_guard_queued_no_normal_exit_or_protected155000_claim_yet
+  last_batch_Kubric_XYZ: 0.05841770116239786
+  last_batch_Kubric_EPE_m: 0.33872005144755046
+  counters_K_PO_DR: [434000, 372000, 434000]
+  peak_GiB: 65.57492351531982
+  action: no_signal_restart_extension_existing_success_dependent_guard_and_validation_then001_relay
+  CPU_training_review: R-20260908015753-ea2594
+  CPU_training_review_commit: b9159c9c289041c7ab08c8933a8c441b6cb96595
+  CPU_training_review_status: submitted_after_producer_success_no_inspected_result_yet
+  CPU_training_review_output: /data/WorldBridge4D-runs/h030-edgecontrast01-final155000-20260908
+  final_and_full_LR_windows: [[152501, 155000], [150501, 155000]]
+  expected_paired_logs: [750, 1350]
+  required_identity: exact_frozen_midpoint600_plus_final750_disjoint_equals_full1350_with_equal_GT_counts_and_sampling_fingerprints
+  caveat: sampled_unweighted_count_gated_training_not_optimized_loss_quality_heldout_validation_or_checkpoint_verification
 review:
   run: R-20260907174725-f76d81
   window: [150501, 152500]
