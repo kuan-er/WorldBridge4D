@@ -17,7 +17,7 @@ class DenseUpsampler2D(nn.Module):
                  latent_size: tuple[int, int] = (16, 16), output_size: tuple[int, int] = (128, 128),
                  fullres_coordinates: bool = False, source_rgb_pyramid: bool = False,
                  source_rgb_channels: Sequence[int] = (32, 64, 128),
-                 source_rgb_fusion_32: bool = False):
+                 source_rgb_fusion_32: bool = False, native_512: bool = False):
         super().__init__()
         channels = tuple(int(x) for x in channels)
         if len(channels) < 2:
@@ -25,6 +25,10 @@ class DenseUpsampler2D(nn.Module):
         factor = 2 ** (len(channels) - 1)
         if tuple(x * factor for x in latent_size) != tuple(output_size):
             raise ValueError(f"{latent_size} with {len(channels)-1} x2 stages does not produce {output_size}")
+        self.native_512 = bool(native_512)
+        if self.native_512 and (latent_size != (32, 32) or output_size != (256, 256)
+                                or fullres_coordinates or not source_rgb_pyramid):
+            raise ValueError('native512 extends the checkpoint-stable RGB32-to256 decoder only')
         self.latent_size = tuple(latent_size)
         self.output_size = tuple(output_size)
         self.fullres_coordinates = bool(fullres_coordinates)
@@ -44,7 +48,7 @@ class DenseUpsampler2D(nn.Module):
             if self.latent_size != (32, 32) or self.output_size != (256, 256) \
                     or self.stage_scales != (64, 128, 256):
                 raise ValueError("source RGB pyramid requires the 32->64->128->256 decoder")
-            self.source_rgb_encoder = SourceRGBPyramid(source_rgb_channels)
+            self.source_rgb_encoder = SourceRGBPyramid(source_rgb_channels, native_512=self.native_512)
             if self.source_rgb_fusion_32:
                 self.source_fusions["32"] = GatedSourceFusion(
                     self.source_rgb_encoder.channels_by_scale[32], channels[0],
@@ -74,6 +78,11 @@ class DenseUpsampler2D(nn.Module):
     def forward(self, feature: torch.Tensor, source_rgb: torch.Tensor | None = None,
                 source_pyramid: dict[int, torch.Tensor] | None = None,
                 batch: int | None = None, pairs: int | None = None) -> torch.Tensor:
+        output_size = self.output_size
+        if self.native_512:
+            if tuple(feature.shape[-2:]) not in {(32, 32), (64, 64)}:
+                raise ValueError('native decoder accepts only32/64 query grids')
+            output_size = tuple(int(v) * 8 for v in feature.shape[-2:])
         if source_rgb is not None and source_pyramid is not None:
             raise ValueError("pass source_rgb or source_pyramid, not both")
         if self.source_rgb_pyramid_enabled:
@@ -85,6 +94,11 @@ class DenseUpsampler2D(nn.Module):
                 source_pyramid = self.encode_source_rgb(source_rgb)
         elif source_rgb is not None or source_pyramid is not None:
             raise ValueError("source appearance was provided but the RGB pyramid is disabled")
+        if self.native_512 and source_pyramid is not None:
+            for stage in (32, 64, 128, 256):
+                expected_hw = tuple(v * stage // 256 for v in output_size)
+                if tuple(source_pyramid[stage].shape[-2:]) != expected_hw:
+                    raise ValueError('native RGB stage and decoder grids are misaligned')
         x = self.projection(feature)
         if source_pyramid is not None and self.source_rgb_fusion_32:
             x = self.source_fusions["32"](
@@ -100,6 +114,6 @@ class DenseUpsampler2D(nn.Module):
         if self.fullres_coordinates:
             x = torch.cat((x, self.fullres_uv.expand(x.shape[0], -1, -1, -1).to(dtype=x.dtype)), dim=1)
         x = self.xyz(x)
-        if x.shape[-2:] != self.output_size:
-            raise RuntimeError(f"upsampler output {tuple(x.shape[-2:])} != {self.output_size}")
+        if x.shape[-2:] != output_size:
+            raise RuntimeError(f"upsampler output {tuple(x.shape[-2:])} != {output_size}")
         return x

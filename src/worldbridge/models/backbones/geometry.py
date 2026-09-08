@@ -88,13 +88,17 @@ class WanHiddenGeometryBackbone(nn.Module):
                  motion_slots: int = 16, num_heads: int = 8, use_clean_skip: bool = True,
                  layer_gate_temperature: float = 1.0, layer_gate_top_k: int | None = None,
                  layer_gate_init_std: float = 0.0, layer_gate_seed: int = 0,
-                 layer_gate_initial_logits: Sequence[float] | None = None):
+                 layer_gate_initial_logits: Sequence[float] | None = None,
+                 native_512: bool = False):
         super().__init__()
         self.mapping = mapping
         self.hidden_layers = tuple(int(index) for index in hidden_layers)
         self.geometry_dim = int(geometry_dim)
         self.num_frames = int(num_frames)
         self.spatial_size = int(spatial_size)
+        self.native_512 = bool(native_512)
+        if self.native_512 and self.spatial_size != 32:
+            raise ValueError('native512 geometry requires original32 base grid')
         self.motion_slots = int(motion_slots)
         self.use_clean_skip = bool(use_clean_skip)
         self.layer_gate_temperature = float(layer_gate_temperature)
@@ -237,8 +241,13 @@ class WanHiddenGeometryBackbone(nn.Module):
         dense_native = fused.reshape(
             batch, native_time, native_height, native_width, self.geometry_dim
         ).permute(0, 4, 1, 2, 3)
+        spatial_size = self.spatial_size
+        if self.native_512:
+            if tuple(clean_video_latent.shape[-2:]) not in {(32, 32), (64, 64)}:
+                raise ValueError('native geometry supports only256/512 square inputs')
+            spatial_size = clean_video_latent.shape[-1]
         dense_native = F.interpolate(
-            dense_native, size=(native_time, self.spatial_size, self.spatial_size),
+            dense_native, size=(native_time, spatial_size, spatial_size),
             mode="trilinear", align_corners=False,
         )
         if self.clean_projection is not None:

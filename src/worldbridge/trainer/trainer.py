@@ -132,6 +132,11 @@ def main() -> None:
         config, allow_missing_latents=args.lazy_vae_cache or args.lazy_vae_pipeline,
     )
     target_steps = int(args.steps if args.steps is not None else config["max_steps"])
+    if config.get('native_kubric512_b1_a4_k15', False):
+        if target_steps != int(config['max_steps']) or args.lazy_vae_cache or args.lazy_vae_pipeline or not args.resume:
+            raise ValueError('native capacity test requires bounded full150k resume and no lazy input generation')
+        from ..data.cache.native import file_sha256
+        set_lazy_vae_identity(datasets, file_sha256(config['vae_checkpoint']))
     resume = Path(args.resume) if args.resume else (checkpoint_dir / "latest.pt")
     finetune_from = Path(args.finetune_from) if args.finetune_from else None
     # Cache planning needs only the checkpoint step. Use the tiny atomically
@@ -481,6 +486,7 @@ def main() -> None:
             planned = prefetcher.pop(step)
             name = planned.dataset_name
             dataset = planned.dataset
+            image_size = int(getattr(dataset, 'image_size', config['image_size']))
             plans = planned.sample_plans
             futures = planned.geometry_futures
             if pipeline is not None:
@@ -549,10 +555,10 @@ def main() -> None:
                 source_rgb_t = None
                 if use_source_rgb:
                     source_rgb_np = np.stack([value[5] for value in batch_values])
-                    if source_rgb_np.shape != (len(batch_values), 256, 256, 3) \
+                    if source_rgb_np.shape != (len(batch_values), image_size, image_size, 3) \
                             or source_rgb_np.dtype != np.uint8:
                         raise RuntimeError(
-                            f"source RGB batch must be uint8 [B,256,256,3], got "
+                            f"source RGB batch must be uint8 [B,{image_size},{image_size},3], got "
                             f"{source_rgb_np.dtype} {source_rgb_np.shape}"
                         )
                     source_rgb_t = torch.from_numpy(source_rgb_np).permute(0, 3, 1, 2).to(
@@ -634,6 +640,15 @@ def main() -> None:
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
                     trace_phase("forward_enqueued", step, micro)
+                    if config.get('native_kubric512_b1_a4_k15', False):
+                        if prediction.shape != xyz.shape or tuple(prediction.shape[-2:]) != (image_size, image_size):
+                            raise RuntimeError('native prediction/GT alignment mismatch')
+                        if micro == 0:
+                            print(json.dumps({'event': 'NATIVE_TRAIN_SHAPES', 'rank': rank,
+                                'update_number': step + 1, 'dataset': name, 'latent': list(latent.shape),
+                                'RGB': list(source_rgb_t.shape), 'prediction_GT': list(prediction.shape),
+                                'dense': list(z4d.dense.shape), 'B': microbatch_per_gpu,
+                                'A': accumulation, 'K': k, 'world': world}), flush=True)
                     xyz_value = masked_pair_smooth_l1(
                         prediction.float(), xyz.float(), valid,
                         beta=float(config.get("smooth_l1_beta", 0.05)),
@@ -692,7 +707,7 @@ def main() -> None:
                                 source_t[:, 0], cycle_source_t[:, 0],
                                 cycle_source_valid, cycle_target_valid, cycle_target_visible,
                                 *cycle_cameras,
-                                huber_delta=cycle_huber_delta, image_size=256,
+                                huber_delta=cycle_huber_delta, image_size=image_size,
                                 pixel_stride=cycle_pixel_stride,
                             )
                         cycle_scale = (

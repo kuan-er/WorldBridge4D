@@ -125,11 +125,14 @@ class WanDiTMapping(nn.Module):
                  timestep_scale: float = WAN_TIMESTEP_SCALE,
                  expected_latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE,
                  truncate_after_block: int | None = None,
-                 load_pretrained_weights: bool = True):
+                 load_pretrained_weights: bool = True, native_512: bool = False):
         super().__init__()
         self.checkpoint = str(checkpoint)
         self.timestep_scale = float(timestep_scale)
         self.expected_latent_shape = tuple(int(value) for value in expected_latent_shape)
+        self.native_512 = bool(native_512)
+        if self.native_512 and self.expected_latent_shape != (16, 6, 32, 32):
+            raise ValueError('native512 mapping retains the original256 base contract')
         if len(self.expected_latent_shape) != 4 or self.expected_latent_shape[:2] != (16, 6):
             raise ValueError(f"unsupported Wan latent contract: {self.expected_latent_shape}")
         self.truncate_after_block = (
@@ -308,7 +311,10 @@ class WanDiTMapping(nn.Module):
                 encoder_hidden_states: torch.Tensor | None = None
                 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         expected_shape = getattr(self, "expected_latent_shape", WAN_LATENT_SHAPE)
-        if latent.ndim != 5 or tuple(latent.shape[1:]) != expected_shape:
+        allowed_shapes = {expected_shape}
+        if getattr(self, 'native_512', False):
+            allowed_shapes.add((16, 6, 64, 64))
+        if latent.ndim != 5 or tuple(latent.shape[1:]) not in allowed_shapes:
             expected = ','.join(map(str, expected_shape))
             raise ValueError(f"WAN mapper input must be [B,{expected}], got {tuple(latent.shape)}")
         tau = torch.as_tensor(tau, device=latent.device, dtype=latent.dtype).flatten()

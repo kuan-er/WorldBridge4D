@@ -147,6 +147,11 @@ def load_dataset(
         "rgb_cache_max_open_shards": rgb_cache_max_open_shards,
     }
     if name == "kubric":
+        if config.get('native_kubric512_b1_a4_k15', False):
+            if split != 'train' or allow_missing_latents:
+                raise ValueError('native512 admission uses complete train inputs only')
+            from .datasets.native_kubric import NativeKubricDataset
+            return NativeKubricDataset(values)
         return _load_kubric_dataset(values, **cache_options)
     if name == "pointodyssey":
         return _load_pointodyssey_dataset(

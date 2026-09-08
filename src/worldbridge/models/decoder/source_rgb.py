@@ -12,11 +12,12 @@ from .blocks import ResidualBlock2D, _group_count
 class SourceRGBPyramid(nn.Module):
     """Lightweight source-only appearance pyramid for 256px dense tracking."""
 
-    def __init__(self, channels: Sequence[int] = (32, 64, 128)):
+    def __init__(self, channels: Sequence[int] = (32, 64, 128), native_512: bool = False):
         super().__init__()
         channels = tuple(int(value) for value in channels)
         if len(channels) != 3 or any(value < 1 for value in channels):
             raise ValueError("source RGB pyramid channels must contain three positive values")
+        self.native_512 = bool(native_512)
         high, middle, low = channels
         self.channels_by_scale = {256: high, 128: middle, 64: low, 32: low}
         self.stem = nn.Sequential(
@@ -35,7 +36,8 @@ class SourceRGBPyramid(nn.Module):
         )
 
     def forward(self, source_rgb: torch.Tensor) -> dict[int, torch.Tensor]:
-        if source_rgb.ndim != 4 or source_rgb.shape[1:] != (3, 256, 256):
+        allowed = {(3, 256, 256), (3, 512, 512)} if self.native_512 else {(3, 256, 256)}
+        if source_rgb.ndim != 4 or tuple(source_rgb.shape[1:]) not in allowed:
             raise ValueError(
                 f"source RGB must be [B,3,256,256], got {tuple(source_rgb.shape)}"
             )
@@ -45,6 +47,8 @@ class SourceRGBPyramid(nn.Module):
         # Reuse the mature encoder and derive the new coarse identity scale
         # without introducing another high-resolution activation path.
         feature_32 = F.avg_pool2d(feature_64, kernel_size=2, stride=2)
+        # Keys are checkpoint-stable STAGE labels. At512 these tensors have
+        # spatial sizes64/128/256/512, not downsampled256 appearance.
         return {32: feature_32, 64: feature_64, 128: feature_128, 256: feature_256}
 
 

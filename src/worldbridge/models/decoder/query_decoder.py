@@ -28,9 +28,13 @@ class DenseQueryDecoder(nn.Module):
                  source_rgb_pyramid: bool = False,
                  source_rgb_channels: Sequence[int] = (32, 64, 128),
                  source_rgb_fusion_32: bool = False,
-                 pre_attention_rgb_query: bool = False):
+                 pre_attention_rgb_query: bool = False, native_512: bool = False):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
+        self.native_512 = bool(native_512)
+        if self.native_512 and (latent_height != 32 or latent_width != 32
+                                or query_grid_size not in (None, 32) or output_size != (256, 256)):
+            raise ValueError('native512 requires the original32-grid/256 checkpoint architecture')
         self.num_frames = int(num_frames)
         self.latent_shape = (channels, latent_time, latent_height, latent_width)
         self.query_dim = int(query_dim)
@@ -67,7 +71,7 @@ class DenseQueryDecoder(nn.Module):
             fullres_coordinates=fullres_coordinates,
             source_rgb_pyramid=source_rgb_pyramid,
             source_rgb_channels=source_rgb_channels,
-            source_rgb_fusion_32=source_rgb_fusion_32,
+            source_rgb_fusion_32=source_rgb_fusion_32, native_512=self.native_512,
         )
         self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
         # Constructed after all baseline modules so enabling this ablation does
@@ -113,7 +117,9 @@ class DenseQueryDecoder(nn.Module):
             raise ValueError("target index outside clip")
         return self.query_mlp(torch.cat((self.source_embedding(source), self.target_embedding(target)), dim=-1))
 
-    def _structured_source_query(self, z4d: StructuredZ4D, source: torch.Tensor, pairs: int) -> torch.Tensor:
+    def _structured_source_query(self, z4d: StructuredZ4D, source: torch.Tensor, pairs: int,
+                                 query_grid_shape: tuple[int, int] | None = None) -> torch.Tensor:
+        query_grid_shape = self.query_grid_shape if query_grid_shape is None else query_grid_shape
         if self.source_local_projection is None:
             raise RuntimeError("structured local projection was not constructed")
         batch, channels, frames, height, width = z4d.dense.shape
@@ -134,14 +140,14 @@ class DenseQueryDecoder(nn.Module):
             # the identical 1x1 convolution K times.
             local = by_time[batch_indices, source[:, 0]]
             local = self.source_local_projection(local)
-            if local.shape[-2:] != self.query_grid_shape:
-                local = F.interpolate(local, size=self.query_grid_shape, mode="bilinear", align_corners=False)
+            if local.shape[-2:] != query_grid_shape:
+                local = F.interpolate(local, size=query_grid_shape, mode="bilinear", align_corners=False)
             local = local.flatten(2).transpose(1, 2)[:, None]
             return local.expand(-1, pairs, -1, -1)
         local = by_time[batch_indices[:, None], source]
         local = self.source_local_projection(local.reshape(batch * pairs, channels, height, width))
-        if local.shape[-2:] != self.query_grid_shape:
-            local = F.interpolate(local, size=self.query_grid_shape, mode="bilinear", align_corners=False)
+        if local.shape[-2:] != query_grid_shape:
+            local = F.interpolate(local, size=query_grid_shape, mode="bilinear", align_corners=False)
         return local.flatten(2).transpose(1, 2).reshape(batch, pairs, -1, self.query_dim)
 
     def _structured_pair_motion_query(
@@ -177,8 +183,19 @@ class DenseQueryDecoder(nn.Module):
                 ) -> DenseQueryOutput:
         structured = isinstance(z4d, StructuredZ4D)
         dense = z4d.dense if structured else z4d
-        if dense.ndim != 5 or tuple(dense.shape[1:]) != self.latent_shape:
-            raise ValueError(f"Z4D dense tensor must be [B,{','.join(map(str, self.latent_shape))}], got {tuple(dense.shape)}")
+        expected_shapes = {self.latent_shape}
+        if self.native_512:
+            expected_shapes.add((*self.latent_shape[:2], 64, 64))
+        if dense.ndim != 5 or tuple(dense.shape[1:]) not in expected_shapes:
+            raise ValueError(f'Z4D dense tensor must match {expected_shapes}, got {tuple(dense.shape)}')
+        query_grid_shape = tuple(dense.shape[-2:]) if self.native_512 else self.query_grid_shape
+        query_coordinates = self.query_coordinates
+        if query_grid_shape != self.query_grid_shape:
+            v, u = torch.meshgrid(
+                torch.arange(query_grid_shape[0], device=dense.device, dtype=query_coordinates.dtype),
+                torch.arange(query_grid_shape[1], device=dense.device, dtype=query_coordinates.dtype),
+                indexing='ij')
+            query_coordinates = torch.stack((u.flatten(), v.flatten()), dim=-1)
         if structured:
             z4d.validate()
             if z4d.motion.shape[2] != self.structured_motion_slots:
@@ -199,10 +216,10 @@ class DenseQueryDecoder(nn.Module):
         if content.shape[0] not in (1, dense.shape[0]):
             raise ValueError("query batch does not match Z4D batch")
         content = content.expand(dense.shape[0], -1, -1)
-        num_query = self.query_coordinates.shape[0]
+        num_query = query_coordinates.shape[0]
         query = content[:, :, None, :].expand(-1, -1, num_query, -1)
         if structured and self.structured_local_queries:
-            query = query + self._structured_source_query(z4d, source, content.shape[1])
+            query = query + self._structured_source_query(z4d, source, content.shape[1], query_grid_shape)
         if structured and self.structured_pair_motion_queries:
             pair_motion = self._structured_pair_motion_query(
                 z4d, source, target, content.shape[1]
@@ -211,7 +228,7 @@ class DenseQueryDecoder(nn.Module):
         if self.query_rgb_projection is not None:
             rgb_query = self.query_rgb_projection(source_pyramid[32])
             if rgb_query.shape != (
-                dense.shape[0], self.query_dim, *self.query_grid_shape,
+                dense.shape[0], self.query_dim, *query_grid_shape,
             ):
                 raise RuntimeError(
                     f"RGB query projection has unexpected shape {tuple(rgb_query.shape)}"
@@ -220,15 +237,16 @@ class DenseQueryDecoder(nn.Module):
             query = query + rgb_query.expand(-1, content.shape[1], -1, -1)
         memory, memory_coordinates = flatten_structured_z4d(z4d) if structured else flatten_z4d(z4d)
         for block in self.blocks:
-            query = block(query, memory, self.query_coordinates, memory_coordinates)
+            query = block(query, memory, query_coordinates, memory_coordinates)
         batch, pairs, _, _ = query.shape
-        query_height, query_width = self.query_grid_shape
+        query_height, query_width = query_grid_shape
         feature = query.reshape(batch * pairs, query_height, query_width, self.query_dim).permute(0, 3, 1, 2)
         coarse = self.coarse_head(feature).reshape(batch, pairs, 3, query_height, query_width) \
             if self.coarse_head is not None else None
         xyz = self.upsampler(
             feature, source_rgb=source_rgb, source_pyramid=source_pyramid,
             batch=batch, pairs=pairs,
-        ).reshape(batch, pairs, 3, *self.upsampler.output_size)
+        )
+        xyz = xyz.reshape(batch, pairs, 3, *xyz.shape[-2:])
         feature = feature.reshape(batch, pairs, self.query_dim, query_height, query_width)
         return DenseQueryOutput(xyz, feature, coarse)

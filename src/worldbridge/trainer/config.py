@@ -122,6 +122,21 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError('audited source edge contrast weight must be 0, 0.01 or 0.1')
     if contrast_weight > 0 and (boundary is None or float(boundary['multiplier']) != 2.0):
         raise ValueError('source edge contrast control requires boundary2x')
+    native_512 = bool(config.get('native_kubric512_b1_a4_k15', False))
+    if native_512:
+        if (mode != 'decoder_only' or master_precision != 'fp32' or not cycle_enabled
+                or set(cycle_names) != supported_cycle_names or boundary is not None
+                or contrast_weight != 0 or float(config.get('cycle_reprojection_weight', -1)) != 0
+                or not config.get('pre_attention_rgb_query') or config.get('query_grid_size') != 32
+                or any(config.get(k, False) for k in ('cycle_b2_a2_k19', 'cycle_b2_a2_k15', 'xyz_b2_a2_k15'))):
+            raise ValueError('native512 B1/A4/K15 requires unchanged FP32 decoder XYZ/cycle0/RGB1x control')
+        if (not config.get('native_capacity_test_only')
+                or not 150000 < int(config.get('max_steps', 0)) <= 150010
+                or int(config.get('selected_checkpoint_step', -1)) != 150000):
+            raise ValueError('native512 currently admitted only for bounded150k+10 capacity test')
+        rates = config.get('lr_restart', {}).get('group_learning_rates', {})
+        if set(rates) != {'dense_decoder', 'source_rgb_decay', 'source_rgb_no_decay'} or any(float(v) != 3e-6 for v in rates.values()):
+            raise ValueError('native512 comparison retains absolute RGB1x rates3e-6')
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
     cycle_b2_k19 = bool(config.get("cycle_b2_a2_k19", False))
@@ -133,14 +148,14 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError("select only one B2/A2 cycle target profile")
     if (cycle_b2_k19 or cycle_b2_k15) and not cycle_enabled:
         raise ValueError("B2/A2 cycle profiles require the cycle objective")
-    allowed_batching = {(2, 2)} if cycle_b2_k19 or cycle_b2_k15 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})
+    allowed_batching = {(4, 1)} if native_512 else ({(2, 2)} if cycle_b2_k19 or cycle_b2_k15 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)}))
     if (accumulation, microbatch) not in allowed_batching:
         expected = " or ".join(
             f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 15 if cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)
+    required_targets = 15 if native_512 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
