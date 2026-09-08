@@ -80,6 +80,9 @@ def main() -> None:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--resume")
     parser.add_argument("--geometry-replay", help="hash-verified bounded native512 CPU geometry snapshot")
+    parser.add_argument("--input-readiness", action="store_true",
+                        help="CPU rank readiness guard with original live geometry readers")
+    parser.add_argument("--input-readiness-timeout-seconds", type=float, default=120)
     parser.add_argument(
         "--finetune-from",
         help="load an audited structural extension and retained optimizer moments",
@@ -117,16 +120,20 @@ def main() -> None:
     validate_config(config, world)
     geometry_replay = None
     input_ready_group = None
-    if args.geometry_replay:
+    if args.geometry_replay or args.input_readiness:
         if not config.get('native_kubric512_b1_a4_k15', False):
-            raise ValueError('geometry replay is restricted to bounded native512 admission')
+            raise ValueError('input readiness/replay is restricted to bounded native512 admission')
+        if not 0 < args.input_readiness_timeout_seconds <= 900:
+            raise ValueError('CPU input readiness timeout must be in (0,900] seconds')
+        input_ready_group = dist.new_group(backend='gloo',
+            timeout=timedelta(seconds=args.input_readiness_timeout_seconds))
+    if args.geometry_replay:
         from .geometry_replay import GeometryReplay
         from ..data.cache.native import file_sha256
         indexes = {name: file_sha256(Path(values['cache_root']) / 'splits/train.jsonl')
                    for name, values in config['datasets'].items()}
         geometry_replay = GeometryReplay(args.geometry_replay, file_sha256(args.config),
                                          indexes=indexes, expected_count=80)
-        input_ready_group = dist.new_group(backend='gloo', timeout=timedelta(seconds=120))
     seed = int(config.get("seed", 20260812))
     random.seed(seed + rank); np.random.seed(seed + rank); torch.manual_seed(seed + rank)
     torch.cuda.manual_seed_all(seed + rank)
@@ -651,7 +658,8 @@ def main() -> None:
                 if input_ready_group is not None:
                     from .geometry_replay import input_ready
                     input_ready(input_ready_group, rank=rank, step=step, micro=micro,
-                                dataset=name, clips=[int(v[0]) for v in batch_values])
+                                dataset=name, clips=[int(v[0]) for v in batch_values],
+                                timeout_seconds=args.input_readiness_timeout_seconds)
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
                     trace_phase("forward_start", step, micro)
