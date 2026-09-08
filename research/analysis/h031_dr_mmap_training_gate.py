@@ -63,7 +63,7 @@ def main():
         results.append(dict(index=index,selected=selected,source=source,rank=rank,slot=slot,targets=targets.tolist(),legacy_geometry_seconds=old_seconds,mmap_geometry_seconds=mmap_seconds))
         print(json.dumps(dict(event='DR_MMAP_TRAINING_PARITY',count=len(results),index=index,source=source,elapsed_seconds=time.perf_counter()-start)),flush=True)
     report=dict(event='DR_MMAP_K5_TRAINING_CPU_OK',config_sha256=file_sha256(args.config),origin_sha256=cfg['selected_checkpoint_sha256'],mmap_complete_sha256=cfg['datasets']['dynamic_replica']['trajectory_mmap_complete_sha256'],seed=cfg['seed'],B=1,A=4,K=5,world=2,pairs_per_update=40,real_requests=results,scope='first8_DR_requests_plus_first_middle_last_stream_samples_all_source_synthetic_parity',exact_geometry_RGB_camera_latent_targets_RNG=True,no_legacy_mmap_fallback=True,timing_not_controlled_speedup_benchmark=True,elapsed_seconds=time.perf_counter()-start)
-    atomic_json(args.output,report)
+    atomic_json(Path(args.output),report)
     print(json.dumps({k:v for k,v in report.items() if k!='real_requests'}),flush=True)
 
 
