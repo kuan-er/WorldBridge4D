@@ -128,6 +128,9 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     if sum((native_k15, native_k9, native_k5)) > 1:
         raise ValueError('select only one native512 target profile')
     native_512 = native_k15 or native_k9 or native_k5
+    native_long = bool(config.get('native_kubric512_k5_10k', False))
+    if native_long and not native_k5:
+        raise ValueError('native10k continuation requires the audited K5 profile')
     if native_512:
         if (mode != 'decoder_only' or master_precision != 'fp32' or not cycle_enabled
                 or set(cycle_names) != supported_cycle_names or boundary is not None
@@ -135,10 +138,20 @@ def validate_config(config: dict[str, Any], world: int) -> None:
                 or not config.get('pre_attention_rgb_query') or config.get('query_grid_size') != 32
                 or any(config.get(k, False) for k in ('cycle_b2_a2_k19', 'cycle_b2_a2_k15', 'xyz_b2_a2_k15'))):
             raise ValueError('native512 B1/A4 requires unchanged FP32 decoder XYZ/cycle0/RGB1x control')
-        if (not config.get('native_capacity_test_only')
+        if native_long:
+            if (config.get('native_capacity_test_only')
+                    or int(config.get('max_steps', 0)) != 160010
+                    or int(config.get('selected_checkpoint_step', -1)) != 150010
+                    or not config.get('datasets', {}).get('kubric', {}).get('native_geometry_full_corpus')):
+                raise ValueError('native10k requires full GT corpus and150010->160010 full continuation')
+            restart = config.get('lr_restart', {})
+            if (restart.get('start_step') != 150000 or restart.get('warmup_steps') != 500
+                    or restart.get('end_step') != 160010 or restart.get('schedule') != 'warmup_hold'):
+                raise ValueError('native10k preserves150k LR warmup/hold without another restart')
+        elif (not config.get('native_capacity_test_only')
                 or not 150000 < int(config.get('max_steps', 0)) <= 150010
                 or int(config.get('selected_checkpoint_step', -1)) != 150000):
-            raise ValueError('native512 currently admitted only for bounded150k+10 capacity test')
+            raise ValueError('native512 requires bounded capacity or explicit audited10k continuation')
         rates = config.get('lr_restart', {}).get('group_learning_rates', {})
         if set(rates) != {'dense_decoder', 'source_rgb_decay', 'source_rgb_no_decay'} or any(float(v) != 3e-6 for v in rates.values()):
             raise ValueError('native512 comparison retains absolute RGB1x rates3e-6')

@@ -1,4 +1,4 @@
-"""Bounded native512 training admission, using pre-staged RGB/latents/geometry only."""
+"""Native512 training admission, using pre-staged RGB/latents/geometry only."""
 from __future__ import annotations
 
 from functools import lru_cache
@@ -32,7 +32,12 @@ class NativeKubricDataset(MOViF256Dataset):
         self.geometry_root = Path(values['native_geometry_root'])
         self.geometry_ready = json.loads((self.geometry_root / 'ready.json').read_text())
         if self.geometry_ready['manifest_sha256'] != m['sha256']:
-            raise ValueError('native geometry manifest mismatch')
+            raise RuntimeError('native geometry manifest mismatch')
+        if values.get('native_geometry_full_corpus'):
+            if (not self.geometry_ready.get('full_corpus')
+                    or self.geometry_ready.get('index_sha256') != m['index_sha256']
+                    or set(self.geometry_ready['entries']) != {str(i) for i in range(len(self.rows))}):
+                raise RuntimeError('native long training requires the complete GT corpus')
 
     @lru_cache(maxsize=4)
     def sample(self, index):
@@ -40,7 +45,7 @@ class NativeKubricDataset(MOViF256Dataset):
         entry = self.geometry_ready['entries'][str(index)]  # no raw-source or subset fallback
         path = self.geometry_root / entry['file']
         if file_sha256(path) != entry['sha256']:
-            raise ValueError('native geometry checksum mismatch')
+            raise RuntimeError('native geometry checksum mismatch')
         sample = self._load_compact_sample(path)
         if sample.depth.shape != (21, 512, 512):
             raise ValueError('native GT must be21x512x512, never upsampled256')

@@ -155,7 +155,7 @@ def main() -> None:
     target_steps = int(args.steps if args.steps is not None else config["max_steps"])
     if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False):
         if target_steps != int(config['max_steps']) or args.lazy_vae_cache or args.lazy_vae_pipeline or not args.resume:
-            raise ValueError('native capacity test requires bounded full150k resume and no lazy input generation')
+            raise ValueError('native training requires the declared full-resume budget and no lazy input generation')
         from ..data.cache.native import file_sha256
         set_lazy_vae_identity(datasets, file_sha256(config['vae_checkpoint']))
     resume = Path(args.resume) if args.resume else (checkpoint_dir / "latest.pt")
@@ -419,6 +419,8 @@ def main() -> None:
             print(json.dumps({"event": "fp32_master_storage_verified", "step": start_step,
                               "parameters": "float32", "adam_moments": "float32",
                               "compute_precision": config["precision"]}), flush=True)
+    if config.get('native_kubric512_k5_10k') and start_step < int(config['selected_checkpoint_step']):
+        raise ValueError('native10k cannot resume before its verified150010 origin')
     if start_step >= target_steps:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
     lr_restart = config.get("lr_restart")
