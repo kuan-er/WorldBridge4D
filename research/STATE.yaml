@@ -23,7 +23,9 @@ h031_native512_10k_20260908:
   CPU_tests: R-20260908145447-8aac4c_144passed22p50s
   old_full_GT_chain: R-20260908145331-643755_R-20260908145416-683836_cancelled_not_started_review6232ab_superseded
   GPU: R-20260908151342-7904e6
-  GPU_state: running_initializing_started151423978Z_not_yet_resume_or_first_update_confirmed
+  GPU_state: running_initializing_900s_stall_ack_no_resume_or_first_update_as_of1530Z
+  initialization_stall_evidence: owned_ranks3180606_3180608_D_wait_on_page_bit_common_GPU23_util0_no_traceback_or_OOM_in_run_log
+  initialization_stall_decision: continue_wait_no_auto_termination_or_retry_cause_not_yet_localized_TensorFlow_mapped_files_observed
   fullstate_review: R-20260908151414-49b6b8
   output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-k5-10k-ondemand-gpu23-20260908
   resource_policy: physical2and3_shared49152plus0MiB_64GiB_disk_reserve_checkpoint_budget38p4GB_no_SIGKILL_or_foreign_control
