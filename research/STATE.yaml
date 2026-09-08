@@ -1,4 +1,15 @@
 current_task: T-20260901153324-39dd05
+h030_gpu23_recovery_20260908:
+  parent: R-20260908005122-ee663c
+  parent_status: terminated_without_SIGKILL
+  diagnosis: rank0_absent_rank1_NCCL_allgather_timeout_original_rank0_cause_unknown
+  recovery_run: R-20260908050540-a07d4a
+  observed_status: queued_not_training_progress
+  resume_step: 151500
+  physical_gpus: [2, 3]
+  checkpoint_sha256: 94287399783b7e2f70bb62ed0e99aa7d0bdacd559fcaae5cba18abb003cdc9f3
+  resource_gate: unchanged_69632MiB_free_required_per_GPU_GPU2_observed67010MiB
+  note: research/notes/h030-gpu23-recovery-20260908.md
 active_hypotheses: [H030]
 recent_results:
   - run_id: R-20260808164859-ac2cfe
