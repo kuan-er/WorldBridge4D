@@ -24,8 +24,12 @@ h031_native512_capacity_20260908:
   authority: user_authorized_implement_then_stop_current_GPU23_training_and_test512_B1_A4_K15
   scope: bounded_full150000_to150010_only_not_formal_long_training
   original_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
-  config: configs/h031_k512_po256_dr256_b1_a4_k15_timeout900.yaml
-  code_commit: 7b8add01fcceb44c0d64bb9709a48cfc4ce5260a
+  config: configs/h031_k512_po256_dr256_b1_a4_k9_timeout900.yaml
+  code_commit: 5aa3e3b3a077dbec9f4602788d4ee944f0f5f082
+  K9_authority: user_explicitly_requests_K15to9_after_confirmed_native512_GPU2_OOM
+  K9_CPU: R-20260908131658-296077_60passed24p51s
+  K9_config_sha256: e509d4119019e6aae7dc94cbbeb2690087a22b56a6a1a1b7c9adf0396215b8b2
+  K9_sampling_caveat: eligibility_source_and_target_RNG_can_change_not_exact_K15_replay_no_quality_comparison_claim
   timeout900_authority: user_explicitly_requests_longer_timeout_and_retest_only_config_change180to900
   timeout900_CPU: R-20260908124251-de4ab8_18passed17p54s_config_only_delta_and_prior_real_gate_verified
   timeout900_config_sha256: 426373dfa5f736999d88cc8f7ae937284428232cd55044be3098ba85b4880bbf
@@ -41,22 +45,23 @@ h031_native512_capacity_20260908:
   replay_readiness: Gloo120s_monitored_barrier_before_each_micro_FSDP_forward_after_RGB_latent_cycle_input_preparation
   dataset_resolutions: K512_PO256_DR256
   native_decoder: spatial_grids64_to512_parameter_names_shapes_preserved_no_interpolated256_output
-  batching: B1_A4_K15_world2_8clips_120pairs_same4slots_per_rank_as_oldB2A2
+  batching: B1_A4_K9_world2_8clips_72pairs_same4slots_per_rank_clip_plan_but_changed_targets
   objective: ordinary_XYZ_no_boundary_or_contrast_cycle0_paths_retained_RGB1x_restart500warmup_all3e-6
   CPU_initial_tests: R-20260908092837-e86c91_300passed
   CPU_initial_data_failure: R-20260908092904-52c706_PO_uses_existing_per_clip_latents_not_compact_shards
   correction: discover_existing_PO_DR_per_clip256_tier_only_in_native_profile_actual_missing_reads_still_fatal_no_VAE_generation
   CPU_corrected_gate: R-20260908093507-6980a5
   CPU_observation: succeeded_exit0_20260908T094010Z_301tests_and_real_both_rank_10step_inputs_NATIVE512_CAPACITY_CPU_OK
-  GPU_test: R-20260908124342-07a333
-  CPU_fullstate_review: R-20260908124416-768c4c
+  GPU_test: R-20260908131757-c86295
+  CPU_fullstate_review: R-20260908131830-00f7be
+  previous_K15_OOM_GPU_review: R-20260908124342-07a333_R-20260908124416-768c4c_superseded
   previous_live_GPU_review: R-20260908120609-c620f9_R-20260908120644-04ad1f_superseded
   superseded_replay_GPU_review: R-20260908115928-3e16b6_cancelled_before_start_R-20260908115958-b40da8_dependency_branch
   failed_initial_capacity: R-20260908113732-aad79b
   superseded_initial_review: R-20260908113801-b13edd
   previous_GPU: R-20260908093602-618730_terminated_not_started
   previous_review: R-20260908093635-750669_superseded_dependency_branch_do_not_retry
-  GPU_state: completed150004_then_first_K512_forward_rank0_physicalGPU2_OOM_at130933Z_SIGTERM_stop_requested
+  GPU_state: K9_CPU60_passed_queued_waiting_GPU23_previous_OOM_K15_still_stopping_no_K9_start
   timeout900_last_complete_update: 150004
   native512_rank1_evidence: GPU3_forward_prediction1x15x3x512x512_latent1x16x6x64x64_no_completed_K_update
   native512_OOM: upsampler_bilinear_allocation5p62GiB_free3p24GiB_training47p64GiB_foreign28p25GiB
@@ -91,7 +96,7 @@ h031_native512_capacity_20260908:
   minimum_plus_safety_MiB_each: [49152, 0]
   capacity_budget: experimental_not_measured512_peak_no_K_reduction_or_other_GPU_fallback
   native_GT_snapshot: /data/WorldBridge4D-runs/h031-native512-capacity-inputs-20260908
-  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-timeout900-capacity-20260908
+  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k9-timeout900-capacity-20260908
   protocol: research/protocols/h031_native512_capacity.yaml
   DR_GPU7_unchanged: R-20260908053440-b8f756
   training_ready: false
