@@ -9,8 +9,10 @@ h031_parallel_gpu6_20260908:
   DR_smoke_result: three_native720x1280_clips_repeat_error0_peak14p130588531GiB
   supervisor_CPU_tests: R-20260908052054-0eb5cb
   tests_passed: 36
-  combined_gate: R-20260908052119-b7e576
-  pair_bulk: R-20260908052142-a7225f
+  combined_gate: R-20260908052413-e337f4
+  pair_bulk: R-20260908052437-22e2a9
+  previous_pair: R-20260908052142-a7225f_failed_before_start
+  gate_correction: use_PRL_readRun_owner_override_not_raw_run_yaml_after_transfer
   status: pair_submitted_first_joint_progress_not_yet_observed
   physical_gpu: 6
   admission_MiB: 45056

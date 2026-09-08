@@ -15,9 +15,11 @@ parallel_update_20260908:
   DR_smoke_peak_GiB: 14.13058853149414
   CPU_tests: R-20260908052054-0eb5cb
   CPU_passed: 36
-  combined_gate: R-20260908052119-b7e576
-  pair_bulk: R-20260908052142-a7225f
-  execution_commit: f4eaf81dd39cee359578c059c200c7a0c71b1418
+  combined_gate: R-20260908052413-e337f4
+  pair_bulk: R-20260908052437-22e2a9
+  execution_commit: 895257518e822372d942495c83013fb6a39d6595
+  gate_correction: authoritative_PRL_readRun_includes_transfer_owner_overlay_raw_YAML_does_not
+  prior_pair: R-20260908052142-a7225f_never_started_dependency_failed
   joint_free_MiB: 45056
   memory_budget_GiB: {kubric: 8, dynamic_replica: 32, safety: 4}
   memory_rationale: K_measured_allocated4p38_process6p2_DR_smoke14p13_keep_DR32_budget
