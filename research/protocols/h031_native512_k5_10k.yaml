@@ -1,9 +1,9 @@
-version: 1
+version: 2
 hypothesis: H031
 task: T-20260908032232-e95da1
 authority: user_requests_additional10k_to_check_Kubric_improvement_after_K5_capacity_pass
-status: user_requests_immediate_start_GPU_started151423978Z_initializing
-execution_commit: 600ea4abd33e619eb2b3e95f389bac2f0aa2daa3
+status: user_reaffirms_start_page_faults_not_failure_original_prefetch_longtrain_submitted
+execution_commit: 8bd71a5c03171f84c9591638e7087414304f5517
 config: configs/h031_k512_po256_dr256_k5_10k_ondemand.yaml
 config_sha256: 9e507e46ff25deb68f67c1848ded63eb9aeea2b7ae12f825e61dbfb66d9dcb4d
 GT_reader_mode: explicit_verified_cache_or_original_native_raw_no_full_publication_wait
@@ -14,6 +14,14 @@ origin_sha256: 8118157202157c9836912f4b2473d840816ef6de59d555b75e0cb1919419f3c9
 origin_artifact: artifact://H031/R-20260908143820-96f650/checkpoint/8118157202157c98
 origin_verification: R-20260908143851-3e354d_succeeded_fullmodel_Adam193_plus10_world2_RNG2
 steps: {start: 150010, stop: 160010, additional_updates: 10000}
+resume: /data/WorldBridge4D-runs/h031-k5-first2-diagnostic-gpu23-20260908/checkpoint-0150012.pt
+resume_sha256: 5f6d329dd253044771686c976fc38ba16a99dec09888bbe53ed36c3734a5191b
+resume_artifact: artifact://H031/R-20260908164215-e3f427/checkpoint/5f6d329dd2530447
+resume_verification: R-20260908164248-978cea_fullstate_193Adam_plus2_RNG2_world2
+remaining_steps: {start: 150012, stop: 160010, updates: 9998}
+execution_policy: original_async_geometry_prefetch_no_quiescence_no_diagnostic_stop_no_model_Adam_mixing
+page_fault_policy: observation_only_not_failure_no_auto_stop_on900s_progress_alarm
+startup_payload_preflight: unchanged_full_remaining_horizon_may_take_tens_of_minutes
 batching: {B: 1, A: 4, K: 5, world: 2, clips_per_update: 8, pairs_per_update: 40}
 seed: 20260812
 decoder_seed: 424242
@@ -34,14 +42,17 @@ GT:
   format: lossless_npz_original21frame512_radial_depth_segmentation_camera_instances_all_fields_exact
   identity: manifest_source_before_after_RGB_SHA_every_field_readback_SHA_perclip_ready_only_after_full_corpus
   producer: R-20260908145020-2e286e
+  producer_status: paused1466of5737_storage_reserve_guard_no_auto_retry_or_deletion_not_training_dependency
   compression_probe: R-20260908144719-9ba392
   sample_based_payload_estimate_bytes: 75429760465
   estimate_caveat: three_samples_max_not_proven_full_corpus_upper_bound_runtime_reserve_checks_enforced
 CPU_unit_gate: R-20260908145447-8aac4c_144passed22p50s
 CPU_after_GT: superseded_cancelled643755_not_required_for_explicit_on_demand_reader
-GPU: R-20260908151342-7904e6
-CPU_endpoint_review: R-20260908151414-49b6b8
-output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-k5-10k-ondemand-gpu23-20260908
+GPU: R-20260908174842-60b9e0
+CPU_endpoint_review: R-20260908174920-10e2f7
+output: /data/WorldBridge4D-runs/h031-k512-k5-original-prefetch-150012-to160010-gpu23-20260908
+retired_long_runs: [R-20260908151342-7904e6, R-20260908171616-0af2ad]
+quiescent_variant: retained_diagnostic_only_strict_Adam_gate_failed_not_used_for_longtrain
 endpoint_acceptance: model_names_shapes_Adam193_allsteps_plus10000_world2_RNG2_cycle_offset10_dataset_counts_SHA
 quality_plan:
   baseline: protected_native_model150010
