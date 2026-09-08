@@ -20,6 +20,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--dataset', choices=['kubric', 'dynamic_replica'])
     args = p.parse_args()
     assert not torch.cuda.is_initialized()
     assert not args.output.exists(), 'fresh CPU preflight output required'
@@ -34,7 +35,7 @@ def main():
               'datasets': {}, 'PO_blocked': config['blocked']['pointodyssey'],
               'three_dataset_cache_complete': False, 'training_ready': False}
     estimated = 0
-    for name in config['datasets']:
+    for name in ([args.dataset] if args.dataset else config['datasets']):
         manifest = build_manifest(config, name, vae_sha)
         old = inventory['datasets'][name]
         assert old['index_sha256'] == manifest['index_sha256']

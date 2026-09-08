@@ -42,8 +42,8 @@ def build_manifest(config: dict, dataset: str, vae_sha256: str) -> dict:
     rows = [json.loads(x) for x in index_path.read_text().splitlines() if x]
     if not rows or len({r["clip_id"] for r in rows}) != len(rows):
         raise ValueError("native source index must contain unique clips")
-    if [r["index"] for r in rows] != list(range(len(rows))):
-        raise ValueError("native cache preserves the canonical contiguous clip index")
+    if len({r["index"] for r in rows}) != len(rows):
+        raise ValueError("native source row IDs must be unique; they need not be contiguous")
     shape = tuple(values["native_hw"])
     sources = {}
     records = []
@@ -51,8 +51,11 @@ def build_manifest(config: dict, dataset: str, vae_sha256: str) -> dict:
     if dataset == "kubric":
         native = MOViFDataset(values["raw_root"], split="train", clip_length=21, clip_start=0,
                              max_examples=max(r["raw_index"] for r in rows) + 1)
-    for row in rows:
-        record = {"index": row["index"], "clip_id": row["clip_id"], "row_sha256": json_hash(row)}
+    for position, row in enumerate(rows):
+        # Training and existing latent/RGB caches use list position, not the
+        # legacy geometry row ID (DR's filtered index deliberately has gaps).
+        record = {"index": position, "source_row_index": row["index"],
+                  "clip_id": row["clip_id"], "row_sha256": json_hash(row)}
         if int(row.get("stride", 1)) != 1:
             raise ValueError("native cache only admits original stride1")
         if native is not None:

@@ -141,6 +141,19 @@ def test_native_source_change_and_missing_rgb_no_cache_fallback(tmp_path):
     with pytest.raises(FileNotFoundError): build_manifest(cfg, 'dynamic_replica', 'a'*64)
 
 
+def test_filtered_legacy_row_ids_keep_training_list_position_and_original_bytes(tmp_path):
+    cfg, row = external_fixture(tmp_path)
+    rows = [{**row, 'index':182}, {**row, 'index':6761, 'clip_id':'two'}]
+    index = Path(cfg['datasets']['dynamic_replica']['index'])
+    index.write_text(''.join(json.dumps(r)+'\n' for r in rows))
+    original = index.read_bytes()
+    m = build_manifest(cfg, 'dynamic_replica', 'a'*64)
+    assert [(r['index'],r['source_row_index']) for r in m['records']] == [(0,182),(1,6761)]
+    assert [r['row_sha256'] for r in m['records']] == [json_hash(r) for r in rows]
+    assert [r['index'] for r,_,_ in iter_rgb(m, [0,1])] == [0,1]
+    assert index.read_bytes() == original
+
+
 def test_native_index_change_rejected(tmp_path):
     cfg, _ = external_fixture(tmp_path)
     m = build_manifest(cfg, 'dynamic_replica', 'a'*64)
