@@ -92,6 +92,16 @@ def test_native_geometry_uses64_grid_and_retains256_function():
     assert result.motion.shape == (1,21,2,8)
 
 
+def test_native_admission_discovers_existing_external_lazy_tier(monkeypatch):
+    from worldbridge.data import factory
+    monkeypatch.setattr(factory, '_load_pointodyssey_dataset', lambda values, **kwargs: kwargs)
+    cfg = config()
+    selected = factory.load_dataset(cfg, 'pointodyssey')
+    assert selected['image_size'] == 256 and selected['allow_missing_latents'] is True
+    cfg['native_kubric512_b1_a4_k15'] = False
+    assert factory.load_dataset(cfg, 'pointodyssey')['allow_missing_latents'] is False
+
+
 def test_clip_plans_match_b2a2_b1a4():
     from worldbridge.data.sampling import deterministic_sample_plan
     rows = list(range(5737))

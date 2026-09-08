@@ -26,6 +26,7 @@ from worldbridge.utils.io import atomic_json
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
+    p.add_argument('--reuse-staged-geometry', action='store_true')
     args = p.parse_args()
     assert os.environ.get('CUDA_VISIBLE_DEVICES') == ''
     cfg = yaml.safe_load(Path(args.config).read_text()); validate_config(cfg, 2)
@@ -55,6 +56,16 @@ def main():
               'start_step': 150000, 'end_step': cfg['max_steps'], 'plans': plans, 'entries': {},
               'geometry_transform': 'native512_no_resize_original_radial_depth_and_validity',
               'training_ready': False, 'capacity_input_gate': True}
+    if args.reuse_staged_geometry:
+        previous = json.loads((root / 'ready.json').read_text())
+        for key in ('manifest_sha256','config_sha256','start_step','end_step','plans','geometry_transform'):
+            assert previous[key] == report[key]
+        assert set(previous['entries']) == {str(v['index']) for v in plans}
+        for entry in previous['entries'].values():
+            assert file_sha256(root / entry['file']) == entry['sha256']
+        report = previous
+        groups.clear()
+        print('NATIVE_GT_SNAPSHOT_REUSED_SHA_VERIFIED', flush=True)
     for path, wanted in sorted(groups.items()):
         _check_source(manifest, path)
         options = tf.data.Options(); options.threading.private_threadpool_size = 1

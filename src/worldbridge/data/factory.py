@@ -153,6 +153,11 @@ def load_dataset(
             from .datasets.native_kubric import NativeKubricDataset
             return NativeKubricDataset(values)
         return _load_kubric_dataset(values, **cache_options)
+    if config.get('native_kubric512_b1_a4_k15', False):
+        # PO/DR already live in the atomic per-clip256 tier, not compact shards.
+        # Permit discovering that tier; native admission forbids VAE generation
+        # and pre-reads every requested latent, so an actual miss still fails.
+        cache_options['allow_missing_latents'] = True
     if name == "pointodyssey":
         return _load_pointodyssey_dataset(
             values, image_size=image_size, **cache_options,
