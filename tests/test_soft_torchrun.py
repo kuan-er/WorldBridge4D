@@ -30,8 +30,14 @@ def test_first_worker_exit_is_logged_before_blocking_cleanup(monkeypatch, capsys
     import json
     from types import SimpleNamespace
 
+    from worldbridge.trainer import soft_torchrun
+    monkeypatch.setattr(soft_torchrun, 'worker_health', lambda pid: {'test_pid': pid})
+
     def cleanup(self):
-        assert 'rank_worker_exit' in capsys.readouterr().out
+        rows = [json.loads(row) for row in capsys.readouterr().out.splitlines()]
+        exit_row = next(row for row in rows if row['event'] == 'rank_worker_exit')
+        assert exit_row['exit_code'] == -9 and exit_row['signal'] == 'SIGKILL'
+        assert exit_row['local_rank'] == 0 and exit_row['before_elastic_cleanup']
         return 'original_cleanup'
 
     monkeypatch.setattr(api, '_get_kill_signal', api._get_kill_signal)

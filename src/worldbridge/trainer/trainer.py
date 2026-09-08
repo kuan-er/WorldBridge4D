@@ -70,6 +70,15 @@ def fsdp_auto_wrap_policy(
     )
 
 
+def execution_stop_step(start: int, horizon: int, stop_after_updates: int | None) -> int:
+    """Bound a diagnostic invocation without changing the configured LR horizon."""
+    if stop_after_updates is None:
+        return horizon
+    if stop_after_updates < 1:
+        raise ValueError('stop-after-updates must be positive')
+    return min(horizon, start + stop_after_updates)
+
+
 def stop_signal(_signum: int, _frame: Any) -> None:
     global _STOP
     _STOP = True
@@ -90,6 +99,8 @@ def main() -> None:
     parser.add_argument("--checkpoint-dir", help="fast local checkpoint directory; defaults to output-dir")
     parser.add_argument("--durable-checkpoint", help="best-effort asynchronous replica path for latest checkpoint")
     parser.add_argument("--steps", type=int)
+    parser.add_argument('--stop-after-updates', type=int,
+                        help='bounded full-resume diagnosis: checkpoint and exit without changing LR horizon')
     parser.add_argument("--disable-wandb", action="store_true")
     parser.add_argument(
         "--wandb-log-after-step", type=int, default=-1,
@@ -109,6 +120,9 @@ def main() -> None:
         parser.error("--resume and --finetune-from are mutually exclusive")
     if args.lazy_vae_cache and args.lazy_vae_pipeline:
         parser.error("--lazy-vae-cache and --lazy-vae-pipeline are mutually exclusive")
+    if args.stop_after_updates is not None and (args.stop_after_updates < 1 or not args.resume
+            or args.lazy_vae_cache or args.lazy_vae_pipeline or args.no_checkpoint):
+        parser.error('--stop-after-updates requires positive full-resume, checkpointed, non-lazy diagnosis')
     if args.pipeline_lookahead_steps < 1:
         parser.error("--pipeline-lookahead-steps must be positive")
     for value in (signal.SIGINT, signal.SIGTERM, signal.SIGUSR1):
@@ -186,6 +200,11 @@ def main() -> None:
         metadata[0] = int(status["completed_steps"])
     dist.broadcast_object_list(metadata, src=0)
     planned_start = int(metadata[0] or 0)
+    execution_end = execution_stop_step(planned_start, target_steps, args.stop_after_updates)
+    if args.stop_after_updates is not None:
+        print(json.dumps({'event': 'bounded_resume_diagnostic', 'rank': rank,
+                          'start': planned_start, 'execution_end': execution_end,
+                          'unchanged_LR_horizon': target_steps}), flush=True)
     if planned_start >= target_steps:
         raise ValueError(f"checkpoint step {planned_start} already reaches target {target_steps}")
     lazy_counts = None
@@ -231,13 +250,17 @@ def main() -> None:
             }), flush=True)
     else:
         # Complete immutable shards remain fail-closed for formal training.
+        print(json.dumps({'event': 'startup_latent_payload_validation_begin', 'rank': rank,
+                          'start': planned_start, 'end': execution_end}), flush=True)
         required_check = required_latent_indices(
-            datasets, seed, planned_start, target_steps, rank,
+            datasets, seed, planned_start, execution_end, rank,
             int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
         )
         for name, indices in required_check.items():
             for index in indices:
                 datasets[name].clean_latent(index)
+        print(json.dumps({'event': 'startup_latent_payload_validation_complete', 'rank': rank,
+                          'counts': {name: len(indices) for name, indices in required_check.items()}}), flush=True)
     if rank == 0 and not args.lazy_vae_pipeline:
         print(json.dumps({"event": "three_dataset_cache_ready", "clips": {k: len(v) for k, v in datasets.items()}}), flush=True)
 
@@ -413,6 +436,8 @@ def main() -> None:
                 "event": "resume_state_loaded", "step": start_step,
                 "world_size": world, "optimizer": "restored", "rng_states": len(resume_rng_states),
             }), flush=True)
+    if args.stop_after_updates is not None and start_step != planned_start:
+        raise ValueError('diagnostic checkpoint planning sidecar does not match restored step')
     if master_precision == "fp32":
         assert_fp32_optimizer_storage(optimizer)
         if rank == 0:
@@ -483,7 +508,7 @@ def main() -> None:
         boundary_supervision=boundary_supervision,
         edge_contrast_enabled=edge_contrast_weight > 0,
         start_step=start_step,
-        target_steps=target_steps,
+        target_steps=execution_end,
         depth=prefetch_depth,
         workers=prefetch_workers,
         geometry_replay=geometry_replay,
@@ -503,7 +528,7 @@ def main() -> None:
 
     try:
         prefetcher.refill()
-        for step in range(start_step, target_steps):
+        for step in range(start_step, execution_end):
             if stall_seconds > 0:
                 faulthandler.dump_traceback_later(stall_seconds, repeat=True)
             trace_phase("update_start", step)
@@ -964,7 +989,7 @@ def main() -> None:
             stop_tensor = torch.tensor(int(local_stop), device=device)
             dist.all_reduce(stop_tensor, op=dist.ReduceOp.MAX)
             periodic = completed in checkpoint_steps or (completed > 10000 and checkpoint_every and completed % checkpoint_every == 0)
-            final = completed == target_steps or bool(stop_tensor.item())
+            final = completed == execution_end or bool(stop_tensor.item())
             if not args.no_checkpoint and (periodic or final):
                 state = {
                     "global_step": completed, "clips_seen": clips_seen,
@@ -1023,6 +1048,7 @@ def main() -> None:
     if rank == 0:
         result = {
             "completed_steps": completed, "target_steps": target_steps, "world_size": world,
+            "execution_end": execution_end, "diagnostic_stop_after_updates": args.stop_after_updates,
             "clips_seen": clips_seen, "non_wan_parameters": non_wan_count,
             "targets_per_source": k, "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,
             "elapsed_seconds": time.perf_counter() - started,

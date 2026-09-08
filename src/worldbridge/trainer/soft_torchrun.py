@@ -9,7 +9,25 @@ workers; the trainer handles SIGTERM by checkpointing at an update boundary.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import signal
+import time
+
+
+def worker_health(pid: int) -> dict:
+    """Read only a launcher's own worker; never signal or enumerate foreign PIDs."""
+    root = Path('/proc') / str(pid)
+    try:
+        status = dict(line.split(':', 1) for line in (root / 'status').read_text().splitlines())
+        io = dict(line.split(':', 1) for line in (root / 'io').read_text().splitlines())
+        fields = (root / 'stat').read_text().rsplit(')', 1)[1].split()
+        return {'state': status['State'].strip(), 'wchan': (root / 'wchan').read_text().strip(),
+                'RSS': status.get('VmRSS', '').strip(), 'HWM': status.get('VmHWM', '').strip(),
+                'swap': status.get('VmSwap', '').strip(), 'threads': status['Threads'].strip(),
+                'major_faults': int(fields[9]), 'read_bytes': int(io['read_bytes']),
+                'oom_score': (root / 'oom_score').read_text().strip()}
+    except (OSError, KeyError, ValueError, IndexError) as exc:
+        return {'unavailable': type(exc).__name__}
 
 
 def configure_soft_cleanup() -> None:
@@ -28,6 +46,10 @@ def configure_soft_cleanup() -> None:
         def audited_poll(self):
             observed = getattr(self, '_worldbridge_observed_exits', set())
             self._worldbridge_observed_exits = observed
+            now = time.monotonic()
+            health_due = now >= getattr(self, '_worldbridge_next_health', 0)
+            if health_due:
+                self._worldbridge_next_health = now + 30
             for rank, handler in self.subprocess_handlers.items():
                 code = handler.proc.poll()
                 if code is not None and rank not in observed:
@@ -38,6 +60,9 @@ def configure_soft_cleanup() -> None:
                         'signal': signal.Signals(-code).name if code < 0 else None,
                         'before_elastic_cleanup': True,
                     }), flush=True)
+                elif code is None and health_due:
+                    print(json.dumps({'event': 'rank_worker_health', 'local_rank': rank,
+                                      'pid': handler.proc.pid, **worker_health(handler.proc.pid)}), flush=True)
             return original_poll(self)
 
         audited_poll._worldbridge_exit_audit = True
