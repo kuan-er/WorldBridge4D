@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import nullcontext
+import faulthandler
 import json
 from pathlib import Path
 import random
@@ -39,9 +40,11 @@ from .lazy_vae import (
     required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
 )
 from .cycle import camera_batch, pixel_cycle_loss
-from .objective import masked_pair_smooth_l1
+from .objective import (boundary_weighted_pair_smooth_l1, loss_scale_to_reference,
+                        masked_pair_smooth_l1, source_edge_contrast_loss)
 from .optimizer import apply_fresh_group_warmup, parameter_groups
-from .schedulers import apply_cosine_schedule, training_diagnostic_due
+from .precision import assert_fp32_optimizer_storage, prepare_fsdp_master_parameters
+from .schedulers import apply_cosine_schedule, apply_lr_restart_schedule, training_diagnostic_due
 from .tracking import init_wandb, load_stats
 
 _STOP = False
@@ -106,7 +109,9 @@ def main() -> None:
     for value in (signal.SIGINT, signal.SIGTERM, signal.SIGUSR1):
         signal.signal(value, stop_signal)
     config = yaml.safe_load(Path(args.config).read_text())
-    rank, world, local, device = initialize_distributed()
+    rank, world, local, device = initialize_distributed(
+        timeout_seconds=float(config.get("distributed_timeout_seconds", 86400)),
+    )
     validate_config(config, world)
     seed = int(config.get("seed", 20260812))
     random.seed(seed + rank); np.random.seed(seed + rank); torch.manual_seed(seed + rank)
@@ -247,6 +252,8 @@ def main() -> None:
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
         raise RuntimeError(f"non-Wan readout parameters {non_wan_count:,} != expected {expected_non_wan:,}")
+    master_precision = str(config.get("fsdp_master_precision", "model"))
+    prepare_fsdp_master_parameters(model, master_precision)
     finetune_payload: dict[str, Any] | None = None
     finetune_state: dict[str, Any] | None = None
     finetune_rng_states: list[Any] = []
@@ -380,13 +387,28 @@ def main() -> None:
                 "event": "resume_state_loaded", "step": start_step,
                 "world_size": world, "optimizer": "restored", "rng_states": len(resume_rng_states),
             }), flush=True)
+    if master_precision == "fp32":
+        assert_fp32_optimizer_storage(optimizer)
+        if rank == 0:
+            print(json.dumps({"event": "fp32_master_storage_verified", "step": start_step,
+                              "parameters": "float32", "adam_moments": "float32",
+                              "compute_precision": config["precision"]}), flush=True)
     if start_step >= target_steps:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
+    lr_restart = config.get("lr_restart")
+    if lr_restart is not None:
+        if not int(lr_restart["start_step"]) <= start_step < target_steps <= int(lr_restart["end_step"]):
+            raise ValueError("restored checkpoint/target outside LR restart phase")
+        if rank == 0:
+            print(json.dumps({"event": "lr_restart_phase", "restored_step": start_step,
+                              "protocol": lr_restart, "optimizer_moments": "preserved"}), flush=True)
     run = init_wandb(config, output, rank, args.disable_wandb)
     accumulation = int(config["gradient_accumulation"])
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     use_source_rgb = bool(config.get("source_rgb_pyramid", False))
+    boundary_supervision = config.get('boundary_supervision')
+    edge_contrast_weight = float(config.get('source_edge_contrast_weight', 0.0))
     cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
     cycle_dataset_names = tuple(str(name) for name in config.get(
         "cycle_reprojection_datasets", ["kubric"],
@@ -394,6 +416,15 @@ def main() -> None:
     cycle_weight = float(config.get("cycle_reprojection_weight", 0.0))
     cycle_pixel_stride = int(config.get("cycle_reprojection_pixel_stride", 1))
     cycle_huber_delta = float(config.get("cycle_reprojection_huber_delta", 0.01))
+    cycle_normalize_to_xyz = bool(config.get(
+        "cycle_reprojection_normalize_to_xyz", False,
+    ))
+    cycle_normalization_epsilon = float(config.get(
+        "cycle_reprojection_normalization_epsilon", 1e-6,
+    ))
+    cycle_normalization_max_scale = float(config.get(
+        "cycle_reprojection_normalization_max_scale", 1000.0,
+    ))
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     ensure_dataset_diagnostics = bool(
         config.get("diagnostic_ensure_dataset_coverage", False)
@@ -421,15 +452,32 @@ def main() -> None:
         use_source_rgb=use_source_rgb,
         cycle_enabled=cycle_enabled,
         cycle_dataset_names=cycle_dataset_names,
+        boundary_supervision=boundary_supervision,
+        edge_contrast_enabled=edge_contrast_weight > 0,
         start_step=start_step,
         target_steps=target_steps,
         depth=prefetch_depth,
         workers=prefetch_workers,
     )
     optimizer.zero_grad(set_to_none=True)
+    trace_updates = int(config.get("trace_first_updates", 0))
+    stall_seconds = float(config.get("runtime_stall_traceback_seconds", 0))
+    empty_cache_every = int(config.get("cuda_empty_cache_every_steps", 0))
+
+    def trace_phase(stage: str, step: int, micro: int | None = None) -> None:
+        if step < start_step + trace_updates:
+            # This marks host-side progress, not completed optimizer updates or
+            # synchronized GPU timings. Do not trigger global_step listeners.
+            print(json.dumps({"event": "training_phase", "rank": rank,
+                              "update_number": step + 1, "micro": micro,
+                              "stage": stage, "monotonic_seconds": time.perf_counter()}), flush=True)
+
     try:
         prefetcher.refill()
         for step in range(start_step, target_steps):
+            if stall_seconds > 0:
+                faulthandler.dump_traceback_later(stall_seconds, repeat=True)
+            trace_phase("update_start", step)
             planned = prefetcher.pop(step)
             name = planned.dataset_name
             dataset = planned.dataset
@@ -441,12 +489,19 @@ def main() -> None:
                     float(config.get("pipeline_wait_timeout_seconds", 3600)),
                 )
             update_loss = 0.0
+            xyz_loss_sum = 0.0
             update_epe = 0.0
             valid_points = 0
             pair_count = 0
             cycle_loss_sum = 0.0
+            weighted_cycle_loss_sum = 0.0
+            cycle_scale_sum = 0.0
             cycle_pixel_error_sum = 0.0
             cycle_valid_points = 0
+            boundary_stats = (torch.zeros(7, device=device, dtype=torch.float64)
+                              if boundary_supervision is not None else None)
+            contrast_stats = (torch.zeros(3, device=device, dtype=torch.float64)
+                              if edge_contrast_weight > 0 else None)
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
@@ -460,26 +515,28 @@ def main() -> None:
                     plans[begin:begin + microbatch_per_gpu],
                     futures[begin:begin + microbatch_per_gpu],
                 ))
+                trace_phase("geometry_wait_start", step, micro)
                 batch_values = []
                 target_counts = []
                 for (_planned_index, _source, rng), future in group:
                     wait_started = time.perf_counter()
                     (
                         index, source, xyz_all, valid_all, source_rgb_np,
-                        visible_all, camera,
+                        visible_all, camera, boundary_np, contrast_edges_np,
                     ), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
                     targets = sample_eligible_targets(valid_all, k, rng)
                     batch_values.append((
                         index, source, targets, xyz_all[targets], valid_all[targets],
-                        source_rgb_np, visible_all, camera, valid_all,
+                        source_rgb_np, visible_all, camera, valid_all, boundary_np, contrast_edges_np,
                     ))
                     target_counts.append(len(targets))
                 if len(set(target_counts)) != 1:
                     raise ValueError(
                         f"microbatch clips have different eligible target counts: {target_counts}"
                     )
+                trace_phase("geometry_ready", step, micro)
                 latent_started = time.perf_counter()
                 latents_np = np.stack([dataset.clean_latent(value[0]) for value in batch_values])
                 latent_load_seconds += time.perf_counter() - latent_started
@@ -488,6 +545,7 @@ def main() -> None:
                     for value in batch_values
                 ])
                 valid_np = np.stack([value[4] for value in batch_values])
+                trace_phase("batch_to_device_start", step, micro)
                 source_rgb_t = None
                 if use_source_rgb:
                     source_rgb_np = np.stack([value[5] for value in batch_values])
@@ -510,6 +568,22 @@ def main() -> None:
                 )
                 xyz = torch.from_numpy(normalized_np).to(device, non_blocking=True)
                 valid = torch.from_numpy(valid_np).to(device, non_blocking=True)
+                boundary_t = target_visible_t = None
+                if boundary_supervision is not None:
+                    if any(value[9] is None or value[6] is None for value in batch_values):
+                        raise RuntimeError('boundary-enabled batch is missing GT masks/visibility')
+                    boundary_t = torch.from_numpy(np.stack([value[9] for value in batch_values])).to(
+                        device, non_blocking=True)
+                    target_visible_t = torch.from_numpy(np.stack([
+                        value[6][value[2]] for value in batch_values
+                    ])).to(device, non_blocking=True)
+                contrast_edges_t = None
+                if edge_contrast_weight > 0:
+                    if any(value[10] is None for value in batch_values):
+                        raise RuntimeError('edge contrast batch is missing GT neighbor masks')
+                    contrast_edges_t = torch.from_numpy(np.stack([
+                        value[10] for value in batch_values
+                    ])).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
                 cycle_batch = cycle_enabled and name in cycle_dataset_names
                 cycle_pair_indices = cycle_targets = None
@@ -555,14 +629,37 @@ def main() -> None:
                     )
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
+                    trace_phase("forward_start", step, micro)
                     prediction, z4d, _ = fsdp(
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
-                    loss = masked_pair_smooth_l1(
+                    trace_phase("forward_enqueued", step, micro)
+                    xyz_value = masked_pair_smooth_l1(
                         prediction.float(), xyz.float(), valid,
                         beta=float(config.get("smooth_l1_beta", 0.05)),
-                    ) / accumulation
+                    )
+                    optimized_xyz_value = xyz_value
+                    if boundary_supervision is not None:
+                        optimized_xyz_value = boundary_weighted_pair_smooth_l1(
+                            prediction.float(), xyz.float(), valid, boundary_t,
+                            multiplier=float(boundary_supervision['multiplier']),
+                            beta=float(config.get('smooth_l1_beta', 0.05)),
+                        )
+                    # Keep xyz_value UNWEIGHTED for cycle diagnostics and all
+                    # historical train/xyz_loss comparisons.
+                    loss = optimized_xyz_value / accumulation
+                    if edge_contrast_weight > 0:
+                        contrast_value, contrast_edges_count, contrast_pairs = source_edge_contrast_loss(
+                            prediction.float(), xyz.float(), valid, contrast_edges_t,
+                            beta=float(config.get('smooth_l1_beta', 0.05)),
+                        )
+                        loss = loss + edge_contrast_weight * contrast_value / accumulation
+                        contrast_stats[0] += contrast_value.detach().double() / accumulation
+                        contrast_stats[1] += contrast_edges_count.detach()
+                        contrast_stats[2] += contrast_pairs.detach()
                     cycle_value = prediction.new_zeros(())
+                    weighted_cycle_value = prediction.new_zeros(())
+                    cycle_scale = prediction.new_zeros(())
                     cycle_points = prediction.new_zeros(())
                     cycle_pixel_error = prediction.new_zeros(())
                     if cycle_batch:
@@ -577,10 +674,12 @@ def main() -> None:
                         ).view(1, 3, 1, 1) + torch.as_tensor(
                             mean, device=device, dtype=forward_cycle.dtype,
                         ).view(1, 3, 1, 1)
+                        trace_phase("cycle_forward_start", step, micro)
                         reverse_prediction, _, _ = fsdp(
                             latent, cycle_source_t, cycle_target_t, condition,
                             cycle_source_rgb_t, z4d_override=z4d,
                         )
+                        trace_phase("cycle_forward_enqueued", step, micro)
                         reverse_cycle = reverse_prediction[:, 0]
                         reverse_cycle = reverse_cycle * torch.as_tensor(
                             scale, device=device, dtype=reverse_cycle.dtype,
@@ -596,12 +695,27 @@ def main() -> None:
                                 huber_delta=cycle_huber_delta, image_size=256,
                                 pixel_stride=cycle_pixel_stride,
                             )
-                        loss = loss + cycle_weight * cycle_value / accumulation
+                        cycle_scale = (
+                            loss_scale_to_reference(
+                                xyz_value, cycle_value,
+                                epsilon=cycle_normalization_epsilon,
+                                max_scale=cycle_normalization_max_scale,
+                            )
+                            if cycle_normalize_to_xyz
+                            else cycle_value.new_ones(())
+                        )
+                        weighted_cycle_value = cycle_weight * cycle_scale * cycle_value
+                        loss = loss + weighted_cycle_value / accumulation
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step={step}, micro={micro}")
+                trace_phase("backward_start", step, micro)
                 loss.backward()
+                trace_phase("backward_enqueued", step, micro)
                 update_loss += float(loss.detach())
+                xyz_loss_sum += float(xyz_value.detach()) / accumulation
                 cycle_loss_sum += float(cycle_value.detach()) / accumulation
+                weighted_cycle_loss_sum += float(weighted_cycle_value.detach()) / accumulation
+                cycle_scale_sum += float(cycle_scale.detach()) / accumulation
                 cycle_pixel_error_sum += float(cycle_pixel_error.detach() * cycle_points.detach())
                 cycle_valid_points += int(cycle_points.detach())
                 with torch.no_grad():
@@ -609,8 +723,20 @@ def main() -> None:
                     epe = torch.linalg.vector_norm(metric_error, dim=2)
                     update_epe += float(epe[valid].sum())
                     valid_points += int(valid.sum())
+                    if boundary_stats is not None:
+                        boundary_valid = valid & boundary_t[:, None]
+                        occluded_boundary = boundary_valid & ~target_visible_t
+                        counts = valid.sum(dim=(-2, -1))
+                        fractions = boundary_valid.sum(dim=(-2, -1)).double() / counts.clamp_min(1)
+                        boundary_stats[0] += optimized_xyz_value.detach().double() / accumulation
+                        boundary_stats[1] += epe[boundary_valid].double().sum()
+                        boundary_stats[2] += boundary_valid.sum()
+                        boundary_stats[3] += fractions[counts > 0].mean() / accumulation
+                        boundary_stats[4] += epe[occluded_boundary].double().sum()
+                        boundary_stats[5] += occluded_boundary.sum()
+                        boundary_stats[6] += epe[valid & ~boundary_t[:, None]].double().sum()
                 pair_count += sum(target_counts)
-                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all in batch_values:
+                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all, _boundary, _contrast_edges in batch_values:
                     source_hist[source] += 1
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
@@ -618,13 +744,16 @@ def main() -> None:
             gradient_norm = fsdp.clip_grad_norm_(float(config["gradient_clip"]))
             if not torch.isfinite(gradient_norm):
                 raise FloatingPointError(f"non-finite gradient norm at step={step + 1}")
-            lr_factor = apply_cosine_schedule(
-                optimizer,
-                step + 1,
-                int(config["warmup_steps"]),
-                int(config["schedule_horizon_steps"]),
-                None if extension_start is None else int(extension_start),
-                None if extension_horizon is None else int(extension_horizon),
+            lr_factor = (
+                apply_lr_restart_schedule(optimizer, step + 1, lr_restart)
+                if lr_restart is not None else apply_cosine_schedule(
+                    optimizer,
+                    step + 1,
+                    int(config["warmup_steps"]),
+                    int(config["schedule_horizon_steps"]),
+                    None if extension_start is None else int(extension_start),
+                    None if extension_horizon is None else int(extension_horizon),
+                )
             )
             warmup_groups = (
                 {"wan_backbone", "dense_decoder"}
@@ -638,7 +767,7 @@ def main() -> None:
                 start_step,
                 int(config.get("joint_fresh_group_warmup_steps", 0)),
                 float(config.get("joint_fresh_group_max_lr_scale", 1.0)),
-            ) if warmup_groups else 1.0
+            ) if warmup_groups and lr_restart is None else 1.0
             optimizer.step(); optimizer.zero_grad(set_to_none=True)
             completed = step + 1
             clips_seen[name] += world * accumulation * microbatch_per_gpu
@@ -658,8 +787,9 @@ def main() -> None:
                 last_diagnostic_cycle[name] = step // 20
                 scalars = torch.tensor(
                     [
-                        update_loss, update_epe, valid_points, pair_count,
-                        cycle_loss_sum, cycle_pixel_error_sum, cycle_valid_points,
+                        update_loss, xyz_loss_sum, update_epe, valid_points, pair_count,
+                        cycle_loss_sum, weighted_cycle_loss_sum, cycle_scale_sum,
+                        cycle_pixel_error_sum, cycle_valid_points,
                     ], device=device, dtype=torch.float64,
                 )
                 timing_max = torch.tensor([
@@ -667,6 +797,10 @@ def main() -> None:
                 ], device=device, dtype=torch.float64)
                 dist.all_reduce(scalars, op=dist.ReduceOp.SUM)
                 dist.all_reduce(timing_max, op=dist.ReduceOp.MAX)
+                if boundary_stats is not None:
+                    dist.all_reduce(boundary_stats, op=dist.ReduceOp.SUM)
+                if contrast_stats is not None:
+                    dist.all_reduce(contrast_stats, op=dist.ReduceOp.SUM)
                 for histogram in (source_hist, target_hist, gap_hist):
                     dist.all_reduce(histogram, op=dist.ReduceOp.SUM)
                 rgb_alpha_names = list(fsdp.module.decoder.upsampler.source_fusions)
@@ -685,13 +819,20 @@ def main() -> None:
                     rgb_alpha_stats = torch.empty((0, 2), device=device, dtype=torch.float64)
             if rank == 0 and diagnostic:
                 (
-                    global_loss, global_epe_sum, global_valid, global_pairs,
-                    global_cycle_loss, global_cycle_pixel_error_sum,
+                    global_loss, global_xyz_loss, global_epe_sum, global_valid,
+                    global_pairs, global_cycle_loss, global_weighted_cycle_loss,
+                    global_cycle_scale, global_cycle_pixel_error_sum,
                     global_cycle_points,
                 ) = scalars.tolist()
                 dataset_loss = global_loss / world
+                dataset_xyz_loss = global_xyz_loss / world
                 raw_epe_m = global_epe_sum / max(global_valid, 1)
                 cycle_dataset_loss = global_cycle_loss / world
+                weighted_cycle_dataset_loss = global_weighted_cycle_loss / world
+                cycle_loss_ratio = weighted_cycle_dataset_loss / max(
+                    dataset_xyz_loss, cycle_normalization_epsilon,
+                )
+                cycle_scale = global_cycle_scale / world
                 cycle_pixel_error = global_cycle_pixel_error_sum / max(global_cycle_points, 1)
                 weights = fsdp.module.backbone.layer_weights().detach().float().cpu().tolist()
                 rgb_alphas = {
@@ -701,10 +842,18 @@ def main() -> None:
                 payload = {
                     "global_step": completed, "train/loss": dataset_loss,
                     f"train/loss_by_dataset/{name}": dataset_loss,
+                    "train/xyz_loss": dataset_xyz_loss,
+                    f"train/xyz_loss_by_dataset/{name}": dataset_xyz_loss,
                     "train/raw_epe_m": raw_epe_m,
                     f"train/raw_epe_m_by_dataset/{name}": raw_epe_m,
                     "train/cycle_reprojection_loss": cycle_dataset_loss,
                     f"train/cycle_reprojection_loss_by_dataset/{name}": cycle_dataset_loss,
+                    "train/weighted_cycle_reprojection_loss": weighted_cycle_dataset_loss,
+                    f"train/weighted_cycle_reprojection_loss_by_dataset/{name}": weighted_cycle_dataset_loss,
+                    "train/cycle_reprojection_loss_ratio": cycle_loss_ratio,
+                    f"train/cycle_reprojection_loss_ratio_by_dataset/{name}": cycle_loss_ratio,
+                    "train/cycle_reprojection_scale": cycle_scale,
+                    f"train/cycle_reprojection_scale_by_dataset/{name}": cycle_scale,
                     "train/cycle_reprojection_pixel_error": cycle_pixel_error,
                     "train/cycle_reprojection_valid_points": int(global_cycle_points),
                     "train/dataset": DATASET_NAMES.index(name), "train/pairs": int(global_pairs),
@@ -727,6 +876,30 @@ def main() -> None:
                     **{f"sampling/target_{index}": int(value) for index, value in enumerate(target_hist.tolist())},
                     **{f"sampling/gap_{index}": int(value) for index, value in enumerate(gap_hist.tolist())},
                 }
+                if boundary_stats is not None:
+                    weighted_xyz, boundary_epe_sum, boundary_points, pair_fraction, occluded_epe_sum, occluded_points, nonboundary_epe_sum = boundary_stats.tolist()
+                    payload.update({
+                        'train/boundary_weighted_xyz_loss': weighted_xyz / world,
+                        'train/boundary_multiplier': float(boundary_supervision['multiplier']),
+                        'train/boundary_uses_dense_instance_gt': int(name == 'kubric'),
+                        'train/boundary_raw_epe_m': boundary_epe_sum / max(boundary_points, 1),
+                        'train/boundary_valid_points': int(boundary_points),
+                        'train/boundary_pair_mean_fraction': pair_fraction / world,
+                        'train/boundary_valid_fraction': boundary_points / max(global_valid, 1),
+                        'train/nonboundary_raw_epe_m': nonboundary_epe_sum / max(global_valid - boundary_points, 1),
+                        'train/nonboundary_valid_points': int(global_valid - boundary_points),
+                        'train/boundary_occluded_raw_epe_m': occluded_epe_sum / max(occluded_points, 1),
+                        'train/boundary_occluded_valid_points': int(occluded_points),
+                    })
+                if contrast_stats is not None:
+                    contrast_loss, edge_count, eligible_pairs = contrast_stats.tolist()
+                    payload.update({
+                        'train/source_edge_contrast_loss': contrast_loss / world,
+                        'train/weighted_source_edge_contrast_loss': edge_contrast_weight * contrast_loss / world,
+                        'train/source_edge_contrast_weight': edge_contrast_weight,
+                        'train/source_edge_contrast_valid_edges': int(edge_count),
+                        'train/source_edge_contrast_eligible_pairs': int(eligible_pairs),
+                    })
                 print(json.dumps(payload), flush=True)
                 if run is not None and completed > args.wandb_log_after_step:
                     run.log(payload, step=completed)
@@ -783,9 +956,19 @@ def main() -> None:
                             "event": "checkpoint_prune", "removed": removed,
                         }), flush=True)
                 dist.barrier()
+            if empty_cache_every and completed % empty_cache_every == 0:
+                trace_phase("cache_release_start", step)
+                # Includes temporary full-state buffers on checkpoint updates.
+                # Never changes live tensors, gradients, optimizer, or RNG.
+                torch.cuda.empty_cache()
+                trace_phase("cache_release_complete", step)
+            if stall_seconds > 0:
+                faulthandler.cancel_dump_traceback_later()
             if bool(stop_tensor.item()):
                 break
     finally:
+        if stall_seconds > 0:
+            faulthandler.cancel_dump_traceback_later()
         prefetcher.close()
         if pipeline is not None:
             pipeline.close()

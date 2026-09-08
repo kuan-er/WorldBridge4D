@@ -96,6 +96,33 @@ def apply_cosine_schedule(
     return factor
 
 
+def apply_lr_restart_schedule(optimizer: torch.optim.Optimizer, update_number: int,
+                              restart: dict) -> float:
+    """Explicit warmup/hold phase after an exhausted schedule, preserving Adam state.
+
+    Absolute group rates override restored legacy ``_base_lr`` values. The phase
+    origin is fixed in config, not the latest resume step, so checkpoint replay
+    never restarts warmup or silently reuses the zero-ended cosine trajectory.
+    """
+    position = int(update_number) - int(restart["start_step"])
+    if position < 1 or int(update_number) > int(restart["end_step"]):
+        raise ValueError("update outside the declared LR restart phase")
+    warmup = int(restart["warmup_steps"])
+    if warmup < 1:
+        raise ValueError("LR restart requires positive warmup")
+    rates = {str(k): float(v) for k, v in restart["group_learning_rates"].items()}
+    if {str(group.get("name")) for group in optimizer.param_groups} != set(rates):
+        raise ValueError("optimizer groups do not match LR restart rates")
+    factor = min(1.0, position / warmup)
+    for group in optimizer.param_groups:
+        rate = rates[str(group["name"])]
+        if not math.isfinite(rate) or rate <= 0:
+            raise ValueError("LR restart rates must be finite and positive")
+        group["_base_lr"] = rate
+        group["lr"] = rate * factor
+    return factor
+
+
 def training_diagnostic_due(
     completed_step: int,
     start_step: int,

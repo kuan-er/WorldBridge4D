@@ -12,7 +12,9 @@ from torch.distributed.fsdp import (
     StateDictType,
 )
 
-def initialize_distributed() -> tuple[int, int, int, torch.device]:
+def initialize_distributed(timeout_seconds: float = 86400) -> tuple[int, int, int, torch.device]:
+    if not 0 < float(timeout_seconds) < float("inf"):
+        raise ValueError("distributed timeout must be finite and positive")
     rank = int(os.environ["RANK"])
     world = int(os.environ["WORLD_SIZE"])
     local = int(os.environ["LOCAL_RANK"])
@@ -21,7 +23,7 @@ def initialize_distributed() -> tuple[int, int, int, torch.device]:
     torch.cuda.set_device(local)
     device = torch.device("cuda", local)
     dist.init_process_group(
-        "nccl", init_method="env://", timeout=dt.timedelta(hours=24), device_id=device,
+        "nccl", init_method="env://", timeout=dt.timedelta(seconds=timeout_seconds), device_id=device,
     )
     return rank, world, local, device
 

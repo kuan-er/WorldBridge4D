@@ -75,28 +75,72 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError(f"incorrect initial layer weights: {weights}")
     if world != 2:
         raise ValueError(f"production training requires exactly 2 ranks; got {world}")
+    master_precision = str(config.get("fsdp_master_precision", "model"))
+    if master_precision not in {"model", "fp32"}:
+        raise ValueError("fsdp_master_precision must be model or fp32")
+    if master_precision == "fp32" and (config.get("precision") != "bf16" or mode != "decoder_only"):
+        raise ValueError("FP32 master trial requires BF16 compute and decoder_only")
     cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
     cycle_names = tuple(str(name) for name in config.get(
         "cycle_reprojection_datasets", ["kubric"],
     ))
-    if cycle_enabled and cycle_names != ("kubric",):
-        raise ValueError("the initial cycle experiment supports only cycle_reprojection_datasets=[kubric]")
+    supported_cycle_names = {"kubric", "pointodyssey", "dynamic_replica"}
+    if cycle_enabled and (
+        not cycle_names or set(cycle_names) - supported_cycle_names
+        or len(set(cycle_names)) != len(cycle_names)
+    ):
+        raise ValueError(
+            "cycle_reprojection_datasets must be a non-empty subset of "
+            "[kubric, pointodyssey, dynamic_replica]"
+        )
     if int(config.get("cycle_reprojection_pixel_stride", 1)) < 1:
         raise ValueError("cycle_reprojection_pixel_stride must be positive")
     if float(config.get("cycle_reprojection_weight", 0.0)) < 0.0:
         raise ValueError("cycle_reprojection_weight must be non-negative")
     if float(config.get("cycle_reprojection_huber_delta", 0.01)) <= 0.0:
         raise ValueError("cycle_reprojection_huber_delta must be positive")
+    if bool(config.get("cycle_reprojection_normalize_to_xyz", False)):
+        if float(config.get("cycle_reprojection_normalization_epsilon", 1e-6)) <= 0.0:
+            raise ValueError("cycle_reprojection_normalization_epsilon must be positive")
+        if float(config.get("cycle_reprojection_normalization_max_scale", 1000.0)) <= 0.0:
+            raise ValueError("cycle_reprojection_normalization_max_scale must be positive")
+    boundary = config.get('boundary_supervision')
+    if boundary is not None:
+        if (not isinstance(boundary, dict)
+                or set(boundary) != {'multiplier', 'radius_px', 'depth_relative_jump'}
+                or float(boundary['multiplier']) not in (1.0, 2.0)
+                or boundary['radius_px'] != 2
+                or float(boundary['depth_relative_jump']) != 0.05):
+            raise ValueError('boundary control requires multiplier1or2 radius2 depth_jump0.05')
+        if (mode != 'decoder_only' or master_precision != 'fp32'
+                or config.get('precision') != 'bf16' or not cycle_enabled
+                or set(cycle_names) != supported_cycle_names
+                or float(config.get('cycle_reprojection_weight', 0.0)) != 0.0):
+            raise ValueError('boundary control requires FP32/BF16 decoder and all-dataset cycle0 paths')
+    contrast_weight = float(config.get('source_edge_contrast_weight', 0.0))
+    if contrast_weight not in (0.0, 0.01, 0.1):
+        raise ValueError('audited source edge contrast weight must be 0, 0.01 or 0.1')
+    if contrast_weight > 0 and (boundary is None or float(boundary['multiplier']) != 2.0):
+        raise ValueError('source edge contrast control requires boundary2x')
     accumulation = int(config.get("gradient_accumulation", 0))
     microbatch = int(config.get("microbatch_per_gpu", 0))
-    allowed_batching = {(4, 1), (4, 2)} if cycle_enabled else {(2, 2)}
+    cycle_b2_k19 = bool(config.get("cycle_b2_a2_k19", False))
+    cycle_b2_k15 = bool(config.get("cycle_b2_a2_k15", False))
+    xyz_b2_k15 = bool(config.get("xyz_b2_a2_k15", False))
+    if xyz_b2_k15 and (cycle_enabled or cycle_b2_k19 or cycle_b2_k15):
+        raise ValueError("XYZ-only B2/A2/K15 requires cycle disabled and no cycle profile")
+    if cycle_b2_k19 and cycle_b2_k15:
+        raise ValueError("select only one B2/A2 cycle target profile")
+    if (cycle_b2_k19 or cycle_b2_k15) and not cycle_enabled:
+        raise ValueError("B2/A2 cycle profiles require the cycle objective")
+    allowed_batching = {(2, 2)} if cycle_b2_k19 or cycle_b2_k15 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})
     if (accumulation, microbatch) not in allowed_batching:
         expected = " or ".join(
             f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 13 if cycle_enabled else 19
+    required_targets = 15 if cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
@@ -117,6 +161,29 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     if diagnostic_every < 1:
         raise ValueError("diagnostic_every_steps must be positive")
+    for key in ("trace_first_updates", "cuda_empty_cache_every_steps"):
+        if int(config.get(key, 0)) < 0:
+            raise ValueError(f"{key} must be non-negative")
+    stall = float(config.get("runtime_stall_traceback_seconds", 0))
+    timeout = float(config.get("distributed_timeout_seconds", 86400))
+    if not np.isfinite(stall) or stall < 0 or not np.isfinite(timeout) or timeout <= 0:
+        raise ValueError("invalid runtime timeout/traceback interval")
+    restart = config.get("lr_restart")
+    if restart is not None:
+        if mode != "decoder_only":
+            raise ValueError("LR restart currently requires decoder_only")
+        start = int(restart["start_step"])
+        end = int(restart["end_step"])
+        warmup = int(restart["warmup_steps"])
+        if not 0 <= start < start + warmup < end or int(config["max_steps"]) > end:
+            raise ValueError("invalid LR restart phase interval")
+        rates = restart["group_learning_rates"]
+        if set(rates) != {"dense_decoder", "source_rgb_decay", "source_rgb_no_decay"}:
+            raise ValueError("LR restart requires explicit rates for all decoder/RGB groups")
+        if any(not np.isfinite(float(rate)) or float(rate) <= 0 for rate in rates.values()):
+            raise ValueError("LR restart rates must be finite and positive")
+        if config.get("schedule_extension_start_step") is not None:
+            raise ValueError("LR restart must not also enable legacy cosine extension")
     extension_start = config.get("schedule_extension_start_step")
     extension_horizon = config.get("schedule_extension_horizon_steps")
     if (extension_start is None) != (extension_horizon is None):

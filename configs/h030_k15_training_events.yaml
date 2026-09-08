@@ -1,0 +1,36 @@
+- id: first_k15_update
+  type: log.regex
+  pattern: '"global_step": 150001'
+  actions: [record, wake_agent]
+  max_triggers: 1
+- id: oom_immediate
+  type: log.regex
+  pattern: 'OutOfMemoryError|CUDA out of memory'
+  actions: [record, wake_agent]
+  max_triggers: 1
+  critical: true
+- id: past_previous_oom
+  type: log.regex
+  pattern: '"global_step": 150050'
+  actions: [record, wake_agent]
+  max_triggers: 1
+- id: checkpoint_review150100
+  type: log.regex
+  pattern: '"global_step": 150100'
+  actions: [record, wake_agent]
+  max_triggers: 1
+- id: warmup_complete
+  type: log.regex
+  pattern: '"global_step": 150500'
+  actions: [record, wake_agent]
+  max_triggers: 1
+- id: midphase155000
+  type: log.regex
+  pattern: '"global_step": 155000'
+  actions: [record, wake_agent]
+  max_triggers: 1
+- id: checkpoint_complete
+  type: log.regex
+  pattern: 'THREE_DATASET_256_FSDP_OK'
+  actions: [record]
+  max_triggers: 1

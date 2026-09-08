@@ -203,6 +203,10 @@ class MOViF256Dataset:
         assert visible is not None
         return xyz, valid, visible
 
+    def source_boundary_context(self, index: int, source: int):
+        sample = self.sample(int(index))
+        return sample.depth[source], sample.depth_valid[source], sample.segmentation[source]
+
     def cycle_camera(self, index: int) -> dict[str, np.ndarray | float]:
         """Return the compact camera contract needed by differentiable cycles."""
         sample = self.sample(int(index))

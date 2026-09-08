@@ -1,0 +1,40 @@
+# Read-only post-control diagnostics. Native caching; no allocator memory cap.
+version: 2
+seed: 20260907
+data_config: configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml
+historical_selection: /tmp/worldbridge4d-worst-trajectory-renders-step95000/summary.json
+validation_clips_per_dataset: 4
+validation_sources: [0, 10, 20]
+targets: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+target_chunk: 1
+pixel_stride: 1
+depth_relative_jump: 0.05
+boundary_distance_px: 2
+interior_distance_px: 10
+minimum_track_valid_frames: 5
+neighbor_radius_px: 4
+neighbor_min_separation_m: 0.05
+motion_static_m: 0.01
+motion_large_m: 0.1
+comparisons:
+  - [h030_rgb1x_152500, h030_150k_norm30]
+  - [h030_rgb10x_152500, h030_150k_norm30]
+  - [h030_rgb1x_152500, h030_rgb10x_152500]
+  - [h030_rgb1x_152500, h023_100k]
+checkpoints:
+  h023_100k:
+    step: 100000
+    path: /data/WorldBridge4D-persistent/checkpoints/worldbridge4d-source-rgb-fusion32-cap0p1-step100000/checkpoint-0100000.pt
+    sha256: 3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2
+  h030_150k_norm30:
+    step: 150000
+    path: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+    sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  h030_rgb10x_152500:
+    step: 152500
+    path: /data/WorldBridge4D-runs/h030-fp32-cycle0-step152500-reference/checkpoint-0152500.pt
+    sha256: 7d4a313e069f1c66681f42c093e527bd4af7ba4a9a37051d835f3015f5f3b9ba
+  h030_rgb1x_152500:
+    step: 152500
+    path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152500-reference/checkpoint-0152500.pt
+    sha256: daa38f4ae5bd07f8c97e3eeb6d27762acfa28dcc14dade1c781ff0667aa3bc84
