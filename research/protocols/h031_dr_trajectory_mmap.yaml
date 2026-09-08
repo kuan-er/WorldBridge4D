@@ -3,7 +3,10 @@ hypothesis: H031
 authority: user_requests_background_DR_3D_GT_conversion_and_space_estimate
 scope: shared_frame_addressable_DR_trajectory_NPY_not_duplicated_dense_GT_per_clip
 owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
-implementation_commit: 58195b8fc4a6ada050d0a501c73ebd29a17eb068
+implementation_commit: d168ac40264b612cda9ee61f1e8aa5f845685c37
+initial_smoke_failure: R-20260908121923-1c5b46_expected_bool_archive_visibility_actual_uint8_no_final_stream_published
+initial_bulk: R-20260908121942-4d75ac_dependency_failed_not_started
+visibility_contract: preserve_uint8_NPY_bytes_reader_astype_bool_matches_original_loader
 inventory_run: R-20260908121545-03b5cd
 inventory_result: succeeded_readonly_435streams_6090clips
 compressed_bytes: 63783156783
@@ -13,8 +16,8 @@ space_policy: reserve64GiB_plus_remaining_payload_times1p2_before_bulk_and_each_
 source: /data/WorldBridge4D-persistent/worldbridge4d-cache/trajectories
 index: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica/splits/train.jsonl
 output: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1
-smoke_run: R-20260908121923-1c5b46
-bulk_run: R-20260908121942-4d75ac
+smoke_run: R-20260908122153-e7c300
+bulk_run: R-20260908122213-b7f2ce
 smoke: unit_tests_then_first_middle_last_streams
 bulk_dependency: smoke_success_and_atomic_smoke_complete_marker
 conversion:

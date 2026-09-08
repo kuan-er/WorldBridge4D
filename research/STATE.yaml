@@ -5,9 +5,12 @@ h031_DR_trajectory_mmap_20260908:
   compressed_bytes: 63783156783
   expanded_bytes: 76416943008
   free_bytes_observed121549Z: 186626809856
-  implementation_commit: 58195b8fc4a6ada050d0a501c73ebd29a17eb068
-  smoke: R-20260908121923-1c5b46
-  bulk: R-20260908121942-4d75ac
+  implementation_commit: d168ac40264b612cda9ee61f1e8aa5f845685c37
+  smoke: R-20260908122153-e7c300
+  bulk: R-20260908122213-b7f2ce
+  initial_smoke: R-20260908121923-1c5b46_failed_uint8_visibility_schema_guard_no_stream_published
+  initial_bulk: R-20260908121942-4d75ac_dependency_failed_not_started
+  correction: preserve_real_uint8_visibility_NPY_bytes_reader_matches_original_astype_bool
   status: tests_plus_three_stream_smoke_submitted_bulk_success_gated_not_complete
   output: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1
   protocol: research/protocols/h031_dr_trajectory_mmap.yaml
