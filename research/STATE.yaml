@@ -78,7 +78,12 @@ h031_native512_capacity_20260908:
   superseded_initial_review: R-20260908113801-b13edd
   previous_GPU: R-20260908093602-618730_terminated_not_started
   previous_review: R-20260908093635-750669_superseded_dependency_branch_do_not_retry
-  GPU_state: K5_first_native512_full_update150005_completed144233557Z_continue_to150010
+  GPU_state: K5_completed150010_at144321609Z_all10updates_process_exit_and_fullstate_review_pending
+  K5_endpoint_peak_GiB: 39.18330669403076
+  K5_endpoint_loss: 1.143874280154705
+  K5_endpoint_gradient_norm: 25.30592155456543
+  K5_endpoint_elapsed_training_seconds: 155.92987527907826
+  K5_endpoint_caveat: completed_updates_not_yet_verified_durable_fullstate_early_warmup_LRfactor0p02_only
   K5_first_native_update: both_rank_native512_primary_and_cycle_paths_backward_optimizer40pairs_success
   K5_first_native_peak_GiB: 39.18183422088623
   K5_first_native_step_seconds: 23.90858068293892
