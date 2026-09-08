@@ -555,17 +555,20 @@ next_step: >-
   three datasets and no overall boundary improvement; small K/PO occluded-boundary
   gains trade against nonboundary error. This is sampled training, not held-out proof.
   Keep the fixed0.1 arm to its endpoint; guard R-20260907185445-827fc1, manifest
-  R-20260907204227-3a167e and GPU2/3 diagnostics R-20260907204615-8ee7c1 /
-  R-20260907204615-23bab2 remain queued. CPU crossed endpoint reviews are now also
-  prequeued as R-20260907233722-6fb24f / R-20260907233722-eeacee after each worker.
+  R-20260907204227-3a167e remain queued. The original GPU diagnostics exhausted their
+  four-hour DEPENDENCY wait without spawning; four downstream jobs also failed before
+  starting. Requeued GPU2/3 diagnostics R-20260908005010-1c2ad3 /
+  R-20260908005010-8446b9 with48-hour dependency/resource waits, unchanged thresholds.
+  CPU crossed reviews R-20260908005353-efd18f / R-20260908005353-f131ba require each
+  replacement GPU worker's success. Current0.1 training was not stopped or modified.
   The one selected successor is a tenfold weaker0.01 dose, NOT a reset from155000:
-  R-20260907233132-73044b is prequeued on exact GPUs2/3 after those diagnostics,
+  R-20260908005122-ee663c is prequeued on exact GPUs2/3 after those diagnostics,
   from the same FULL150000 with original500 warmup once and unchanged5000-update
   budget. CPU215 and three real-input sampling checks passed. Only coefficient and
   tracking change; runtime source delta admits0.01 in config validation. Queued is
   not spawned, first-update complete, memory-safe for the full horizon or improved.
   Verify its first150001 update/storage/LRs/counts, then protect150500 and review152500.
-  Its full155000 guard R-20260907233240-9a8c84 is queued. Later evaluate0.01 on the
+  Its full155000 guard R-20260908005353-ee1896 is queued. Later evaluate0.01 on the
   same fixed inputs, reusing weight0 and0.1 predictions. Returning to baseline alone
   is not useful-boundary-supervision evidence; no automatic wider coefficient grid.
   No SIGKILL, allocator tuning, foreign-process control or GPU substitution.
@@ -2101,12 +2104,14 @@ h030_autonomous_successors_after_next_review:
     - preserve_native_allocator_no_caps_no_tuning_no_periodic_empty_cache_no_GPU_substitution
   continuity_caveat: minimize_avoidable_idle_time_checkpoint_IO_hashing_model_loading_and_lease_handoffs_are_not_zero_latency_no_occupancy_only_jobs
   next_hypothesis: retain_boundary2x_lower_fixed_neighbor_vector_contrast01_to001_one_dose_sensitivity_test
-  new_GPU_successor_submission: R-20260907233132-73044b
-  submission_status: CPU215_passed_GPU23_queued_not_started
-  validation_relays: [R-20260907204615-8ee7c1, R-20260907204615-23bab2]
+  new_GPU_successor_submission: R-20260908005122-ee663c
+  submission_status: CPU215_reused_prestart_dependency_timeout_replacement_GPU23_queued_not_started
+  validation_relays: [R-20260908005010-1c2ad3, R-20260908005010-8446b9]
+  queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
   production: H023_100000_unchanged_until_validated_improvement
 h030_boundary2x_edgecontrast01:
   status: running152500_review_complete_primary_and_overall_boundary_no_gain_one_lower_dose_successor_prequeued
+  observed_during_queue_timeout_recovery: {completed_log_step: 153950, at: '2026-09-08T00:47:33.088Z', factor: 1.0, contrast_weight: 0.1, checkpoint_verification_claim: false}
   latest_verified_step: 152500
   latest_verified_checkpoint: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast01-step152500-reference/checkpoint-0152500.pt
   latest_verified_checkpoint_sha256: 9c19ef639e724a871f163562ed438c66744c66f864cb0e5f3458a3a08a55cc14
@@ -2294,14 +2299,18 @@ h030_crossed_fixed_validation:
   interpretation: conditional_boundary_error_remains_high_on_this_Kubric_screen_but_does_not_identify_architecture_or_motion_module_root_cause_or_remove_depth_identity_geometry_confounding
   next: same_step155000_boundary_vs_edgecontrast_validation_and_crossed_review_reuse_unweighted155000_predictions
 h030_edgecontrast_endpoint_validation:
-  status: queued_while_edge_training_active_no_computation_or_candidate155000_identity_yet
-  CPU_crossed_reviews_K_DR: [R-20260907233722-6fb24f, R-20260907233722-eeacee]
+  status: requeued_after_prestart_dependency_wait_timeout_no_computation_or_candidate155000_identity_yet
+  queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
+  CPU_crossed_reviews_K_DR: [R-20260908005353-efd18f, R-20260908005353-f131ba]
   CPU_review_pairs: [edgecontrast01_155000_vs_boundary2x155000, boundary2x155000_vs_unweighted155000]
   CPU_review_policy: respective_GPU_success_only_reuse_existing_unweighted155000_no_missing_prediction_substitution
   manifest_resolver: R-20260907204227-3a167e
+  manifest_execution_commit: 561a7cb571e7adfb6c084af32aefc5e4fc4dc099
   depends_on: R-20260907185445-827fc1
-  GPU_runs_K_DR: [R-20260907204615-8ee7c1, R-20260907204615-23bab2]
-  execution_commit: 561a7cb571e7adfb6c084af32aefc5e4fc4dc099
+  GPU_runs_K_DR: [R-20260908005010-1c2ad3, R-20260908005010-8446b9]
+  execution_commit: 2754c1beddeec3414463b31d075cd22ce04a9754
+  GPU_wait_timeout_seconds: 172800
+  code_equivalence: evaluation_models_and_crossed_analysis_identical_to561a_GPU_argv_identical_to_failed_prestart_jobs
   physical_gpus_K_DR: [2, 3]
   checkpoint_labels: [h030_boundary2x_155000, h030_edgecontrast01_155000]
   known_control_sha256: fb9b0a8199385ec3c0cd45a64ffa9abe358970ea4b545924b99a8605d5be1555
@@ -2311,11 +2320,15 @@ h030_edgecontrast_endpoint_validation:
   policy: native_uncapped_single_GPU_workers_after_training_no_overlap_no_SIGKILL_no_GPU_substitution
   caveat: future_checkpoint_hashing_and_model_loading_are_not_zero_latency_no_occupancy_work
 h030_boundary2x_edgecontrast0p01:
-  status: CPU215_passed_queued_after_existing_endpoint_validation_not_started
+  status: CPU215_reused_requeued_after_prestart_dependency_timeout_not_started
   protocol: research/protocols/h030_edgecontrast0p01.yaml
-  run: R-20260907233132-73044b
-  execution_commit: 0c26a86ca1b4ec61c0bf9850ad7ec3fee10a7c9d
-  queued_at: 2026-09-07T23:31:32Z
+  queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
+  run: R-20260908005122-ee663c
+  execution_commit: 2754c1beddeec3414463b31d075cd22ce04a9754
+  queued_at: 2026-09-08T00:51:22Z
+  replaced_never_started_run: R-20260907233132-73044b
+  GPU_wait_timeout_seconds: 172800
+  code_equivalence: all_src_tests_configs_analysis_identical_to_CPU215_0c26_snapshot
   physical_gpus: [2, 3]
   config: configs/h030_150k_to_155k_gpu23_b2_k15_boundary2x_edgecontrast0p01.yaml
   config_sha256: 32c982cc7c71a5dd8afbdbda2fbe34e2c5cecd85ef53179de2ca0f42d7e95c9b
@@ -2332,14 +2345,27 @@ h030_boundary2x_edgecontrast0p01:
   real_training_samples: 3
   same_sample_records_targets_and_edge_hashes_as_weight01: true
   preflight_report: /data/WorldBridge4D-runs/h030-edgecontrast0p01-preflight-20260907/preflight.json
-  dependency: R-20260907204615-23bab2
-  requires_both_diagnostics_terminal: [R-20260907204615-8ee7c1, R-20260907204615-23bab2]
+  dependency: R-20260908005010-8446b9
+  requires_both_diagnostics_terminal: [R-20260908005010-1c2ad3, R-20260908005010-8446b9]
   allowed_diagnostic_failure: independent_readonly_nonzero_exit_only_CPU215_always_required_not_training_retry_authority
-  endpoint_guard: R-20260907233240-9a8c84
+  endpoint_guard: R-20260908005353-ee1896
   protected_endpoint_directory: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast0p01-step155000-reference
   output: /data/WorldBridge4D-runs/h030-150k-to-155k-boundary2x-edgecontrast0p01-gpu23-b2-k15
   future_validation: evaluate001_endpoint_on_same_fixed_inputs_reuse_weight0_and01_predictions_no_new_control_inference
   decision_criterion: boundary_tracking_parent_macro_improvement_at_least2percent_both_available_datasets_with_no_more_than1percent_global_or_interior_regression_vs_boundary2x
   falsification: merely_returning_to_weight0_is_not_useful_boundary_gain_no_automatic_wider_coefficient_grid
   caveat: queued_not_spawned_first_update_memory_proof_or_quality_gain_small_validation_screen_PO_still_blocked_H023_unchanged
-updated_at: 2026-09-07T23:37:22Z
+h030_relay_timeout_recovery:
+  protocol: research/protocols/h030_relay_timeout_recovery.yaml
+  notification: N-202d37f7406d7f737d61
+  root_cause: four_hour_GPU_queue_budget_also_covers_dependency_wait_upstream_training_not_finished
+  failed_prestart_jobs: 6
+  replacement_jobs: 6
+  all_replacements_commit: 2754c1beddeec3414463b31d075cd22ce04a9754
+  replacement_status: queued_not_started
+  GPU_wait_seconds_old_new: [14400, 172800]
+  CPU_default_wait_seconds_unchanged: 604800
+  safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
+  current_training: no_stop_restart_extension_or_runtime_change
+  scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
+updated_at: 2026-09-08T01:20:11Z

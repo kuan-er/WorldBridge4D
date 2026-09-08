@@ -119,11 +119,15 @@ new_edgecontrast_training:
   caveat: engineering_parity_and_actual_progress_not_quality_gain_bitwise_FSDP_proof_or_remaining_horizon_memory_guarantee
   next: preserve_full_warmup150500_then_matched152500_review_with_existing_boundary2x_control
 future_endpoint_validation:
-  status: queued_before_edge_training_completion_no_extra_training_arm
+  status: requeued_after_prestart_dependency_timeout_before_edge_training_completion_no_extra_training_arm
+  queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
   CPU_manifest_resolver: R-20260907204227-3a167e
+  CPU_manifest_execution_commit: 561a7cb571e7adfb6c084af32aefc5e4fc4dc099
   depends_on_edge_endpoint_guard: R-20260907185445-827fc1
-  GPU_runs_K_DR: [R-20260907204615-8ee7c1, R-20260907204615-23bab2]
-  execution_commit: 561a7cb571e7adfb6c084af32aefc5e4fc4dc099
+  GPU_runs_K_DR: [R-20260908005010-1c2ad3, R-20260908005010-8446b9]
+  execution_commit: 2754c1beddeec3414463b31d075cd22ce04a9754
+  GPU_wait_timeout_seconds: 172800
+  code_equivalence: inference_models_and_crossed_analysis_identical_to561a_no_scientific_change
   physical_gpus_K_DR: [2, 3]
   labels: [h030_boundary2x_155000, h030_edgecontrast01_155000]
   control_sha256: fb9b0a8199385ec3c0cd45a64ffa9abe358970ea4b545924b99a8605d5be1555

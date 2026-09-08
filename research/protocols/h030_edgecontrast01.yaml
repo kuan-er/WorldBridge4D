@@ -77,8 +77,9 @@ midpoint152500:
   counts_and_eligible_empty_populations: research/protocols/h030_edgecontrast0p01.yaml
   conclusion: no_primary_or_overall_boundary_training_gain_small_K_PO_occluded_boundary_gain_with_nonboundary_cost_and_DR_occluded_regression
   limitation: sampled_training_not_validation_or_gradient_conflict_proof_counts_not_complete_clip_mask_identity
-  successor: R-20260907233132-73044b
+  successor: R-20260908005122-ee663c
   successor_protocol: research/protocols/h030_edgecontrast0p01.yaml
+  successor_queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
 review:
   run: R-20260907174725-f76d81
   window: [150501, 152500]
@@ -162,12 +163,14 @@ relay:
   identities_resources_events_environment_termination: immutable_PRL_Run_records
   future_endpoint_diagnostics: prequeued_compare_boundary2x155000_and_edgecontrast155000_reusing_unweighted155000_predictions
   future_CPU_manifest: R-20260907204227-3a167e
-  future_GPU2_GPU3: [R-20260907204615-8ee7c1, R-20260907204615-23bab2]
+  future_GPU2_GPU3: [R-20260908005010-1c2ad3, R-20260908005010-8446b9]
   future_control_sha256: fb9b0a8199385ec3c0cd45a64ffa9abe358970ea4b545924b99a8605d5be1555
   future_candidate_sha256: unresolved_until_full_state155000_guard
-  future_CPU_crossed_endpoint_reviews_K_DR: [R-20260907233722-6fb24f, R-20260907233722-eeacee]
-  then_tested_GPU23_successor: R-20260907233132-73044b
-  successor_status: CPU215_passed_one001_dose_prequeued_not_started_no_current_arm_change
+  future_CPU_crossed_endpoint_reviews_K_DR: [R-20260908005353-efd18f, R-20260908005353-f131ba]
+  then_tested_GPU23_successor: R-20260908005122-ee663c
+  successor_status: CPU215_reused_one001_dose_requeued_after_prestart_dependency_timeout_no_current_arm_change
+  queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
+  GPU_wait_timeout_seconds: 172800
   scheduling: prequeue_before_current155000_completion_managed_leases_relay_not_overlap
   termination: checkpoint_first_SIGTERM_soft_torchrun_no_SIGKILL
   allocator: native_no_caps_tuning_or_periodic_flushing_all_three_allocator_env_variables_unset

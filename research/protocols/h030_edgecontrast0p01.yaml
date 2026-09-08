@@ -1,7 +1,8 @@
 version: 1
 hypothesis: H030
 phase: one_lower_dose_test_after_edgecontrast01_midpoint_review
-status: CPU215_passed_GPU23_successor_prequeued_not_started
+status: CPU215_reused_prestart_dependency_timeout_replacement_GPU23_prequeued_not_started
+queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
 owner_session: 01a07615-f347-712a-910e-7f7eea16d709
 user_authority: autonomous_bounded_in_scope_successors_after_review_on_exact_physical_GPUs2and3
 triggering_review:
@@ -77,27 +78,31 @@ preflight:
   CUDA_initialized: false
   limitations: not_quality_full_horizon_memory_or_bitwise_FSDP_replay_proof
 submission:
-  run: R-20260907233132-73044b
-  execution_commit: 0c26a86ca1b4ec61c0bf9850ad7ec3fee10a7c9d
+  run: R-20260908005122-ee663c
+  execution_commit: 2754c1beddeec3414463b31d075cd22ce04a9754
   status: queued_not_spawned_or_first_update_complete
-  queued_at: 2026-09-07T23:31:32Z
+  queued_at: 2026-09-08T00:51:22Z
+  replaced_never_started_run: R-20260907233132-73044b
+  original_submission_commit: 0c26a86ca1b4ec61c0bf9850ad7ec3fee10a7c9d
+  code_equivalence: all_src_tests_configs_analysis_identical_to_CPU215_0c26_snapshot
   reason_new_tested_snapshot_not_old_run_fork: old42869_snapshot_validator_rejects001_requires_minimal_audited_admission_change
-  dependency: R-20260907204615-23bab2
+  dependency: R-20260908005010-8446b9
   dependency_allowed: independent_readonly_diagnostic_success_or_nonzero_exit_not_training_retry_authority
-  runtime_gate: CPU215_success_owner_commit_config_SHA_original_SHA_src_tests_config_identical_to_gate_both_GPU_diagnostics_terminal_fresh_output
-  required_other_diagnostic: R-20260907204615-8ee7c1
+  runtime_gate: CPU215_success_owner_commit_config_SHA_original_SHA_src_tests_config_identical_to_gate_both_GPU_diagnostics_terminal_fresh_output_and_retired_training_never_started
+  required_other_diagnostic: R-20260908005010-1c2ad3
+  wait_timeout_seconds: 172800
   resources: exact_GPU2and3_two_rank_shared_managed_lease_minfree65536MiB_plus4096MiB_safety_foreign_processes_untouched
   allocator: native_uncapped_unset_three_allocator_env_variables_cuda_empty_cache_every_steps0
   events: FP32_storage_first_update150001_warmup150500_review152500_end155000_fatal_checkpoint_complete_and900s_progress_watchdog
   termination: checkpoint_first_SIGTERM_soft_torchrun_no_SIGKILL
-  endpoint_guard: R-20260907233240-9a8c84
+  endpoint_guard: R-20260908005353-ee1896
   endpoint_guard_requires: producer_success_complete155000_checkpoint_matching_sidecar_full_state_193Adam_ages_plus5000_all_LRs3e_minus6
   protected_endpoint_directory: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast0p01-step155000-reference
 relay:
   sequence: current01_training_to155000_then_existing_parallel_fixed_GPU2_Kubric_GPU3_DR_endpoint_diagnostics_then_new001_training
-  existing_GPU_diagnostics: [R-20260907204615-8ee7c1, R-20260907204615-23bab2]
+  existing_GPU_diagnostics: [R-20260908005010-1c2ad3, R-20260908005010-8446b9]
   existing_CPU_manifest: R-20260907204227-3a167e
-  new_endpoint_CPU_crossed_reviews_K_DR: [R-20260907233722-6fb24f, R-20260907233722-eeacee]
+  new_endpoint_CPU_crossed_reviews_K_DR: [R-20260908005353-efd18f, R-20260908005353-f131ba]
   CPU_review_pairs: [edgecontrast01_155000_vs_boundary2x155000, boundary2x155000_vs_unweighted155000]
   CPU_reviews_require: respective_GPU_diagnostic_success_only_no_missing_prediction_substitution
   CPU_analysis: reuse_saved_unweighted155000_and_tested_crossed_analysis_no_new_GPU_inference
