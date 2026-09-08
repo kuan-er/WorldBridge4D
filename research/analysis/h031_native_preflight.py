@@ -30,7 +30,7 @@ def main():
     report = {'config_sha256': file_sha256(args.config), 'vae_sha256': vae_sha,
               'source_inventory_sha256': file_sha256(config['source_inventory']),
               'seed': config['seed'],
-              'environment': {p: importlib.metadata.version(p) for p in ['torch','diffusers','numpy','pillow','tensorflow','safetensors']},
+              'environment': {p: importlib.metadata.version(p) for p in ['torch','diffusers','numpy','pillow','tensorflow-cpu','safetensors']},
               'datasets': {}, 'PO_blocked': config['blocked']['pointodyssey'],
               'three_dataset_cache_complete': False, 'training_ready': False}
     estimated = 0
