@@ -146,7 +146,10 @@ class DynamicReplicaDataset:
     def __init__(self, cache_root: str | Path, split: str = "train", image_size: int = W,
                  raw_root: str | Path | None = None,
                  trajectory_cache_root: str | Path = COMPACT_TRAJECTORY_ROOT,
-                 depth_cache_root: str | Path = DEPTH_CACHE_ROOT) -> None:
+                 depth_cache_root: str | Path = DEPTH_CACHE_ROOT,
+                 trajectory_mmap_root: str | Path | None = None,
+                 trajectory_mmap_index: str | Path | None = None,
+                 trajectory_mmap_complete_sha256: str | None = None) -> None:
         self.root = Path(cache_root)
         self.image_size = int(image_size)
         self.trajectory_cache_root = Path(trajectory_cache_root)
@@ -174,6 +177,13 @@ class DynamicReplicaDataset:
         # per-stream locks only coalesce duplicate scene loads.
         self._stream_load_locks: dict[str, threading.Lock] = {}
         self._clip_load_locks: dict[str, threading.Lock] = {}
+        self._trajectory_mmap = None
+        if trajectory_mmap_root is not None:
+            from ..cache.trajectory_mmap_reader import TrajectoryMmapReader
+            self._trajectory_mmap = TrajectoryMmapReader(
+                trajectory_mmap_root, trajectory_mmap_index or index,
+                self.trajectory_cache_root, trajectory_mmap_complete_sha256,
+            )
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -271,17 +281,20 @@ class DynamicReplicaDataset:
                 if cached is not None:
                     self._clips.move_to_end(key)
                     return cached
-            stream = self._load_stream(str(row["stream"]))
-            try:
-                indices = [stream["path_to_index"][str(frame["trajectory"])] for frame in row["frames"]]
-            except KeyError as exc:
-                raise FileNotFoundError(f"clip {key} is not covered by stream cache") from exc
-            annotation = {
-                "trajs_2d": stream["trajs_2d"][indices],
-                "trajs_3d_world": stream["trajs_3d_world"][indices],
-                "visible": stream["visible"][indices],
-                "instances": stream["instances"][indices],
-            }
+            if getattr(self, '_trajectory_mmap', None) is not None:
+                annotation = self._trajectory_mmap.read(row)
+            else:
+                stream = self._load_stream(str(row["stream"]))
+                try:
+                    indices = [stream["path_to_index"][str(frame["trajectory"])] for frame in row["frames"]]
+                except KeyError as exc:
+                    raise FileNotFoundError(f"clip {key} is not covered by stream cache") from exc
+                annotation = {
+                    "trajs_2d": stream["trajs_2d"][indices],
+                    "trajs_3d_world": stream["trajs_3d_world"][indices],
+                    "visible": stream["visible"][indices],
+                    "instances": stream["instances"][indices],
+                }
             if not np.all(annotation["instances"] == annotation["instances"][0:1]):
                 raise ValueError(f"track instance identity changed inside {key}")
             with self._clip_lock:

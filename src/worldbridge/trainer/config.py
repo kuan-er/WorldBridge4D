@@ -124,9 +124,10 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError('source edge contrast control requires boundary2x')
     native_k15 = bool(config.get('native_kubric512_b1_a4_k15', False))
     native_k9 = bool(config.get('native_kubric512_b1_a4_k9', False))
-    if native_k15 and native_k9:
+    native_k5 = bool(config.get('native_kubric512_b1_a4_k5', False))
+    if sum((native_k15, native_k9, native_k5)) > 1:
         raise ValueError('select only one native512 target profile')
-    native_512 = native_k15 or native_k9
+    native_512 = native_k15 or native_k9 or native_k5
     if native_512:
         if (mode != 'decoder_only' or master_precision != 'fp32' or not cycle_enabled
                 or set(cycle_names) != supported_cycle_names or boundary is not None
@@ -159,7 +160,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 9 if native_k9 else (15 if native_k15 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19))
+    required_targets = 5 if native_k5 else (9 if native_k9 else (15 if native_k15 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)))
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))

@@ -110,6 +110,9 @@ def _load_dynamic_replica_dataset(
             "trajectory_cache_root", DYNAMIC_REPLICA_TRAJECTORY_CACHE
         ),
         depth_cache_root=values.get("depth_cache_root", DYNAMIC_REPLICA_DEPTH_CACHE),
+        trajectory_mmap_root=values.get('trajectory_mmap_root') if split == 'train' else None,
+        trajectory_mmap_index=Path(values['cache_root'])/'splits'/f'{split}.jsonl',
+        trajectory_mmap_complete_sha256=values.get('trajectory_mmap_complete_sha256'),
     )
     return CachedExternalDataset(
         geometry, values["cache_root"], "dynamic_replica", split=split,
@@ -146,7 +149,7 @@ def load_dataset(
         "rgb_cache_root": rgb_cache_root,
         "rgb_cache_max_open_shards": rgb_cache_max_open_shards,
     }
-    native_512 = bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False))
+    native_512 = bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False))
     if name == "kubric":
         if native_512:
             if split != 'train' or allow_missing_latents:
