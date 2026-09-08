@@ -13,11 +13,13 @@ h031_native512_capacity_20260908:
   CPU_initial_data_failure: R-20260908092904-52c706_PO_uses_existing_per_clip_latents_not_compact_shards
   correction: discover_existing_PO_DR_per_clip256_tier_only_in_native_profile_actual_missing_reads_still_fatal_no_VAE_generation
   CPU_corrected_gate: R-20260908093507-6980a5
-  CPU_observation: 301tests_passed15p78s_real_both_rank_plans_testing_no_GPU_yet
+  CPU_observation: succeeded_exit0_20260908T094010Z_301tests_and_real_both_rank_10step_inputs_NATIVE512_CAPACITY_CPU_OK
   GPU_test: R-20260908093602-618730
   CPU_fullstate_review: R-20260908093635-750669
-  GPU_state: queued_success_gated_not_started
+  GPU_state: queued_waiting_GPU23_not_started_after_CPU_success
   old_H030: R-20260908051017-18ab7d
+  old_H030_observation: last_confirmed_update154055_at110801Z_progress_stalled900s_geometry_future_wait_later_backward_stack_not_proven_OOM
+  old_H030_stop_request: TERM-20260908112401-04f92d_SIGTERM_sent_to_both_ranks_terminal_and_checkpoint_not_yet_confirmed
   stop_policy: after_CPU_gate_success_full_update_checkpoint_SIGTERM_only
   exact_GPUs: [2, 3]
   minimum_plus_safety_MiB_each: [49152, 4096]
