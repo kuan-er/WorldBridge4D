@@ -4,9 +4,12 @@ A cache miss is allowed only in this user-selected mode. A corrupt published
 entry or missing/changed native source is fatal, never an eligibility fallback.
 Training never writes to or races the background GT producer's output files.
 """
+from dataclasses import replace
 import json
 from pathlib import Path
 import time
+
+import numpy as np
 
 from .native import file_sha256, rgb_identity
 from ..movif import MOViFDataset
@@ -54,6 +57,9 @@ class NativeGTDemandReader:
                 if rgb_identity(decode_kubric_rgb(raw))!=identity:
                     raise RuntimeError('original native GT/RGB identity mismatch')
                 sample=self.native._decode(raw,row['raw_index'],decode_rgb=False)
+                # Match _load_compact_sample's unused metadata placeholders.
+                # Actual training RGB remains the separately verified RGB cache.
+                sample=replace(sample,video_name='',rgb=np.zeros((0,0,0,3),np.uint8))
                 mode='original_native_raw'
             _check_source(self.manifest,row['path'])
             if sample.depth.shape!=(21,512,512) or sample.segmentation.shape!=(21,512,512) or sample.clip_start!=0:
