@@ -1,7 +1,7 @@
 version: 1
 hypothesis: H030
 phase: one_lower_dose_test_after_edgecontrast01_midpoint_review
-status: running_actual_FP32_storage_first_completed150001_and_control_parity_verified
+status: running_warmup150500_full_state_protected_registered_no_midpoint_or_endpoint_quality_claim
 endpoint_control_and_first_update_review: research/protocols/h030_edgecontrast155000_review.yaml
 queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
 owner_session: 01a07615-f347-712a-910e-7f7eea16d709
@@ -78,6 +78,26 @@ preflight:
   scalar_gradient_test: tenfold_auxiliary_gradient_increment_reduction_before_clipping_and_Adam_not_tenfold_optimizer_update_claim
   CUDA_initialized: false
   limitations: not_quality_full_horizon_memory_or_bitwise_FSDP_replay_proof
+warmup150500:
+  log_at: 2026-09-08T02:36:21.288Z
+  guard: R-20260908023937-d93b66
+  guard_succeeded_at: 2026-09-08T02:40:00.759Z
+  guard_execution_commit: 9f22b5b34da43e946e10beac39aaf2c4eb1a0d81
+  checkpoint: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast0p01-step150500-reference/checkpoint-0150500.pt
+  sha256: 02229053f7765fafef1a0685b51b92b16a3014fb5bb55ccfa38bec7753347943
+  artifact: artifact://H030/R-20260908005122-ee663c/checkpoint/02229053f7765faf
+  registered_at: 2026-09-08T02:41:58.808Z
+  bytes: 7864619431
+  full_state: format3_FP32_model_Adam_world2_RNG2
+  all193_Adam_age_increments: 500
+  Adam_age_range: [50500, 65500]
+  actual_and_base_LRs: [0.000003, 0.000003, 0.000003]
+  counters_K_PO_DR: [421400, 361200, 421400]
+  sidecar: copied_matching_live150500_not_reconstructed
+  replica: local_same_inode_hardlink_outside_rotation_not_independent_remote_replica
+  producer_files_modified: false
+  next: continue_original_budget_protect152500_review_matched_full_LR_counts_against_weight0_and01
+  caveat: warmup_batch_and_storage_verification_are_not_quality_or_remaining_horizon_memory_proof
 submission:
   run: R-20260908005122-ee663c
   execution_commit: 2754c1beddeec3414463b31d075cd22ce04a9754

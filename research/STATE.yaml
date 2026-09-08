@@ -561,8 +561,9 @@ next_step: >-
   objectives, GT counts and sampling fingerprints match both controls; auxiliary
   weight0.01 and arithmetic match. This is not quality or full-horizon memory proof.
   Keep the same original FULL150000/Adam/counters/world2/RNG2,500 warmup once and
-  5000-update budget unchanged. Protect actual150500 and152500 publications with
-  all3e-6 guard override; review raw/count-gated midpoint against existing controls.
+  5000-update budget unchanged. Warmup150500 full state is now protected and registered
+  via R-20260908023937-d93b66, with matching copied sidecar and all3e-6 rates.
+  Protect152500 on actual publication; review raw/count-gated midpoint against controls.
   Full155000 guard R-20260908005353-ee1896 remains queued. Future fixed0.01 validation
   is prequeued via CPU manifest R-20260908020906-781b4d, GPU2/3
   R-20260908021002-0fca6e / R-20260908021002-78a773 and success-only CPU reviews
@@ -2411,7 +2412,31 @@ h030_edgecontrast_endpoint_validation:
   policy: native_uncapped_single_GPU_workers_after_training_no_overlap_no_SIGKILL_no_GPU_substitution
   caveat: future_checkpoint_hashing_and_model_loading_are_not_zero_latency_no_occupancy_work
 h030_boundary2x_edgecontrast0p01:
-  status: running_FP32_storage_first_completed150001_and_control_parity_verified_not_midpoint_or_endpoint_quality
+  status: running_warmup150500_full_state_protected_registered_no_midpoint_or_endpoint_quality_claim
+  latest_verified_step: 150500
+  latest_verified_checkpoint: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast0p01-step150500-reference/checkpoint-0150500.pt
+  latest_verified_checkpoint_sha256: 02229053f7765fafef1a0685b51b92b16a3014fb5bb55ccfa38bec7753347943
+  latest_verified_checkpoint_artifact: artifact://H030/R-20260908005122-ee663c/checkpoint/02229053f7765faf
+  warmup150500:
+    notification: N-8964aa6ef7edbb8b2801
+    log_at: 2026-09-08T02:36:21.288Z
+    guard: R-20260908023937-d93b66
+    execution_commit: 9f22b5b34da43e946e10beac39aaf2c4eb1a0d81
+    guard_succeeded_at: 2026-09-08T02:40:00.759Z
+    registered_at: 2026-09-08T02:41:58.808Z
+    bytes: 7864619431
+    full_state: format3_FP32_model_Adam_world2_RNG2_matching_copied_sidecar
+    all193_Adam_age_increments_from150000: 500
+    Adam_age_range: [50500, 65500]
+    actual_and_base_LRs: [0.000003, 0.000003, 0.000003]
+    counters_K_PO_DR: [421400, 361200, 421400]
+    sidecar: copied_matching_live150500_not_reconstructed
+    replica: local_same_inode_hardlink_outside_rotation_not_independent_remote_replica
+    last_batch_XYZ: 0.08997453935444355
+    last_batch_EPE_m: 0.47909975051879883
+    peak_GiB: 65.56768655776978
+    action: continue_unchanged_to152500_review_then155000_no_signal_restart_or_retune
+    caveat: completed_warmup_and_full_state_protection_not_quality_or_remaining_horizon_memory_proof
   protocol: research/protocols/h030_edgecontrast0p01.yaml
   endpoint_control_review: research/protocols/h030_edgecontrast155000_review.yaml
   spawned_at: 2026-09-08T02:01:05.854Z
@@ -2491,4 +2516,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-08T02:22:34Z
+updated_at: 2026-09-08T02:41:58Z
