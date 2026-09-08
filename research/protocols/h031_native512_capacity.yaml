@@ -2,8 +2,19 @@ version: 1
 hypothesis: H031
 scope: user_authorized_code_then_safe_stop_current_training_then_test_native512_B1_A4_K15
 owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
-status: first_DR256_input_skew_NCCL180s_timeout_stop_requested_zero_updates_no_native512_capacity_result
-implementation_commit: f573376436c47d4100dfd9ea29cc94395723f0fa
+status: bounded_geometry_replay_CPU49_passed_real80_staging_pending_success_gated_GPU_retry
+implementation_commit: 7a37a111811dfc81a00d9570d3d52e5bcadb3c8b
+replay:
+  authority: user_approved_input_fix_then_same_GPU23_B1A4K15_retry
+  CLI: --geometry-replay
+  root: /data/WorldBridge4D-runs/h031-geometry-replay-20260908
+  scope: all80_bounded_K_PO_DR_geometry_results_not_full_corpus
+  integrity: exact_nested_numpy_dtype_shape_readback_fileSHA_config_index_request_binding_no_pickle_no_live_fallback
+  sampling: original_deterministic_plan_source_permutation_fallback_and_target_RNG_preserved
+  modalities: original_local_latent_and_reverse_RGB_readers_prechecked_not_reencoded
+  readiness: separate_Gloo120s_monitored_barrier_each_micro_before_FSDP_forward_after_input_preparation
+  CPU: R-20260908115826-c7e473
+  tests: 49passed23p18s_including_real_two_rank_Gloo_success_timeout
 config: configs/h031_k512_po256_dr256_b1_a4_k15_capacity.yaml
 seed: 20260812
 geometry_seed: 20260812
@@ -61,14 +72,16 @@ runs:
   initial_gate_failure: required_PO_compact_latent_shards_although_actual_existing_cache_is_lazy_per_clip_no_GPU_started
   correction: isolated_native_profile_allows_existing_external_per_clip_tier_discovery_missing_reads_remain_fatal_no_256_global_relaxation
   corrected_CPU_gate: R-20260908093507-6980a5
-  corrected_GPU: R-20260908113732-aad79b
-  corrected_CPU_fullstate_review: R-20260908113801-b13edd
+  corrected_GPU: R-20260908115928-3e16b6
+  corrected_CPU_fullstate_review: R-20260908115958-b40da8
+  initial_capacity: R-20260908113732-aad79b_terminated_exit1_at115514Z_after_NCCL_timeout_no_update
+  initial_review: R-20260908113801-b13edd_superseded
   previous_52GiB_GPU: R-20260908093602-618730_terminated_before_start
   previous_review: R-20260908093635-750669_superseded
   started_at: 2026-09-08T11:37:42.373Z
   fork_caveat: resources_only_same_f573376_commit_inherited_admission_print_is_stale_Run_resources_authoritative
   superseded_GPU_and_review: [R-20260908093221-3e2263, R-20260908093321-78d45c]
-  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-capacity-20260908
+  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-replay-capacity-20260908
 handoff:
   current_H030: R-20260908051017-18ab7d
   stop_only_after: code_CPU_tests_and_real_input_gate_succeeded
