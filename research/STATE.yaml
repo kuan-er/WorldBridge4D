@@ -52,7 +52,13 @@ h031_native512_capacity_20260908:
   superseded_initial_review: R-20260908113801-b13edd
   previous_GPU: R-20260908093602-618730_terminated_not_started
   previous_review: R-20260908093635-750669_superseded_dependency_branch_do_not_retry
-  GPU_state: live_readiness_run_started20260908T120641735Z_initializing_no_update_confirmed
+  GPU_state: first_completed_update150001_DR256_at122918660Z_continue_to_nativeK512_no_fit_claim_yet
+  first_update_loss: 0.011444631149061024
+  first_update_gradient_norm: 0.5020994544029236
+  first_update_peak_cuda_GiB: 23.089203357696533
+  first_update_seconds: 1252.3332870670129
+  first_update_geometry_wait_seconds_max_rank: 1181.7202203902416
+  first_update_pairs: 120
   failure_evidence: rank0_geometry_wait355s_then_forward114657Z_rank1_last_phase_geometry_wait_from114053Z_no_OOM_evidence
   stop_request: TERM-20260908115017-c190e9_SIGTERM_only_terminated_exit1_at115514Z_no_checkpoint_or_completed_update
   next_capacity_action: fix_or_stage_bounded_DR_geometry_and_verify_rank_readiness_before_retry_no_automatic_K_or_GPU_change
