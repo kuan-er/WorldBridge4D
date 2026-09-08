@@ -1,4 +1,22 @@
 current_task: T-20260908032232-e95da1
+h031_gpu67_split_20260908:
+  authority: user_explicitly_authorized_physical_GPUs6_and7
+  split: by_dataset_Kubric_GPU6_DR_GPU7_not_equal_time_or_equal_clip_shards
+  CPU_handoff: R-20260908053332-b0146a
+  CPU_result: succeeded_GPU_only_delta_same_manifest_bytes_VAE_hash_checked
+  Kubric_GPU6: R-20260908053354-7cfeeb
+  Kubric_started_at: 2026-09-08T05:34:02.865Z
+  DR_GPU7_smoke: R-20260908053416-0946c1
+  DR_smoke_started_at: 2026-09-08T05:34:26.080Z
+  DR_GPU7_bulk: R-20260908053440-b8f756
+  DR_bulk_observation: queued_after_smoke_success_not_started
+  previous_pair: R-20260908052437-22e2a9
+  previous_pair_stop: both_workers_exit3_clip_boundary_SIGTERM_at053319_no_SIGKILL
+  preserved_cache: K952_prior_bulk_plus_smoke_DR24_prior_pair_plus_smoke_replay_not_additive
+  execution_commit: bf38df717624647e56fb9dd54ddc95e8c6d3f066
+  admission_MiB_K_DR: [20480, 36864]
+  protocol: research/protocols/h031_gpu67_split.yaml
+  event_safety: explicit_max_triggers1_all_listeners_prevents_repeated_progress_alias_explosion
 h031_parallel_gpu6_20260908:
   authority: user_explicitly_requested_concurrent_Kubric_and_DR_on_GPU6
   owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009

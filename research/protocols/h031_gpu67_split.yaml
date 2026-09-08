@@ -1,0 +1,51 @@
+version: 1
+hypothesis: H031
+task: T-20260908032232-e95da1
+owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
+authority: user_explicitly_requested_GPU6_and_GPU7_split
+supersedes: research/protocols/h031_gpu6_po256.yaml
+split: Kubric_GPU6_DR_GPU7_not_equal_time_or_equal_clip_shards
+seed: 20260908
+config_K: configs/h031_native_cache_gpu6.yaml
+config_DR: configs/h031_native_cache_gpu7.yaml
+only_config_delta: cache_gpu_string6_to7
+CPU_handoff: R-20260908053332-b0146a
+CPU_handoff_result: succeeded
+new_DR_preflight: /data/WorldBridge4D-runs/h031-native-gpu7-handoff-20260908/dynamic_replica
+K_bulk: R-20260908053354-7cfeeb
+DR_smoke: R-20260908053416-0946c1
+DR_bulk: R-20260908053440-b8f756
+execution_commit: bf38df717624647e56fb9dd54ddc95e8c6d3f066
+DAG: old_pair_checkpointed_stop_then_CPU_then_K6_and_DR7_smoke_then_DR7_bulk
+K_started_at: 2026-09-08T05:34:02.865Z
+DR_smoke_started_at: 2026-09-08T05:34:26.080Z
+DR_bulk_latest: queued_not_computed
+same_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1
+K_manifest: aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+DR_manifest: bfc8e394a73243cff4050430c013f420efe44e36fe43a0eaeda9128f78051011
+VAE_sha256: 38071ab59bd94681c686fa51d75a1968f64e470262043be31f7a094e442fd981
+original_pair: R-20260908052437-22e2a9
+original_pair_stopped: both_workers_exit3_at_clip_boundary_SIGTERM_no_SIGKILL
+cache_policy: preserve_all_atomic_files_redecode_RGB_and_verify_before_reuse_no_reencoding_existing_bulk_latents
+precision: unchanged_native_FP32_posterior_mean_no_tiling_or_allocator_changes
+PO: retain_original256_no_reencoding
+memory_MiB:
+  K_minfree: 16384
+  DR_minfree: 32768
+  safety_each: 4096
+wait_seconds: 172800
+minimum_free_storage_bytes: 68719476736
+foreign_process_control: none
+event_listener_limit: max_triggers1_explicit_for_each_listener
+metadata_repair:
+  cause: repeated_progress_listeners_without_max_triggers_created_over100_YAML_aliases_parser_rejected_record
+  first_repair: R-20260908053144-0ad83f_concurrent_update_detected_no_repair_applied
+  bounded_retry: R-20260908053219-24505e
+  repair_window: R-20260908053255-cafaab
+  policy: expand_aliases_with_parsed_value_equality_and_compare_before_atomic_replace_no_event_or_status_deletion
+  backups: /data/WorldBridge4D-runs/h031-prl-alias-repair-20260908
+  stop: PRL_run_control_only_after_repair_no_direct_signals_or_lease_bypass
+caveats:
+  - cache_replay_processed_counts_not_new_encoding
+  - CPU_IO_and_GPU_contention_not_yet_profiled_no_claim_of_speedup
+  - native_training_alignment_and_memory_admission_remain_pending
