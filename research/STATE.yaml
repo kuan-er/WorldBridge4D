@@ -9,7 +9,13 @@ h031_gpu67_split_20260908:
   DR_GPU7_smoke: R-20260908053416-0946c1
   DR_smoke_started_at: 2026-09-08T05:34:26.080Z
   DR_GPU7_bulk: R-20260908053440-b8f756
-  DR_bulk_observation: queued_after_smoke_success_not_started
+  DR_smoke_result: succeeded_three_reencoded_clips_exactly_match_existing_GPU6_cache_repeat_error0_peak14p130588531GiB
+  DR_bulk_observation: processed100_written76_reused24_at054904_continue
+  DR_bulk_started_at: 2026-09-08T05:36:28.372Z
+  DR_peak_cuda_GiB: 14.13058853149414
+  DR_new_encoding_window: clips25to100_76writes_in519p836seconds_about6p84seconds_per_clip
+  K_current_replay: processed542_written0_reused542_at054913_prior952_plus_smoke_still_preserved
+  throughput_caveat: K_still_replaying_not_yet_two_active_encoders_no_speedup_or_IO_bottleneck_claim
   previous_pair: R-20260908052437-22e2a9
   previous_pair_stop: both_workers_exit3_clip_boundary_SIGTERM_at053319_no_SIGKILL
   preserved_cache: K952_prior_bulk_plus_smoke_DR24_prior_pair_plus_smoke_replay_not_additive

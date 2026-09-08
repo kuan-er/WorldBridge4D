@@ -26,6 +26,9 @@ AUDITED_PATHS = [
     'src/worldbridge/data/commands/precompute_native_latents.py', 'src/worldbridge/models/wan.py',
     'research/analysis/h031_native_preflight.py', 'tests/test_native_latents.py',
     'configs/h031_native_cache.yaml',
+    'src/worldbridge/data/cache/native_rgb.py',
+    'src/worldbridge/data/commands/extract_native_rgb.py',
+    'tests/test_native_rgb.py',
 ]
 
 
@@ -37,6 +40,7 @@ def main():
     p.add_argument('--owner-session', required=True)
     p.add_argument('--dataset', choices=['kubric', 'dynamic_replica'], required=True)
     p.add_argument('--stage', choices=['smoke', 'bulk'], required=True)
+    p.add_argument('--rgb-root', type=Path, help='Verified local RGB snapshot; no raw-source fallback')
     args = p.parse_args()
     config = yaml.safe_load(Path(args.config).read_text())
     meta = yaml.safe_load((Path('/data/WorldBridge4D/runs') / args.cpu_gate / 'run.yaml').read_text())
@@ -49,6 +53,12 @@ def main():
     validate_manifest(manifest)
     assert manifest['sha256'] == ready['datasets'][args.dataset]['manifest_sha256']
     assert manifest['vae_sha256'] == ready['vae_sha256']
+    local_rgb = None
+    if args.rgb_root is not None:
+        from worldbridge.data.cache.native_rgb import NativeRGBCache
+        assert args.dataset == 'kubric', 'local migration is authorized for Kubric only'
+        local_rgb = NativeRGBCache(args.rgb_root, manifest)
+        local_rgb.require_complete()
     assert os.environ.get('CUDA_VISIBLE_DEVICES') == config['cache_gpu']
     assert all(not os.environ.get(k) for k in ['PYTORCH_CUDA_ALLOC_CONF', 'PYTORCH_ALLOC_CONF', 'PYTORCH_NO_CUDA_MEMORY_CACHING'])
     assert torch.cuda.device_count() == 1
@@ -63,6 +73,8 @@ def main():
     if args.stage == 'bulk':
         smoke = json.loads((cache.root / 'smoke_complete.json').read_text())
         assert smoke['manifest_sha256'] == manifest['sha256'] and smoke['repeat_max_abs_error'] == 0
+        if local_rgb is not None:
+            assert smoke.get('rgb_input_root') == str(args.rgb_root.resolve())
     stopping = False
     def request_stop(_signum, _frame):
         nonlocal stopping
@@ -84,8 +96,13 @@ def main():
     begin = time.monotonic()
     summary = {'manifest_sha256': manifest['sha256'], 'stage': args.stage, 'dataset': args.dataset,
                'requested': len(indices), 'processed': 0, 'written': 0, 'reused': 0,
-               'repeat_max_abs_error': None, 'training_ready': False}
-    for row, rgb, identity in iter_rgb(manifest, indices):
+               'repeat_max_abs_error': None, 'training_ready': False,
+               'rgb_input_root': str(args.rgb_root.resolve()) if local_rgb is not None else None}
+    inputs = local_rgb.iter_rgb(indices) if local_rgb is not None else iter_rgb(manifest, indices)
+    input_begin = time.monotonic()
+    for row, rgb, identity in inputs:
+        input_seconds = time.monotonic() - input_begin
+        work_begin = time.monotonic()
         i = row['index']
         if stopping:
             atomic_json(cache.root / f'{args.stage}_partial_stop.json', summary)
@@ -112,16 +129,19 @@ def main():
             else:
                 summary['reused'] += 1
             del tensor, latent
+        summary['last_clip_seconds'] = {'read_decode_hash_rgb': input_seconds,
+                                        'latent_read_or_encode_write': time.monotonic() - work_begin}
         summary['processed'] += 1
         summary['elapsed_seconds'] = time.monotonic() - begin
         summary['peak_cuda_GiB'] = torch.cuda.max_memory_allocated() / 2**30
         atomic_json(cache.root / f'{args.stage}_progress.json', summary)
         print(json.dumps({'event': 'NATIVE_CACHE_PROGRESS', 'index': i, **summary}), flush=True)
+        input_begin = time.monotonic()
     assert summary['processed'] == len(indices)
     if args.stage == 'bulk':
         expected = {cache.path(i).name for i in indices}
         assert {p.name for p in cache.root.glob('latent_*.safetensors')} == expected
-        # Every requested cache was verified against re-decoded raw RGB above.
+        # Every cache was verified against freshly decoded or SHA-verified staged RGB.
         summary['all_existing_training_index_entries_verified'] = True
     atomic_json(cache.root / f'{args.stage}_complete.json', summary)
     print(f'NATIVE_CACHE_{args.stage.upper()}_OK {args.dataset}', flush=True)
