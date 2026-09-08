@@ -1,4 +1,21 @@
 current_task: T-20260908032232-e95da1
+h031_parallel_gpu6_20260908:
+  authority: user_explicitly_requested_concurrent_Kubric_and_DR_on_GPU6
+  owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
+  reason: PRL_shared_allows_foreign_processes_but_one_Run_per_GPU_lease_requires_one_supervisor
+  previous_K_run: R-20260908042214-89af79
+  K_stop: SIGTERM_clip_boundary_processed952_preserved_write_once_cache
+  DR_smoke: R-20260908051751-581253
+  DR_smoke_result: three_native720x1280_clips_repeat_error0_peak14p130588531GiB
+  supervisor_CPU_tests: R-20260908052054-0eb5cb
+  tests_passed: 36
+  combined_gate: R-20260908052119-b7e576
+  pair_bulk: R-20260908052142-a7225f
+  status: pair_submitted_first_joint_progress_not_yet_observed
+  physical_gpu: 6
+  admission_MiB: 45056
+  caveat: K8GiB_budget_above_observed_process6p2_DR32_plus4_safety_no_allocator_cap
+  throughput: baseline_K918_at3214seconds_restart_revalidates_old_RGB_before_new_K_writes_IO_bottleneck_unproven
 active_hypotheses: [H030, H031]
 recent_results:
   - run_id: R-20260808164859-ac2cfe

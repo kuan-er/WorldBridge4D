@@ -1,8 +1,29 @@
 version: 1
 hypothesis: H031
 task: T-20260908032232-e95da1
-owner_session: 01a07615-f347-712a-910e-7f7eea16d709
-status: GPU6_K_smoke_succeeded_bulk_running_DR_queued_PO256_retention_checked_training_not_started
+owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
+status: GPU6_DR_smoke_passed_joint_K_DR_bulk_submitted_training_not_started
+parallel_update_20260908:
+  user_authority: explicit_K_DR_concurrent_on_GPU6
+  original_CPU_gate_owner_preserved: 01a07615-f347-712a-910e-7f7eea16d709
+  reason: single_PRL_Run_lease_per_GPU_even_in_shared_mode
+  supersedes_serial_DAG_below: true
+  old_K_processed_before_soft_stop: 952
+  DR_smoke: R-20260908051751-581253
+  DR_smoke_clips: 3
+  DR_smoke_repeat_error: 0
+  DR_smoke_peak_GiB: 14.13058853149414
+  CPU_tests: R-20260908052054-0eb5cb
+  CPU_passed: 36
+  combined_gate: R-20260908052119-b7e576
+  pair_bulk: R-20260908052142-a7225f
+  execution_commit: f4eaf81dd39cee359578c059c200c7a0c71b1418
+  joint_free_MiB: 45056
+  memory_budget_GiB: {kubric: 8, dynamic_replica: 32, safety: 4}
+  memory_rationale: K_measured_allocated4p38_process6p2_DR_smoke14p13_keep_DR32_budget
+  policy: same_manifests_FP32_native_encoder_seed_no_allocator_changes_single_lease_two_workers_no_SIGKILL
+  scope: throughput_experiment_IO_bottleneck_and_speedup_not_yet_demonstrated
+  retired_DR_runs: [R-20260908042238-cb8e4e, R-20260908042301-6aa58e, R-20260908051812-e714e1]
 previous_protocol: research/protocols/h031_native_resolution.yaml
 user_authority:
   cache_gpu: explicitly_authorized_physical_GPU6_for_Kubric_and_DynamicReplica
