@@ -1,0 +1,296 @@
+status: succeeded152500_no_clear_gain_awaiting_user_decision
+completion152500:
+  notification_acknowledged: N-7f8bb4f174ff7cecf4ad
+  final_optimizer_update_at: 2026-09-07T09:36:24.863Z
+  process_exit_at: 2026-09-07T09:38:06.106Z
+  exit_code: 0
+  agent_termination_signals: none
+  restored_segment_updates: 2000
+  selected_control_trajectory_updates: 2500
+  trajectory: original_run_through150500_plus_recovery_to152500_not_uninterrupted2500
+  LR_factor: 1.0
+  weighted_cycle: 0.0
+  final_sampled_step_seconds: 3.478575450135395
+  process_peak_cuda_memory_gib: 65.44381475448608
+  original_SIGSEGV_root_cause: still_unresolved_successful_recovery_is_not_a_root_cause_fix
+final_review152500:
+  analysis_run: R-20260907093928-af9f19
+  analysis_commit: 3f5d7b6f7a46a8822c83abe36cf67bb6549c156a
+  analysis_succeeded_at: 2026-09-07T09:39:29.562Z
+  windows: [[150501, 151500], [151501, 152500]]
+  paired_logged_updates_per_window_per_reference: 300
+  paired_logged_updates_full_LR_per_reference: 600
+  full_LR_counts: {kubric: 300, pointodyssey: 200, dynamic_replica: 100}
+  midpoint_metrics_reproduced_exactly: true
+  aggregation: batch_count_weighted_means_not_average_percentage_changes
+  warmup_and_failed_parent_unsaved_tail_excluded: true
+  output: /data/WorldBridge4D-runs/h030-rgb1x-final-fullLR-review152500-20260907
+  dataset_order: [kubric, pointodyssey, dynamic_replica]
+  primary_reference:
+    run: R-20260906224802-229787
+    label: RGB10x_FP32_cycle0
+    second_window_XYZ_change_pct: [0.03317217271161521, -0.005558830181529029, 0.07643437751465587]
+    second_window_EPE_change_pct: [0.021168943874028123, -0.015928314790403242, -0.03807536143766166]
+    full_LR2000_XYZ_change_pct: [0.0011352831817523779, -0.00019538260279672315, 0.04581679209172407]
+    full_LR2000_EPE_change_pct: [-0.0033745867925372153, -0.013339861870254044, -0.010803745216914074]
+    assessment: near_flat_tiny_EPE_mean_reductions_mixed_XYZ_and_window_directions_no_clear_gain
+    report: vs-rgb10x-cycle0/final_review.json
+  secondary_reference:
+    run: R-20260906125858-4dd8d0
+    label: BF16_norm30
+    second_window_XYZ_change_pct: [0.5650592444324198, -0.015492440632580706, 0.2112748818815957]
+    second_window_EPE_change_pct: [1.17340177783265, 0.2477705345904413, 1.1264869386219623]
+    full_LR2000_XYZ_change_pct: [0.48755222191985137, 0.07064114318326986, 0.20510043113779464]
+    full_LR2000_EPE_change_pct: [0.8923368919035335, 0.25730249990350007, 0.8344973567887992]
+    assessment: EPE_higher_all_datasets_in_both_windows_aggregate_XYZ_also_higher_all
+    report: vs-bf16-norm30/final_review.json
+  decision: no155k_extension_no_auto150k_restart_no_GPU_successor_wait_for_user
+  proposed_next_phase: small_fixed_validation_and_motion_boundary_occlusion_error_decomposition_before_another_training_change
+  proposal_requires_confirmation: true
+  cancelled_standalone_diagnostics_restarted: false
+  production_baseline: H023_100k_unchanged
+  caveats: sampled_training_fingerprints_not_validation_significance_full_clip_mask_identity_or_bitwise_causal_LR_evidence
+checkpoint152500:
+  verification_run: R-20260907094050-3b4bf8
+  verification_succeeded_at: 2026-09-07T09:41:11.594Z
+  producer_success_required_by_dependency: true
+  checksum_resolved_before_CPU_spawn: true
+  dependency_checksum_seconds: 17.815
+  checks: full_format3_FP32_model_Adam_world2_RNG2_matching_sidecar_config_model_shapes_and_all_Adam_age_increments
+  explicit_guard_rate_override: all_RGB1x_actual_and_base_rates3e-6_not_old_RGB10x_defaults
+  actual_and_base_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  trainable_tensors: 193
+  trainable_parameters: 176189067
+  Adam_age_range: [52500, 67500]
+  each_Adam_age_increment_from150500: 2000
+  clips_seen: {kubric: 427000, pointodyssey: 366000, dynamic_replica: 427000}
+  path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152500-reference/checkpoint-0152500.pt
+  sidecar: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152500-reference/train_status.json
+  checkpoint_sha256: daa38f4ae5bd07f8c97e3eeb6d27762acfa28dcc14dade1c781ff0667aa3bc84
+  checkpoint_artifact: artifact://H030/R-20260907052221-d438cd/checkpoint/daa38f4ae5bd07f8
+  bytes: 7864619047
+  registered_at: 2026-09-07T09:43:19.754Z
+  independent_registration_matches_CPU_dependency_checksum: true
+  protection: local_same_inode_hardlink_outside_rotation_with_matching_sidecar_not_off_machine_replica
+midpoint_review151500:
+  notification_acknowledged: N-76ddb40bdd0d96f58e0c
+  update_completed_at: 2026-09-07T08:30:30.827Z
+  analysis_run: R-20260907083223-7262a0
+  analysis_commit: d79ae95d05ae223fed39c30bcdaf89c570a02957
+  analysis_succeeded_at: 2026-09-07T08:32:24.645Z
+  window: [150501, 151500]
+  logged_halves: [[150501, 151000], [151001, 151500]]
+  LR_phase: both_halves_full_LR_not_new_warmup
+  candidate: recovery_Run_only_excluding_failed_parents_replayed_tail
+  paired_logged_updates_per_reference: 300
+  paired_counts: {kubric: 150, pointodyssey: 100, dynamic_replica: 50}
+  aggregation: paired_batch_count_weighted_means_over_two_halves_not_average_of_percent_changes
+  alignment: logged_steps_dataset_clip_counters_source_target_gap_histograms_world_pairs_LR_factor
+  output: /data/WorldBridge4D-runs/h030-rgb1x-matched-fullLR-through151500-20260907
+  dataset_order: [kubric, pointodyssey, dynamic_replica]
+  primary_reference:
+    run: R-20260906224802-229787
+    label: RGB10x_FP32_cycle0
+    XYZ_change_pct: [-0.030203149191498913, 0.00534640899063632, 0.01694860292023037]
+    EPE_change_pct: [-0.02764089609689213, -0.010676370613649233, 0.01626401079566353]
+    assessment: near_flat_mixed_no_clear_gain
+    rollup: vs-rgb10x-cycle0/full_lr_1000_rollup.json
+  secondary_reference:
+    run: R-20260906125858-4dd8d0
+    label: BF16_norm30
+    XYZ_change_pct: [0.4118025320759999, 0.15978511455978506, 0.19927600484193064]
+    EPE_change_pct: [0.6158431623761729, 0.2671121706414592, 0.5465090925212746]
+    assessment: primary_means_higher_all_datasets
+    rollup: vs-bf16-norm30/full_lr_1000_rollup.json
+  decision: complete_fixed152500_budget_no_early_switch_no155k_successor_selected_or_enqueued
+  continuation_preparation: no_GPU_successor_selected_on_this_evidence_reassess_only_after_final_window
+  if_final_mixed_or_negative: report_before_any_further_adjustment_no_automatic150k_restart
+  caveats: sampling_fingerprints_not_full_clip_identity_or_prediction_mask_equality_not_validation_significance_or_causal_RGB_attribution_tiny_deltas_include_numeric_resume_variability
+  latest_progress: 151630
+  latest_progress_at: 2026-09-07T08:40:30.326Z
+checkpoint151500:
+  verification_run: R-20260907083407-e76dd4
+  verification_commit: d79ae95d05ae223fed39c30bcdaf89c570a02957
+  verification_marker_at: 2026-09-07T08:34:09.948Z
+  checks: full_format3_FP32_model_Adam_world2_RNG2_matched_sidecar_config_model_shapes_and_all_original_ages
+  explicit_guard_rate_override: all_RGB1x_absolute_rates3e-6_not_old_helpers_RGB10x_defaults
+  actual_and_base_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  trainable_tensors: 193
+  trainable_parameters: 176189067
+  Adam_age_range: [51500, 66500]
+  each_Adam_age_increment_from150500: 1000
+  clips_seen: {kubric: 424200, pointodyssey: 363600, dynamic_replica: 424200}
+  path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step151500-reference/checkpoint-0151500.pt
+  sidecar: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step151500-reference/train_status.json
+  checkpoint_sha256: 500f77048ba8253c954811e37cdb133896783bbed0c522131e23a9d50dc7b055
+  checkpoint_artifact: artifact://H030/R-20260907052221-d438cd/checkpoint/500f77048ba8253c
+  bytes: 7864619047
+  registered_at: 2026-09-07T08:35:53.840Z
+  protection: local_same_inode_hardlink_outside_rotation_with_matching_sidecar_not_off_machine_replica
+  caveat: protocol_evidence_not_quality_or_native_crash_resolution
+input_stall151085:
+  notification_acknowledged: N-d3bda52fa9dc90b82f66
+  watchdog_threshold_seconds: 900
+  preceding_logged_step: 151085
+  preceding_logged_at: 2026-09-07T06:37:51.252Z
+  resumed_logged_step: 151090
+  resumed_logged_at: 2026-09-07T06:53:03.865Z
+  completed_step_log_gap_seconds: 912.613
+  stack_at: 2026-09-07T06:50:17.531Z
+  main_threads: both_ranks_waiting_future_result_at_trainer_line517
+  loaders: Dynamic_Replica_local_trajectory_NPZ_read_array_with_other_workers_at_per_stream_load_lock
+  LR_factor_after: 1.0
+  weighted_cycle_after: 0.0
+  process_peak_cuda_memory_gib: 65.11200332641602
+  resolution: self_resumed_same_process_without_config_change_or_agent_signals
+  decision: continue_current152500_budget_review151500
+  caveats: real_input_wait_affects_throughput_log_gap_not_exact_zero_updates_duration_underlying_IO_cause_and_old_SIGSEGV_unresolved
+checkpoint151000:
+  notification_acknowledged: N-ad874e200453ca686f2f
+  update_completed_at: 2026-09-07T06:30:38.917Z
+  publication_caveat: completed_step_notification_preceded_sidecar_publication_initial_ENOENT_was_not_checkpoint_failure
+  verification_run: R-20260907063521-b0e43a
+  verification_commit: 9e9ba6cabfb8910227a01da7c2feeecabf31e017
+  verification_succeeded_at: 2026-09-07T06:35:26.433Z
+  verification: full_format3_FP32_model_Adam_world2_RNG2_matching_counters_sidecar_config_shapes_and_original_ages
+  guard_rate_policy: explicitly_override_old_helpers_RGB10x_defaults_with_RGB1x_config_all3e-6
+  actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  base_LRs_match_actual_peaks: true
+  trainable_tensors: 193
+  trainable_parameters: 176189067
+  Adam_age_range: [51000, 66000]
+  each_Adam_age_increment_from150500: 500
+  clips_seen: {kubric: 422800, pointodyssey: 362400, dynamic_replica: 422800}
+  path: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step151000-reference/checkpoint-0151000.pt
+  sidecar: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step151000-reference/train_status.json
+  verification_report: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step151000-reference/verification.json
+  checkpoint_bytes: 7864619047
+  checkpoint_sha256: 225e055576aada6d05aab6648b865738f393edbb5e33017a814abebc1a32af82
+  checkpoint_artifact: artifact://H030/R-20260907052221-d438cd/checkpoint/225e055576aada6d
+  SHA_registered_at: 2026-09-07T06:38:49.229Z
+  report_timing_note: report_pending_SHA_status_describes_metadata_audit_before_independent_registration
+  preservation: local_same_inode_hardlink_outside_rotation_matching_atomic_sidecar_not_off_machine_replica
+  latest_post_checkpoint_update: 151085
+  latest_post_checkpoint_update_at: 2026-09-07T06:37:51.252Z
+  decision: continue_unchanged_to152500_first_full_LR1000_window_review151500
+  caveat: storage_resume_protocol_not_quality_gain_full_bitwise_replay_or_native_crash_resolution
+recovery_progress:
+  notification_acknowledged: N-39901a7c595ed9fccc0f
+  milestone_step: 150725
+  milestone_at: 2026-09-07T06:07:12.025Z
+  latest_observed_step: 150742
+  latest_observed_at: 2026-09-07T06:08:19.738Z
+  LR_factor: 1.0
+  weighted_cycle: 0.0
+  milestone_step_seconds: 3.5530830789357424
+  latest_sampled_step_seconds: 3.631206827936694
+  process_peak_cuda_memory_gib: 65.11200332641602
+  latest_verified_checkpoint_step: 150500
+  decision: continue_unchanged_next151000_checkpoint_then151500_primary_metric_review
+  caveat: progress_beyond_old150722_not_crash_fix_bitwise_replay_full_horizon_stability_or_quality_evidence
+first_update:
+  notification_acknowledged: N-a4d8c5ff5c10ed6feccf
+  at: 2026-09-07T05:35:32.725Z
+  step: 150501
+  spawn_to_first_update_seconds: 603.463
+  master_storage_verified_at: 2026-09-07T05:31:03.991Z
+  restored_master_and_Adam_dtype: float32
+  compute_precision: bf16
+  LR_factor: 1.0
+  weighted_cycle: 0.0
+  XYZ_loss: 0.013833020580932498
+  raw_EPE_m: 0.12778710644422286
+  comparison_run: R-20260907030635-631b93
+  matching_old_step: 150501
+  old_logged_at: 2026-09-07T03:49:07.381Z
+  XYZ_EPE_cycle_diagnostics_and_sampling_histograms_match: true
+  clips_seen: {kubric: 421400, pointodyssey: 361200, dynamic_replica: 421408}
+  gradient_norm: 0.4968506693840027
+  old_gradient_norm: 0.4968509078025818
+  step_seconds: 261.1955817020498
+  geometry_wait_seconds_max_rank: 229.98208211385645
+  process_peak_cuda_memory_gib: 60.54542064666748
+  caveats: one_batch_not_full_bitwise_resume_or_new_checkpoint_or_quality_crash_fix_or_memory_reduction_evidence
+  latest_verified_checkpoint_step: 150500
+  decision: continue_unchanged_check150725_then151000_checkpoint_and151500_review
+run: R-20260907052221-d438cd
+failed_parent_run: R-20260907030635-631b93
+task: T-20260901153324-39dd05
+owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
+commit: 74c4826343f214cb7924701c72d0aa4bf58963a4
+config: configs/h030_150k_to_152500_gpu23_b2_k15_fp32_cycle0_rgb1x.yaml
+config_sha256: bc050b3e2fbd15263b89aad908db06e425566208f2495d7aa76f375c9274946a
+purpose: runtime_fault_recovery_of_same_RGB1x_trajectory_not_new_LR_experiment
+incident:
+  last_logged_step: 150722
+  last_logged_at: 2026-09-07T05:02:16.290Z
+  final_actual_optimizer_step: unknown_beyond_last_logged_step
+  last_complete_checkpoint_step: 150500
+  rank0_exitcode: -11
+  rank0_failure_observed_by_elastic_at: 2026-09-07T05:07:49Z
+  rank1_NCCL_timeout_at: 2026-09-07T05:14:38.279Z
+  parent_exit_at: 2026-09-07T05:15:00.857Z
+  parent_failure_class: nonzero_exit
+  root_cause: SIGSEGV_mechanism_unresolved_not_claimed_OOM_LR_or_data_bug
+  cleanup: owned_peer_SIGTERM_at050749_then_second_SIGTERM_at050819_no_SIGKILL
+  process_check: no_old_training_compute_processes_on_selected2_and3_after_exit
+  kernel_log: dmesg_permission_denied
+  source_inspection: RGB_LRU_does_not_force_close_evicted_live_mappings_and_returns_owned_copies_no_speculative_data_patch
+recovery:
+  submitted_at: 2026-09-07T05:22:24.013Z
+  spawned_at: 2026-09-07T05:25:29.262Z
+  input_step: 150500
+  target_step: 152500
+  source_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-warmup-reference/checkpoint-0150500.pt
+  checkpoint_sha256: 589b7f5dc5de361ca426584dbd4d9d8bbff034523058167d52dbf6d08ca44763
+  checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/589b7f5dc5de361c
+  checkpoint_semantics: previously_verified_full_FP32_model_Adam_world2_RNG2_matching_sidecar_full_LRs_ages50500_to65500
+  input_rehashed_before_process_spawn: true
+  checkpoint_hash_seconds: 132.832
+  worker_boot_seconds: 36.836
+  timing_caveat: slow_host_IO_or_scheduling_hint_not_proven_native_crash_cause
+  recovery_mode: full_state_not_weights_only
+  LR_origin_step: 150000
+  original_warmup_steps: 500
+  repeated_warmup: false
+  full_actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  unchanged: [FP32_masters_Adam, BF16_compute_reduce, decoder_only, cycle_weight0, cycle_input_forward_diagnostics, B2_A2_K15, seeds_data, native_allocator_cache_reuse, LR_policy]
+  training_seed: 20260812
+  geometry_seed: 20260812
+  decoder_seed: 424242
+  observation_changes: [PYTHONFAULTHANDLER1, first_update150501_event, earlier_native_fault_event, past_old_failure150725_event]
+  source_code_changes: none
+  test_basis: existing100_tests_same_training_code_and_identical_config_checksum
+  launcher_choice: explicit_PRL_launch_to_pin_SHA_dependency_allow_parent_failure_and_retarget_events_not_blind_retry_of_original150k_argv
+  output: /data/WorldBridge4D-runs/h030-150500-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15-resume-r1
+resources:
+  gpu_ids: ['2', '3']
+  mode: shared
+  allow_foreign_processes: true
+  min_free_memory_mib: 65536
+  memory_safety_mib: 4096
+  wait_timeout_seconds: 7200
+termination:
+  launcher: worldbridge.trainer.soft_torchrun
+  checkpoint_signal: SIGTERM
+  checkpoint_event_id: checkpoint_complete
+  terminate_signal: SIGTERM
+  graceful_timeout_seconds: 900
+  force_kill_timeout_seconds: 120
+  allow_sigkill: false
+review_plan:
+  normal_budget: finish152500_without_short_window_LR_switches
+  intermediate_review: 151500
+  primary_windows: [[150501, 151500], [151501, 152500]]
+  primary_metrics: per_dataset_XYZ_and_EPE_not_total_loss
+  baseline_runs: [R-20260906224802-229787, R-20260906125858-4dd8d0]
+  if_consistent_gain: prepare_tested_same_trajectory152500_to155000_continuation_without_reset_or_rewarmup
+  if_mixed_or_no_gain: report_before_another150k_short_LR_arm_do_not_extend_for_occupancy
+  if_native_failure_repeats: inspect_new_fatal_trace_before_any_further_retry
+  comparison_join: initial_run_steps_at_most150500_then_recovery_steps_above150500_exclude_failed_unsaved_tail
+  review151500_implementation: recovery_only_start150500_end151500_all_full_LR_not_new_warmup
+  full2500_claim_requires: explicitly_tested_multi_run_join_or_separate_nonoverlapping_warmup_and_full_LR_reports
+  quality_caveat: sampled_training_fingerprints_not_validation_or_complete_clip_identity
+  standalone_diagnostic_inference: remains_cancelled
+  production_baseline: H023_100k_unchanged
+watchdog: completed_global_step_only_900_seconds_record_and_wake

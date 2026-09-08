@@ -1,0 +1,206 @@
+hypothesis: H030
+task: T-20260901153324-39dd05
+owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+execution_commit: 9a47a1cd9244f553cac617fbef817def0627890b
+authority:
+  diagnostics: user_explicitly_reopened_cancelled_diagnostics_on_physical_GPUs2_and3
+  training: '你可以继续跑训练 反正要把 GPU 尽可能占满'
+  interpretation: useful_diagnostics_then_own_state_training_with_prequeued_successors_not_occupancy_only_jobs
+  production: H023_100k_unchanged
+  prior152500_decision: no_clear_gain_and_no_AUTOMATIC_extension_before_this_new_authorization
+preflight:
+  initial_run: R-20260907104046-1a99ee
+  initial_tests: 21
+  final_run: R-20260907111947-7018cf
+  final_tests: 123
+  final_test_seconds: 9.53
+  checks: strict_Node_YAML_diff_check_real152500_full_FP32_Adam_RNG2_sidecar_rates_and_no_rewarmup_tests
+  startup_defect:
+    failed_runs: [R-20260907105004-db7a69, R-20260907105004-52b8ad, R-20260907110309-c2a0b5, R-20260907110309-f7466e]
+    error: RuntimeError_Invalid_device_argument_at_reset_peak_memory_stats
+    cause: removing_memory_cap_also_removed_implicit_CUDA_initialization_device_count_can_use_NVML_only
+    fix: explicit_torch_cuda_set_device_cuda0_before_peak_stat_reset
+    outputs: no_prediction_results_from_these_four_failed_runs
+    verification: CPU_device_selection_regression_test_and_two_successful_GPU_validation_workers
+    training_was_not_terminated_for_this_fix: true
+diagnostics:
+  config: configs/h030_diagnostics_152500.yaml
+  config_sha256: d30ddf4871cde8e436d66e80f16092fa985c7a174866bf427814220e592602eb
+  root: /data/WorldBridge4D-runs/diagnostics-h030-152500-20260907
+  seed: 20260907
+  requested_clips_per_dataset: 4
+  selection: deterministic_parent_balanced_validation_split_before_cache_availability_checks_no_substitution
+  sources: [0, 10, 20]
+  targets: all21
+  target_chunk: 1
+  pixel_stride: 1
+  inference: strict_own_checkpoint_architecture_and_weights_BF16_eval_no_optimizer
+  native_allocator_cache: true
+  allocator_memory_cap: null
+  metrics: raw_XYZ_EPE_boundary_interior_occlusion_temporal_gap_track_and_displacement_EPE_GT_motion_bins
+  motion_bins_m: [0.01, 0.1]
+  motion_definition: maximum_valid_GT_displacement_from_source_frame_in_fixed_source_camera_coordinates_not_semantic_object_identity
+  separate_diagnostics: GT_assisted_Sim3_prediction_dependent_cycle_coverage_GT_neighbor_identity_proxy
+  checkpoint_order: [h023_100k, h030_150k_norm30, h030_rgb10x_152500, h030_rgb1x_152500]
+  kubric:
+    prepare_run: R-20260907110105-d61ab3
+    indices: [123, 31, 63, 74]
+    ready_clips: 4
+    blocked_clips: 0
+    gpu2_run: R-20260907112117-03b949
+    gpu3_run: R-20260907112117-767643
+    matrix: succeeded_4_checkpoints_times4_clips_times3_sources_all21_targets
+    aggregate_run: R-20260907112704-23a649
+    review: /data/WorldBridge4D-runs/diagnostics-h030-152500-20260907/reviews/kubric-first-screen
+    point_weighted_raw_EPE_m_rounded6: [0.911520, 0.906423, 0.920155, 0.919558]
+    point_weighted_boundary_EPE_m_rounded6: [1.362062, 1.319965, 1.321519, 1.319826]
+    interpretation: small_screen_RGB1x_near_RGB10x_raw_EPE_higher_than150k_origin_no_production_promotion
+  external:
+    prepare_run: R-20260907112444-685113
+    ready_DR_indices: [492, 548, 526, 233]
+    blocked_PO_indices: [1441, 1234, 256, 405]
+    blocker: missing_PointOdyssey_validation_RGB_under_dataset_nas0_PointOdyssey_val
+    no_training_clip_or_decoded_latent_replacement: true
+    manifest: /data/WorldBridge4D-runs/diagnostics-h030-152500-20260907/validation-external.json
+    gpu2_successor: R-20260907113216-4099b0
+    gpu3_successor: R-20260907113216-24a010
+    successor_dependency: training_R-20260907112245-5557b9_succeeded
+    status: DR_matrix_complete_frozen_PO_not_evaluated
+    gpu2_spawned_at: 2026-09-07T14:57:06.755Z
+    gpu3_spawned_at: 2026-09-07T14:56:09.430Z
+    gpu2_succeeded_at: 2026-09-07T14:59:33.251Z
+    gpu3_succeeded_at: 2026-09-07T14:58:25.187Z
+    DR_source_records: 48
+    aggregate_run: R-20260907150351-1eb81c
+    aggregate_succeeded_at: 2026-09-07T15:03:56.235Z
+    review: /data/WorldBridge4D-runs/diagnostics-h030-152500-20260907/reviews/dr-first-screen
+    combined_review: /data/WorldBridge4D-runs/diagnostics-h030-152500-20260907/reviews/kubric-dr-screen
+    combined_ready_clips: 8
+    combined_ready_source_records: 96
+    blocked_PO_clips: 4
+    point_weighted_raw_EPE_m_rounded6: [0.228996, 0.231741, 0.233926, 0.234263]
+    point_weighted_boundary_EPE_m_rounded6: [0.366379, 0.363500, 0.359285, 0.360316]
+    point_weighted_interior_EPE_m_rounded6: [0.136898, 0.143571, 0.152504, 0.151838]
+    point_weighted_occluded_tracking_EPE_m_rounded6: [0.349687, 0.345436, 0.350855, 0.349625]
+    interpretation: small_screen_RGB1x_near_RGB10x_raw_interior_higher_than_origin150k_boundary_slightly_lower
+    caveat: complete_ready_matrix_not_complete_three_dataset_validation_nor155000_or_boundary_arm_results
+training:
+  run: R-20260907112245-5557b9
+  config: configs/h030_152500_to_155k_gpu23_b2_k15_fp32_cycle0_rgb1x.yaml
+  config_sha256: 82060c4b3c657b48b2a1198a7d511d3122fe18da60965d9d83c4ed4fac6385e1
+  physical_gpus: [2, 3]
+  resume_step: 152500
+  target_step: 155000
+  input: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152500-reference/checkpoint-0152500.pt
+  input_sha256: daa38f4ae5bd07f8c97e3eeb6d27762acfa28dcc14dade1c781ff0667aa3bc84
+  output: /data/WorldBridge4D-runs/h030-152500-to-155k-fp32-cycle0-rgb1x-gpu23-b2-k15
+  restored: model_AdamW_counters_world2_two_rank_RNG
+  unchanged: architecture_data_training_seed20260812_decoder_seed424242_B2_A2_K15_FP32_masters_BF16_compute_clip1_cycle_inputs_and_forward
+  cycle_weight: 0.0
+  actual_group_LRs: [0.000003, 0.000003, 0.000003]
+  LR_origin: 150000
+  original_warmup_steps: 500
+  repeated_warmup: false
+  allowed_config_deltas: [max_steps, lr_restart_end_step, checkpoint_steps, tracking]
+  resource_policy: shared_managed_lease_on_exact2and3_min_free65536MiB_plus4096MiB_safety_foreign_processes_untouched
+  allocator: native_reuse_no_tuning_no_cap_cuda_empty_cache_every_steps0
+  termination: checkpoint_first_SIGTERM_soft_torchrun_no_SIGKILL
+  dependency: corrected_GPU3_validation_then_both_GPU_leases
+  dependency_nonzero_exit_allowed: independent_tested_training_may_follow_a_diagnostic_failure_not_a_training_crash_retry
+  actual_parent_outcome: succeeded
+  spawned_at: 2026-09-07T11:24:34.596Z
+  first_update:
+    step: 152501
+    time: 2026-09-07T11:28:29.216Z
+    seconds_after_spawn: 234.620
+    dataset: dynamic_replica
+    XYZ_loss: 0.005712270271033049
+    EPE_m: 0.084969557137912
+    LR_factor: 1.0
+    weighted_cycle: 0.0
+    counters: [427000, 366000, 427008]
+  observed152600:
+    time: 2026-09-07T11:35:38.230Z
+    counters: [427280, 366240, 427280]
+    sampled_step_seconds: 3.5296872060280293
+    restarted_process_peak_GiB: 60.55005168914795
+    caveat: not_full_horizon_capacity_evidence_or_quality_from_one_batch
+    verification_run: R-20260907113957-63c35b
+    protected_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152600-reference/checkpoint-0152600.pt
+    protected_checkpoint_sha256: 18f41ea210acc8051dfd31c82c5b599aa8635093c15faac9f2bb6417a34445dc
+    registered_artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/18f41ea210acc805
+    all193_Adam_age_increments: 100
+    Adam_age_range: [52600, 67600]
+    bytes: 7864619111
+  endpoint155000_preservation_run: R-20260907113731-cad04f
+  endpoint_guard: success_and_future_checkpoint_hash_gate_explicit_RGB1x_rates_local_hardlink_matching_sidecar_all193_Adam_ages_plus2500
+  observed153500:
+    time: 2026-09-07T12:50:44.100Z
+    counters: [429800, 368400, 429800]
+    sampled_step_seconds: 3.4917508198414
+    process_peak_GiB: 65.44405269622803
+    verification_run: R-20260907125231-b28921
+    verification_finished_at: 2026-09-07T12:52:56.646Z
+    protected_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step153500-reference/checkpoint-0153500.pt
+    protected_checkpoint_sha256: 2b76d9f030827dbae7bf84334ebc44f5a8ff6ea904a07806ea985aebba465f2f
+    registered_artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/2b76d9f030827dba
+    all193_Adam_age_increments: 1000
+    Adam_age_range: [53500, 68500]
+    bytes: 7864619111
+  review153500:
+    run: R-20260907125230-ae53a9
+    window: [152501, 153500]
+    paired_logged_updates_per_reference: 300
+    references: [R-20260907005010-9de7af, R-20260906125858-4dd8d0]
+    rollup: per_dataset_batch_count_weighted_means_over_two_full_LR500_step_halves_not_average_percentages
+    dataset_order: [kubric, pointodyssey, dynamic_replica]
+    vs_RGB10x_XYZ_change_pct: [0.05927070132112355, 0.032716102073404585, 0.25865965170479566]
+    vs_RGB10x_EPE_change_pct: [0.04322271440952985, 0.01816652794510709, 0.029490161288325822]
+    vs_BF16_XYZ_change_pct: [0.7272591124030336, 0.46450581782089273, 0.4262274148840062]
+    vs_BF16_EPE_change_pct: [1.5539712956385454, 0.8022101640744017, 1.4850500725559712]
+    output: /data/WorldBridge4D-runs/h030-rgb1x-matched-through153500-20260907
+    decision: no_clear_gain_continue_user_authorized155000_budget_unchanged_no_midpoint_switch
+    caveat: sampled_training_not_validation_significance_complete_clip_mask_identity_or_bitwise_causal_RGB_effect
+  endpoint155000:
+    update_at: 2026-09-07T14:54:28.139Z
+    normal_exit_at: 2026-09-07T14:55:34.015Z
+    exit_code: 0
+    completed_steps: 155000
+    counters: [434000, 372000, 434000]
+    final_logged_XYZ: 0.05785755906254053
+    final_logged_EPE_m: 0.33439238866170246
+    final_logged_dataset: kubric
+    sampled_step_seconds: 3.4778055269271135
+    process_peak_GiB: 65.44421195983887
+    verification_run: R-20260907113731-cad04f
+    verification_finished_at: 2026-09-07T14:56:01.001Z
+    protected_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step155000-reference/checkpoint-0155000.pt
+    protected_checkpoint_sha256: 2648be240ca7b0d852cdda0c9b7d7cd47bb3d532ab3acbf06c30de33c55d0490
+    artifact: artifact://H030/R-20260907112245-5557b9/checkpoint/2648be240ca7b0d8
+    registered_at: 2026-09-07T14:59:00.592Z
+    bytes: 7864619111
+    all193_Adam_age_increments_from152500: 2500
+    Adam_age_range: [55000, 70000]
+    replica: local_same_inode_hardlink_outside_rotation_matching_sidecar_not_remote_copy
+  review155000:
+    run: R-20260907145715-0e3b2a
+    reference: R-20260906125858-4dd8d0
+    window: [152501, 155000]
+    all_full_LR: true
+    paired_logged_updates: 750
+    dataset_order: [kubric, pointodyssey, dynamic_replica]
+    counts: [375, 250, 125]
+    XYZ_change_pct: [0.6231831374127417, 0.18037487687461162, 0.2152179024630163]
+    EPE_change_pct: [1.5895269921980981, 0.4317533275489227, 1.459883696033737]
+    last1000_XYZ_change_pct: [0.4069525190931067, 0.12033631885590701, -0.16667975438311444]
+    last1000_EPE_change_pct: [1.4578285804401236, 0.008178700058603106, 1.111954212820665]
+    output: /data/WorldBridge4D-runs/h030-rgb1x-final-through155000-20260907/vs-bf16-norm30
+    caveat: sampled_training_fingerprints_not_validation_significance_or_bitwise_causality_RGB10x_ends153788
+  next_training_review: budget_complete_reuse_as_unweighted_reference_follow_selected_boundary2x_original150k_arm
+caveats:
+  - user_authorized_continuation_does_not_change_the_prior_no_clear_gain_finding
+  - no_claim_of_uninterrupted150k_to160k_or_bitwise_FSDP_replay
+  - fixed_Kubric_screen_is_not_a_three_dataset_validation_or_generalization_winner
+  - PointOdyssey_validation_is_blocked_not_replaced_or_reported_as_complete
+  - queued_successors_do_not_imply_process_start_or_constant100percent_GPU_utilization
+  - original_training_SIGSEGV_cause_remains_unresolved

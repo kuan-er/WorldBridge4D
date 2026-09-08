@@ -1,0 +1,125 @@
+version: 1
+hypothesis: H030
+phase: operational_prestart_dependency_timeout_recovery_not_new_scientific_factor
+recorded_at: 2026-09-08T01:20:11Z
+owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+task: T-20260901153324-39dd05
+notification: N-202d37f7406d7f737d61
+status: six_replacements_queued_no_process_start_or_new_quality_result
+cause:
+  affected_initial_GPU_workers: [R-20260907204615-8ee7c1, R-20260907204615-23bab2]
+  upstream: R-20260907204227-3a167e
+  message: dependency_did_not_meet_succeeded_before_wait_timeout
+  original_wait_seconds: 14400
+  failure_class: dependency_failed
+  explanation: GPU_resource_wait_timeout_also_covers_dependency_wait_and_four_hours_was_shorter_than_upstream_remaining_training_plus_checkpoint_validation
+  old_GPU_wait_ms: 0
+  all_six_old_jobs: failed_started_at_null_trainer_not_started_no_checkpoint_no_application_exit_code
+  descendants_correctly_refused: dependency_failed_is_NOT_the_allowed_readonly_diagnostic_nonzero_exit
+  not_evidence_of: GPU_OOM_training_crash_checkpoint_corruption_failed_inference_or_quality_regression
+unchanged_upstream:
+  training: R-20260907185236-284f11
+  training_commit: 42869cccfccc316f79268e2b887b1ff78574e3e8
+  observed_completed_log_step: 153950
+  log_at: 2026-09-08T00:47:33.088Z
+  factor: 1.0
+  contrast_weight: 0.1
+  world: 2
+  pairs: 120
+  peak_GiB: 65.57492351531982
+  checkpoint_verification_claim_for_log_step: false
+  latest_protected_step: 152500
+  latest_protected_sha256: 9c19ef639e724a871f163562ed438c66744c66f864cb0e5f3458a3a08a55cc14
+  endpoint_guard: R-20260907185445-827fc1
+  guard_status: queued_requires_training_success_and_published155000
+  manifest: R-20260907204227-3a167e
+  manifest_commit: 561a7cb571e7adfb6c084af32aefc5e4fc4dc099
+  manifest_status: queued_requires_guard_success
+  action: no_stop_restart_extension_runtime_edit_or_installed_worker_change
+replacement_map:
+  - role: GPU2_Kubric_fixed_endpoint_inference
+    old: R-20260907204615-8ee7c1
+    new: R-20260908005010-1c2ad3
+    dependency: R-20260907204227-3a167e
+    allowed: succeeded
+    physical_gpus: [2]
+    argv: byte_identical
+  - role: GPU3_DR_fixed_endpoint_inference
+    old: R-20260907204615-23bab2
+    new: R-20260908005010-8446b9
+    dependency: R-20260907204227-3a167e
+    allowed: succeeded
+    physical_gpus: [3]
+    argv: byte_identical
+  - role: GPU23_tested_fixed_contrast0p01_training
+    old: R-20260907233132-73044b
+    new: R-20260908005122-ee663c
+    dependency: R-20260908005010-8446b9
+    runtime_other_dependency: R-20260908005010-1c2ad3
+    allowed: succeeded_or_independent_readonly_diagnostic_nonzero_exit_only
+    physical_gpus: [2, 3]
+    argv_delta: retarget_both_diagnostic_IDs_and_require_old_training_failed_dependency_before_any_process_start
+  - role: CPU_contrast0p01_full155000_protection
+    old: R-20260907233240-9a8c84
+    new: R-20260908005353-ee1896
+    dependency: R-20260908005122-ee663c
+    allowed: succeeded_with_complete155000_checkpoint_and_sidecar
+    argv_delta: producer_ID_and_expected_execution_commit_only
+  - role: CPU_Kubric_crossed_endpoint_review
+    old: R-20260907233722-6fb24f
+    new: R-20260908005353-efd18f
+    dependency: R-20260908005010-1c2ad3
+    allowed: succeeded_only
+    argv_delta: GPU_producer_ID_and_expected_execution_commit_only
+  - role: CPU_DR_crossed_endpoint_review
+    old: R-20260907233722-eeacee
+    new: R-20260908005353-f131ba
+    dependency: R-20260908005010-8446b9
+    allowed: succeeded_only
+    argv_delta: GPU_producer_ID_and_expected_execution_commit_only
+replacement_policy:
+  all_execution_commits: 2754c1beddeec3414463b31d075cd22ce04a9754
+  all_GPU_wait_timeout_seconds: 172800
+  wait_scope: dependency_and_GPU_lease_wait_not_training_budget_or_a_GPU_reservation
+  CPU_default_wait_seconds_unchanged: 604800
+  managed_mode: shared_foreign_processes_untouched
+  inference_minfree_MiB: 24576
+  training_minfree_MiB: 65536
+  memory_safety_MiB: 4096
+  resource_delta: only_wait_timeout_seconds_from14400_to172800_exact_GPUs_and_all_thresholds_unchanged
+  events: source_complete_worker_complete_first_training_update_milestones_fatal_process_exit_and900s_progress_watchdogs
+  termination: SIGTERM_only_checkpoint_first_training_soft_torchrun_no_SIGKILL
+  allocator: native_uncapped_all_three_allocator_env_variables_unset_empty_cache_every0
+  CPU: blank_CUDA_VISIBLE_DEVICES_no_GPU_resources
+  no_relaxation: original_checkpoint_SHA_CPU215_owner_snapshot_config_hash_and_both_diagnostic_terminal_checks_remain_required
+  queue_tool: explicit_prl_run_enqueue_dependencies_no_hotpatch_no_shared_branch_change
+  fork_not_used: installed0p6p3_runFork_does_not_forward_dependsOn_and_cannot_safely_preserve_this_DAG
+  retry_not_used: unchanged_retry_would_retain_short_wait_or_failed_dependency_IDs
+  identity_mapping: explicit_replacement_map_not_claiming_PRL_superseded_by_or_parent_run_id_was_written
+scientific_identity:
+  CPU_gate: R-20260907232833-81b7a1
+  CPU_gate_commit: 0c26a86ca1b4ec61c0bf9850ad7ec3fee10a7c9d
+  CPU_tests_reused_not_rerun: 215
+  same_real_input_checks_reused: 3
+  source_equivalence: git_diff_exit_code_no_changes_src_tests_configs_research_analysis_from0c26_to2754
+  inference_equivalence: git_diff_exit_code_no_changes_evaluation_models_crossed_analysis_from561a_to2754
+  config: configs/h030_150k_to_155k_gpu23_b2_k15_boundary2x_edgecontrast0p01.yaml
+  config_sha256: 32c982cc7c71a5dd8afbdbda2fbe34e2c5cecd85ef53179de2ca0f42d7e95c9b
+  origin_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  full_origin_step: 150000
+  endpoint: 155000
+  original_warmup_once: 500
+  update_budget: 5000
+  seeds: {training: 20260812, geometry: 20260812, decoder: 424242}
+  fixed_scope: same_eight_ready_validation_clips_sources0_10_20_all21_targets_four_PO_still_RGB_blocked
+  no_controls_retrained_or_reinferred: true
+  no_replayed_or_failed_updates_added: all_replaced_jobs_never_started
+  static_audit: twelve_embedded_argv_Python_programs_AST_parsed_six_replacement_resource_and_identity_checks_passed
+  limitations: static_queue_audit_not_process_start_FSDP_memory_quality_or_future_handoff_success
+next:
+  - follow_unchanged01_training_success_full155000_guard_and_manifest_events
+  - verify_actual_GPU_endpoint_diagnostic_success_and_CPU_reviews_no_missing_predictions
+  - verify_actual001_storage_and_completed150001_not_queued_receipt
+  - protect001_150500_152500_and155000_with_explicit_all3e_minus6_guard_rates
+  - prepare_same_fixed_input001_endpoint_validation_reusing_weight0_and01_predictions
+production: H023_100000_unchanged

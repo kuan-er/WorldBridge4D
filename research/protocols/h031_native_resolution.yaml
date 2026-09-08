@@ -1,0 +1,131 @@
+version: 1
+hypothesis: H031
+task: T-20260908032232-e95da1
+owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+status: CPU94_and_both_dataset_source_shape_storage_gates_succeeded_GPU_cache_queued_not_training
+upstream_scientific_code: a855f3a931b97d753ff6b228173121346d133063
+isolation: separate_Task_preserves_H030_worktree_training_and_immutable_validation_DAG
+cache_config: configs/h031_native_cache.yaml
+cache_config_sha256: 00f7a78ceb5d900865156918e240e8d082444ca138b0f9268e5d006701bd17ab
+cache_execution_commit: 4863f71b66f76c09de40fd4456bd0db328ba91f0
+inventory:
+  run: R-20260908032633-b171d4
+  path: /data/WorldBridge4D-runs/h031-native-inventory-20260908/inventory.json
+  sha256: 6a3b6cca0a50e8b3702834520df3086cd262f174020920a77718fe7a5f5539df
+  selection: first_middle_last_three_clips_each_existing_training_index_before_availability_check
+  clips_K_PO_DR: [5737, 9746, 6090]
+  native_HW_K_DR: [[512, 512], [720, 1280]]
+  native_PO_RGB: missing_in_both_configured_and_legacy_roots_no_256_fallback
+cache_contract:
+  vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
+  vae_sha256: 38071ab59bd94681c686fa51d75a1968f64e470262043be31f7a094e442fd981
+  latent_K: [16, 6, 64, 64]
+  latent_DR: [16, 6, 90, 160]
+  temporal: unchanged_first21_stride1_native_causal_compression21_to6
+  spatial: identity_no_resize_crop_pad_or_interpolation
+  whole_model_alignment: native_HW_multiples16_for_VAE8_and_DiT_patch2_else_reject_not_silent_pad
+  posterior: deterministic_mean_native_Wan_channel_normalization
+  dtype: FP32_compute_and_storage_no_autocast_or_spatial_tiling
+  root: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1
+  namespace: dataset_and_full_manifest_digest
+  source_identity: source_index_SHA_row_SHA_path_size_mtime_plus_each_decoded_RGB_SHA
+  tensor_identity: per_clip_shape_finite_dtype_and_tensor_SHA_inside_atomic_safetensors
+  publication: locked_write_once_file_fsync_rename_directory_fsync_no_shared256_changes
+  Kubric_IO: sequential_single_pass_per_TFRecord_shard_PIL_native_RGB_checked_against_existing_TF_decoder
+  TF: CPU_only_input_reader_GPU_disabled_in_TensorFlow_not_PyTorch
+  DR_index_semantics: cache_index_is_list_position_preserve_gapped_original_source_row_index_and_row_SHA
+  no_subset_training_fallback: true
+  coverage: all_existing_training_index_entries_for_each_admitted_dataset_not_full_raw_release_or_validation
+  training_readiness: cache_completion_does_not_implement_native_training_or_prove_quality
+CPU_gate:
+  kubric: R-20260908035908-3ddd14
+  status: succeeded
+  tests: 94
+  test_seconds: 12.84
+  succeeded_at: 2026-09-08T03:59:34.067Z
+  output_K: /data/WorldBridge4D-runs/h031-native-preflight-r2-20260908/kubric
+  manifest_K_sha256: aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+  K_RGB_three_hashes_equal_legacy_native_decoder: true
+  dynamic_replica: R-20260908035946-2e071f
+  DR_status: succeeded
+  DR_succeeded_at: 2026-09-08T04:02:07.583Z
+  DR_tests: reuses_owned_successful_same_commit_CPU94_not_rerun
+  output_DR: /data/WorldBridge4D-runs/h031-native-preflight-r2-20260908/dynamic_replica
+  manifest_DR_sha256: bfc8e394a73243cff4050430c013f420efe44e36fe43a0eaeda9128f78051011
+  DR_three_complete_native_RGB_clips_checked: true
+  storage_payload_K_DR_bytes: [9023520768, 33675264000]
+  storage_reserve_bytes: 68719476736
+  estimate_policy: FP32_payload_plus4096bytes_per_clip_and20percent_headroom_plus64GiB_reserve
+  environment:
+    python: 3.11.10
+    torch: 2.5.1+cu121
+    diffusers: 0.36.0
+    numpy: 1.26.4
+    pillow: 10.2.0
+    tensorflow-cpu: 2.16.2
+    safetensors: 0.7.0
+GPU_relay:
+  physical_gpu: '0'
+  selection_authority: default_allowed_GPU0_and_latest_user_shared_cache_request_no_GPU4to7_authorization_inferred
+  mode: shared
+  allow_foreign_processes: true
+  wait_timeout_seconds: 172800
+  K_minfree_plus_safety_MiB: [16384, 4096]
+  DR_minfree_plus_safety_MiB: [32768, 4096]
+  note: DR720p_has_separate_larger_memory_gate_not_admitted_by512_success
+  allocator: native_uncapped_unset_allocator_environment_no_empty_cache
+  no_SIGKILL: true
+  SIGTERM: finish_current_clip_publish_partial_stop_exit_nonzero_if_incomplete
+  no_foreign_process_control: true
+  no_overlap_with_H030_on_GPU2and3: true
+  smoke_K: R-20260908040110-8241e0
+  bulk_K: R-20260908040135-38a88a
+  smoke_DR: R-20260908040158-c47dc1
+  bulk_DR: R-20260908040221-57d5ff
+  DAG: CPU_K_success_to_K_smoke_to_K_bulk_to_DR_smoke_to_DR_bulk_all_success_only
+  DR_additional_runtime_gate: owned_successful_DR_CPU_run_and_unchanged_audited_code_config_manifest_VAE
+  smoke_coverage: first_middle_last_three_clips_and_exact_same_input_posterior_repeat_for_first
+  latest_observation: K_smoke_queued_waiting_for_gpu0_started_at_null_no_GPU_cache_yet_verified
+  lease_caveat: shared_free_memory_admission_does_not_reserve_against_unmanaged_future_allocations
+prestart_recoveries:
+  - CPU: R-20260908034801-daf2f1
+    execution: 10952f14bcab848b1e0d3b0cd89167332071bacb
+    tests: 93_passed_11p69seconds
+    failure: environment_report_requested_tensorflow_distribution_but_installed_name_is_tensorflow_cpu
+    remedy: record_verified_tensorflow_cpu2p16p2_no_environment_change
+    never_started_GPU_descendants: [R-20260908034853-9044b1, R-20260908035102-207c0e, R-20260908035150-00457b, R-20260908035214-cbf5a7]
+  - CPU: R-20260908035422-69004a
+    execution: ed1e5a28be9bb641c54e706c6fbe7ff117e08390
+    failure: DR_original_row_IDs_are_gapped_not_equal_to_training_list_position
+    facts: 5922_of6090_original_DR_row_IDs_differ_from_position_first168_maps_to182_last6089_maps_to6761
+    remedy: preserve_source_row_ID_and_row_SHA_use_existing_training_list_position_for_cache_key_added_regression_test
+    prior_K_manifest: /data/WorldBridge4D-runs/h031-native-preflight-20260908/kubric.json
+    new_output: separate_r2_directory_no_overwrite_of_partial_evidence
+    independent_gates: K_cache_no_longer_waits_for_DR_data_admission
+    never_started_GPU_descendants: [R-20260908035454-a61674, R-20260908035516-b83c3e, R-20260908035541-7f394a, R-20260908035603-944c77]
+prestart_recovery_policy: no_dependency_failed_bypass_no_GPU_process_or_cache_progress_from_retired_jobs_no_installed_worker_patch
+training_plan:
+  status: requested_planned_not_implemented_or_submitted
+  requested_microbatch_per_gpu: 1
+  requested_K: 7
+  proposed_gradient_accumulation: 4
+  proposed_world_size: 2
+  proposed_physical_GPUs: [2, 3]
+  proposed_clips_per_update: 8
+  proposed_pairs_per_update: 56
+  resolution_control: same_B1_A4_K7_at256_needed_not_compare_only_with_H030_B2_A2_K15
+  checkpoint_candidate: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+  checkpoint_candidate_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  seed_proposal: training_geometry20260812_decoder424242
+  objective_proposal: unweighted_XYZ_RGB1x_FP32_masters_BF16_compute_cycle_path_coefficient0_no_edgecontrast
+  budget_proposal: engineering_memory_smoke_first_then_matched_150000_to155000_500warmup_once_subject_to_admission
+  admission_required:
+    - restore_and_verify_native_PO_RGB_no_available_dataset_only_substitution
+    - implement_native_rectangular_dataset_geometry_intrinsics_validity_and_cache_consumption
+    - implement_variable_native_Wan_geometry_query_RGB_pyramid_and_output_grids_not_256_features_upscaled
+    - preserve_learned_parameter_shapes_and_explicitly_verify_full_model_Adam_world2_RNG_resume_compatibility
+    - CPU_regression_real_source_GT_and_camera_alignment_checks
+    - actual_B1_K7_forward_backward_optimizer_memory_gates_for_each_shape_not_VAE_only
+    - fixed_common_ray_validation_with_consistent_boundary_band_scale_counts_and_missing_data_policy
+  caveat: native_DR_is3p515625_times_the512_pixel_area_and_may_not_fit_B1_K7_no_silent_resize_K_change_or_weights_only_fallback
+  production: H023_100k_unchanged_no_quality_result

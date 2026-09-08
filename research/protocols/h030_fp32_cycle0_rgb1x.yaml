@@ -1,0 +1,159 @@
+status: failed_initial_segment_control_completed152500_by_recovery
+control_endpoint_step: 152500
+control_recovery_finished_at: 2026-09-07T09:38:06.106Z
+final_assessment: no_clear_gain_vs_RGB10x_higher_aggregate_primary_errors_vs_BF16_no_extension_selected
+final_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-step152500-reference/checkpoint-0152500.pt
+final_checkpoint_sha256: daa38f4ae5bd07f8c97e3eeb6d27762acfa28dcc14dade1c781ff0667aa3bc84
+control_note: completed_with_full_state150500_recovery_not_uninterrupted_training_or_new_random_initialization
+recovery_run: R-20260907052221-d438cd
+next_protocol: research/protocols/h030_fp32_cycle0_rgb1x_recovery.yaml
+failure:
+  last_logged_step: 150722
+  last_logged_at: 2026-09-07T05:02:16.290Z
+  last_complete_checkpoint: 150500
+  rank0_first_failure_observed_by_elastic_at: 2026-09-07T05:07:49Z
+  rank0_exitcode: -11
+  rank1_NCCL_timeout_at: 2026-09-07T05:14:38.279Z
+  finished_at: 2026-09-07T05:15:00.857Z
+  classification: native_SIGSEGV_then_peer_NCCL_timeout_not_agent_deliberate_stop
+  native_root_cause: unresolved
+  preceding_stalls: geometry_wait429s_and_latent_reads48s_observed_not_proof_of_SIGSEGV_cause
+  cleanup: soft_torchrun_sent_SIGTERM_to_owned_peer_no_SIGKILL_old_GPUs_empty_on_inspection
+warmup150500:
+  completed_at: 2026-09-07T03:48:00.389Z
+  LR_factor: 1.0
+  actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  weighted_cycle: 0.0
+  checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-warmup-reference/checkpoint-0150500.pt
+  checkpoint_sha256: 589b7f5dc5de361ca426584dbd4d9d8bbff034523058167d52dbf6d08ca44763
+  checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/589b7f5dc5de361c
+  checkpoint_bytes: 7864619047
+  Adam_age_range: [50500, 65500]
+  clips_seen: {kubric: 421400, pointodyssey: 361200, dynamic_replica: 421400}
+  verified: full_FP32_model_Adam_world2_two_RNGs_matching_sidecar_config_and_actual_RGB1x_peak_rates
+  outside_rotation: true
+  peak_cuda_memory_gib: 65.43991470336914
+  sampled_step_seconds: 3.4824000359512866
+  decision: continue_unchanged_primary_matched_review151500
+  caveat: protocol_runtime_checkpoint_not_quality_or_full_horizon_stability_evidence
+runtime:
+  master_storage_verified_at: 2026-09-07T03:10:35.500Z
+  first_update_step: 150001
+  first_update_at: 2026-09-07T03:11:18.217Z
+  spawn_to_first_update_seconds: 150.863
+  first_update_XYZ: 0.01145084761083126
+  first_update_EPE_m: 0.10786018638166972
+  first_update_XYZ_EPE_match_original_FP32_cycle0_arm: true
+  first_update_LR_factor: 0.002
+  first100_update_at: 2026-09-07T03:18:58.775Z
+  first100_LR_factor: 0.2
+  weighted_cycle: 0.0
+  verified_checkpoint: /data/WorldBridge4D-runs/h030-fp32-cycle0-rgb1x-early-reference/checkpoint-0150100.pt
+  verified_checkpoint_sha256: f283524436725fd4ebe67686e8fafc9ebe0f62094fde6db735ae7a71e27b4e7a
+  verified_checkpoint_artifact: artifact://H030/R-20260907030635-631b93/checkpoint/f283524436725fd4
+  verified_checkpoint_bytes: 7864619047
+  verified_checkpoint_Adam_age_range: [50100, 65100]
+  verified_actual_LRs_at150100: {dense_decoder: 0.0000006, source_rgb_decay: 0.0000006, source_rgb_no_decay: 0.0000006}
+  verified: full_FP32_model_Adam_world2_two_RNGs_counters_and_matching_sidecar
+  peak_cuda_memory_gib_through150175: 65.11295318603516
+  caveat: early_progress_storage_and_rate_checks_not_quality_or_full_horizon_stability
+run: R-20260907030635-631b93
+task: T-20260901153324-39dd05
+owner_session_id: 01a07615-f347-712a-910e-7f7eea16d709
+commit: a11573df6bd13bf632e79a2d15a36e3430cb261c
+config: configs/h030_150k_to_152500_gpu23_b2_k15_fp32_cycle0_rgb1x.yaml
+hypothesis: mature_RGB_10x_rate_may_drive_appearance_drift_faster_than_decoder_adapts
+selection:
+  authority: delegated_autonomous_training_on_physical2_and3
+  primary_review_run: R-20260907024828-ab9c4b
+  group_update_audit_run: R-20260907025411-3f5b2e
+  audit: /data/WorldBridge4D-runs/h030-cycle0-group-update-audit-20260907/150k_to_153500.json
+  evidence: persistent_primary_regression_vs_BF16_despite_real_master_and_BF16_rounded_parameter_changes
+  non_causal_hint: greater_median_relative_tensor_change_in_RGB_decay_group_at_10x_actual_LR
+  caveat: checkpoint_samples_not_full_group_norm_census_or_forward_output_comparison_gradient_attribution_or_validation
+  decision: stop_previous_extension_early_instead_of_fill_155000_budget
+sampled_group_audit:
+  dense_decoder:
+    tensors: 132
+    parameters: 175178627
+    samples: 118595
+    changed_master_samples: 118583
+    changed_bf16_rounded_samples: 61902
+    median_tensor_relative_l2: 0.0033406492707209194
+    sample_relative_l2: 0.0002230528169042779
+  source_rgb_decay:
+    tensors: 18
+    parameters: 1005216
+    samples: 16544
+    changed_master_samples: 16544
+    changed_bf16_rounded_samples: 14192
+    median_tensor_relative_l2: 0.015080802360081155
+    sample_relative_l2: 0.01846131201530903
+  source_rgb_no_decay:
+    tensors: 43
+    parameters: 5224
+    samples: 4712
+    changed_master_samples: 4712
+    changed_bf16_rounded_samples: 3198
+    median_tensor_relative_l2: 0.0075268147522789385
+    sample_relative_l2: 0.0036329822250988695
+  sampling: up_to1024_evenly_spaced_per_tensor_different_group_scales_limit_cross_group_comparison
+protocol:
+  baseline_run: R-20260906224802-229787
+  baseline: FP32_cycle0_RGB_actual10x_original_first2500_updates
+  original_start_step: 150000
+  target_step: 152500
+  resume_checkpoint: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+  origin_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  full_restore: original_model_Adam_counters_two_rank_RNG_cast_FP32_without_reset
+  only_scientific_change: source_RGB_actual_peak_LR3e-5_to3e-6
+  unchanged: [decoder_peak_LR3e-6, architecture, decoder_only, FP32_masters_Adam, BF16_compute_reduce, cycle0, cycle_inputs_forward_diagnostics, B2_A2_K15, seed_data, native_cache_reuse]
+  seed: 20260812
+  geometry_seed: 20260812
+  decoder_seed: 424242
+  warmup_steps: 500
+  LR_origin_step: 150000
+  peak_actual_LRs: {dense_decoder: 0.000003, source_rgb_decay: 0.000003, source_rgb_no_decay: 0.000003}
+  legacy_source_RGB_multiplier: 10_initialization_metadata_not_actual_step_rates
+  enforcement: apply_lr_restart_schedule_overrides_restored_base_rates_before_every_optimizer_step
+  checkpoint_verification: compare_against_this_configs_absolute_rates_times_LR_factor_do_not_use_old_helper_RGB3e-5_constant
+  output: /data/WorldBridge4D-runs/h030-150k-to-152500-fp32-cycle0-rgb1x-gpu23-b2-k15
+preflight:
+  run: R-20260907030045-88a867
+  tests_passed: 100
+  pytest_seconds: 9.88
+  checks: exact_config_diff_absolute_rate_override_Adam_state_preservation_existing_FP32_resume_runtime_and_batching_suite
+handoff:
+  predecessor_run: R-20260907005010-9de7af
+  preserved_comparison_step: 153500
+  preserved_comparison_sha256: 21bbe8fcdb0294c1173fc3c2125284428178fc329ba338713212dfeb9d3600fd
+  enqueue_before_stop: true
+  enqueued_at: 2026-09-07T03:06:35.847Z
+  stop_requested_at: 2026-09-07T03:07:10.441Z
+  final_old_step: 153788
+  old_finished_at: 2026-09-07T03:08:29.492Z
+  new_spawned_at: 2026-09-07T03:08:47.354Z
+  exit_to_spawn_seconds: 17.862
+resources:
+  gpu_ids: ['2', '3']
+  mode: shared
+  allow_foreign_processes: true
+  min_free_memory_mib: 65536
+  memory_safety_mib: 4096
+  wait_timeout_seconds: 7200
+  allocator: default_native_cache_reuse_no_overrides
+termination:
+  launcher: worldbridge.trainer.soft_torchrun
+  checkpoint_signal: SIGTERM
+  checkpoint_event_id: checkpoint_complete
+  terminate_signal: SIGTERM
+  graceful_timeout_seconds: 900
+  force_kill_timeout_seconds: 120
+  allow_sigkill: false
+storage:
+  estimated_checkpoint_bytes: 8000000000
+  reserve_multiplier: 2
+  min_free_bytes: 16000000000
+reviews: [150001, 150100, 150500, 151500, 152500]
+watchdog: completed_global_step_only_900_seconds_record_and_wake
+standalone_diagnostic_inference: remains_cancelled

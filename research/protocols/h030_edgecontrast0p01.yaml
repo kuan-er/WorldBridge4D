@@ -1,0 +1,166 @@
+version: 1
+hypothesis: H030
+phase: one_lower_dose_test_after_edgecontrast01_midpoint_review
+status: running_warmup150500_full_state_protected_registered_no_midpoint_or_endpoint_quality_claim
+endpoint_control_and_first_update_review: research/protocols/h030_edgecontrast155000_review.yaml
+queue_recovery: research/protocols/h030_relay_timeout_recovery.yaml
+owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+user_authority: autonomous_bounded_in_scope_successors_after_review_on_exact_physical_GPUs2and3
+triggering_review:
+  current_arm: R-20260907185236-284f11
+  control: R-20260907144838-4f3680
+  raw_comparison: R-20260907231502-8efa9d
+  count_gated_comparison: R-20260907232029-421c94
+  output: /data/WorldBridge4D-runs/h030-edgecontrast01-review152500-20260907/vs-boundary2x/boundary_count_rollup.json
+  full_LR_window: [150501, 152500]
+  paired_logged_updates: 600
+  batches_K_PO_DR: [300, 200, 100]
+  XYZ_change_pct_K_PO_DR: [0.8151143980899889, 0.12812043142043095, 0.2439598668644516]
+  raw_EPE_change_pct_K_PO_DR: [0.9517313888464107, 0.09482486128271628, 0.3045348525932079]
+  boundary_batch_macro_EPE_change_pct_K_PO_DR: [0.39542363684321735, 0.019578705681499997, 0.16292685847676402]
+  nonboundary_batch_macro_EPE_change_pct_K_PO_DR: [1.3648341752879878, 0.23071970845298662, 0.45070375267042273]
+  occluded_boundary_batch_macro_EPE_change_pct_K_PO_DR: [-0.25866693111511463, -0.07921196587117318, 0.6008809215660493]
+  boundary_points_K_PO_DR: [299363160, 22550328, 31158548]
+  nonboundary_points_K_PO_DR: [2059932840, 28704387, 98892692]
+  occluded_boundary_points_K_PO_DR: [81687905, 3961978, 1855775]
+  empty_PO_boundary_and_occluded_boundary_batches: 1
+  all_logged_GT_counts_and_fingerprints_equal: true
+  interpretation: no_overall_primary_or_boundary_gain_small_occluded_boundary_gain_K_PO_with_nonboundary_cost_and_DR_occluded_regression
+  limits: sampled_training_not_validation_complete_clip_mask_identity_significance_or_proven_gradient_conflict
+  nonboundary_definition: greater_than2px_NOT_fixed_validation_interior_greater_than10px
+current_arm_decision: fixed01_completed155000_full_state_protected_fixed_boundary_screen_not_supportive_current001_dose_keeps_original_predeclared_budget
+new_hypothesis: a_tenfold_weaker_neighbor_vector_auxiliary_may_reduce_observed_nonboundary_tradeoff_while_retaining_useful_boundary_supervision
+mechanism_status: dose_sensitivity_hypothesis_not_proof_that_auxiliary_dominates_gradients_or_that_clipping_or_architecture_is_the_cause
+single_factor:
+  source_edge_contrast_weight: 0.01
+  previous_weight: 0.1
+  reused_controls: [existing_boundary2x_weight0, current_edgecontrast_weight01]
+  no_repeated_control_training: true
+  config_delta_from_weight01: [source_edge_contrast_weight, tracking]
+  runtime_code_delta: validator_only_admits_selected001_no_model_objective_data_or_scheduler_change
+  native_objective: unchanged_GT_direct_horizontal_vertical_neighbor_vectors_normalized_XYZ_SmoothL1_beta005
+  mask_and_reduction: unchanged_both_valid_source_depth_XYZ_and_target_endpoints_per_pair_edge_normalization_equal_eligible_pair_average_occluded_valid_retained
+  boundary: {multiplier: 2.0, radius_px: 2, depth_relative_jump: 0.05}
+  caveat: depth_edges_are_boundary_proxies_not_guaranteed_object_ownership_spatially_constant_prediction_translation_cancels
+  no_adaptive_scaling: true
+budget:
+  origin_step: 150000
+  endpoint: 155000
+  updates: 5000
+  original_warmup_once: 500
+  no_155000_origin_reset: true
+  full_restore: model_Adam_counters_world2_rng2
+  physical_gpus: [2, 3]
+  B_A_K_world: [2, 2, 15, 2]
+  precision: FP32_model_masters_Adam_BF16_compute_reductions
+  actual_peak_group_LRs: [0.000003, 0.000003, 0.000003]
+  gradient_clip: 1.0
+  cycle: enabled_all_dataset_loading_forward_RNG_diagnostics_coefficient0_unweighted_XYZ_normalization_reference
+  seeds: {training: 20260812, geometry: 20260812, decoder: 424242}
+  config: configs/h030_150k_to_155k_gpu23_b2_k15_boundary2x_edgecontrast0p01.yaml
+  config_sha256: 32c982cc7c71a5dd8afbdbda2fbe34e2c5cecd85ef53179de2ca0f42d7e95c9b
+  origin_checkpoint: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+  origin_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+  output: /data/WorldBridge4D-runs/h030-150k-to-155k-boundary2x-edgecontrast0p01-gpu23-b2-k15
+preflight:
+  run: R-20260907232833-81b7a1
+  execution_commit: 0c26a86ca1b4ec61c0bf9850ad7ec3fee10a7c9d
+  succeeded_at: 2026-09-07T23:29:27.530Z
+  tests: 215
+  test_seconds: 14.09
+  composition: original172_plus10_sidecar_restore_plus11_dose_plus13_count_gated_logs_plus9_crossed_contracts
+  report: /data/WorldBridge4D-runs/h030-edgecontrast0p01-preflight-20260907/preflight.json
+  origin: full150000_world2_rng2_193Adam_states_age50000_to65000_original_counters_and_seed
+  three_real_samples: DR_PO_Kubric_same_selected_clips_sources_targets_edge_hashes_as_weight01_gate
+  within_run_input_checks: old_input_arrays_camera_primary_boundary_and_target_RNG_unchanged_with_auxiliary_enabled
+  source_edges_DR_PO_K: [1094, 100, 1895]
+  valid_target_edges_DR_PO_K: [5625, 1500, 28425]
+  scalar_gradient_test: tenfold_auxiliary_gradient_increment_reduction_before_clipping_and_Adam_not_tenfold_optimizer_update_claim
+  CUDA_initialized: false
+  limitations: not_quality_full_horizon_memory_or_bitwise_FSDP_replay_proof
+warmup150500:
+  log_at: 2026-09-08T02:36:21.288Z
+  guard: R-20260908023937-d93b66
+  guard_succeeded_at: 2026-09-08T02:40:00.759Z
+  guard_execution_commit: 9f22b5b34da43e946e10beac39aaf2c4eb1a0d81
+  checkpoint: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast0p01-step150500-reference/checkpoint-0150500.pt
+  sha256: 02229053f7765fafef1a0685b51b92b16a3014fb5bb55ccfa38bec7753347943
+  artifact: artifact://H030/R-20260908005122-ee663c/checkpoint/02229053f7765faf
+  registered_at: 2026-09-08T02:41:58.808Z
+  bytes: 7864619431
+  full_state: format3_FP32_model_Adam_world2_RNG2
+  all193_Adam_age_increments: 500
+  Adam_age_range: [50500, 65500]
+  actual_and_base_LRs: [0.000003, 0.000003, 0.000003]
+  counters_K_PO_DR: [421400, 361200, 421400]
+  sidecar: copied_matching_live150500_not_reconstructed
+  replica: local_same_inode_hardlink_outside_rotation_not_independent_remote_replica
+  producer_files_modified: false
+  next: continue_original_budget_protect152500_review_matched_full_LR_counts_against_weight0_and01
+  caveat: warmup_batch_and_storage_verification_are_not_quality_or_remaining_horizon_memory_proof
+submission:
+  run: R-20260908005122-ee663c
+  execution_commit: 2754c1beddeec3414463b31d075cd22ce04a9754
+  status: running_actual_first150001_verified_not_midpoint_or_endpoint_complete
+  queued_at: 2026-09-08T00:51:22Z
+  spawned_at: 2026-09-08T02:01:05.854Z
+  FP32_storage_verified_at: 2026-09-08T02:02:44.692Z
+  first_completed150001_at: 2026-09-08T02:03:32.348Z
+  first_update_parity_archive: R-20260908021607-7469f0
+  parity: raw_boundary_objectives_GT_counts_and_sampling_match_both_controls_same_auxiliary_loss_and_edges_tenfold_smaller_weighted_auxiliary_not_quality
+  replaced_never_started_run: R-20260907233132-73044b
+  original_submission_commit: 0c26a86ca1b4ec61c0bf9850ad7ec3fee10a7c9d
+  code_equivalence: all_src_tests_configs_analysis_identical_to_CPU215_0c26_snapshot
+  reason_new_tested_snapshot_not_old_run_fork: old42869_snapshot_validator_rejects001_requires_minimal_audited_admission_change
+  dependency: R-20260908005010-8446b9
+  dependency_allowed: independent_readonly_diagnostic_success_or_nonzero_exit_not_training_retry_authority
+  runtime_gate: CPU215_success_owner_commit_config_SHA_original_SHA_src_tests_config_identical_to_gate_both_GPU_diagnostics_terminal_fresh_output_and_retired_training_never_started
+  required_other_diagnostic: R-20260908005010-1c2ad3
+  wait_timeout_seconds: 172800
+  resources: exact_GPU2and3_two_rank_shared_managed_lease_minfree65536MiB_plus4096MiB_safety_foreign_processes_untouched
+  allocator: native_uncapped_unset_three_allocator_env_variables_cuda_empty_cache_every_steps0
+  events: FP32_storage_first_update150001_warmup150500_review152500_end155000_fatal_checkpoint_complete_and900s_progress_watchdog
+  termination: checkpoint_first_SIGTERM_soft_torchrun_no_SIGKILL
+  endpoint_guard: R-20260908005353-ee1896
+  endpoint_guard_requires: producer_success_complete155000_checkpoint_matching_sidecar_full_state_193Adam_ages_plus5000_all_LRs3e_minus6
+  protected_endpoint_directory: /data/WorldBridge4D-runs/h030-boundary2x-edgecontrast0p01-step155000-reference
+relay:
+  sequence: completed01_training155000_then_succeeded_parallel_fixed_GPU2_Kubric_GPU3_DR_endpoint_diagnostics_then_actual001_training
+  existing_GPU_diagnostics: [R-20260908005010-1c2ad3, R-20260908005010-8446b9]
+  existing_CPU_manifest: R-20260907204227-3a167e
+  new_endpoint_CPU_crossed_reviews_K_DR: [R-20260908005353-efd18f, R-20260908005353-f131ba]
+  CPU_review_pairs: [edgecontrast01_155000_vs_boundary2x155000, boundary2x155000_vs_unweighted155000]
+  CPU_reviews_require: respective_GPU_diagnostic_success_only_no_missing_prediction_substitution
+  CPU_analysis: reuse_saved_unweighted155000_and_tested_crossed_analysis_no_new_GPU_inference
+  validation_scope: same_four_clips_per_Kubric_DR_three_sources_all21_targets_four_PO_clips_still_RGB_blocked
+  no_memory_heavy_GPU_overlap: true
+  continuity: useful_prequeued_work_not_occupancy_hashing_loading_and_leases_not_zero_latency
+future_endpoint_validation:
+  status: queued_not_computed
+  execution_commit: abfab32b3e1aaa526e66f58e97f26fe2556436f9
+  own_endpoint_guard: R-20260908005353-ee1896
+  CPU_manifest: R-20260908020906-781b4d
+  GPU_runs_K_DR: [R-20260908021002-0fca6e, R-20260908021002-78a773]
+  CPU_reviews_K_DR: [R-20260908021126-b92696, R-20260908021126-5e62da]
+  output: /data/WorldBridge4D-runs/diagnostics-h030-edgecontrast0p01-endpoint-20260908
+  only_new_label: h030_edgecontrast0p01_155000
+  reused_control_labels: [h030_boundary2x_155000, h030_edgecontrast01_155000]
+  reference_manifest_sha256: 4ecc48c78f4db61b20067041e068f4a682b2c14a5a105a45cb1b801284284c32
+  expected_new_source_records: 24
+  physical_gpus_K_DR: [2, 3]
+  GPU_wait_timeout_seconds: 172800
+  native_resources: shared_managed_single_GPU_minfree24576MiB_plus4096MiB_safety_no_training_overlap_or_foreign_process_control
+  gates: full155000_producer_guard_success_SHA_fixed_prepared_protocols_CPU215_unchanged_code_respective_GPU_success_for_CPU_reviews
+  termination: SIGTERM_only_no_SIGKILL
+  checkpoint_sha256: unresolved_until_future001_guard
+criteria:
+  first_update: verified_actual150001_FP32_storage_and_preupdate_unweighted_boundary_objective_parity_with_controls_weight001_counts_and_finite_gradients_not_quality
+  midpoint: protect150500_and152500_then_match150501_to152500_unweighted_XYZ_EPE_and_count_gated_boundary_nonboundary_occluded_boundary_against_existing_controls
+  endpoint_screen: evaluate001_155000_on_same_fixed_inputs_reuse_weight0_and01_155000_predictions_no_reinference_of_controls
+  screening_support: at_least2percent_boundary_tracking_parent_macro_EPE_improvement_on_both_Kubric_and_DR_vs_boundary2x_weight0_with_no_more_than1percent_global_raw_or_interior_regression
+  interpretation_vs01: report_dose_response_and_tradeoffs_not_just_reduction_of_regression
+  falsification: merely_returning_to_weight0_without_boundary_improvement_is_not_support_for_useful_contrast_supervision
+  no_further_coefficient_grid: one_bounded001_test_only_further_trials_need_new_review_and_rationale
+  uncertainty: fixed_small_parent_balanced_screen_not_generalization_or_confirmatory_significance_no_PO_substitution
+  optimized_losses: not_quality_metrics
+production: H023_100000_unchanged
