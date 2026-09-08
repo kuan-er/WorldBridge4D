@@ -1,6 +1,6 @@
 version: 1
 seed: 20260908
-cache_gpu: '6'
+cache_gpu: '7'
 cache_root: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1
 vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
 source_inventory: /data/WorldBridge4D-runs/h031-native-inventory-20260908/inventory.json
