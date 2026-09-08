@@ -16,7 +16,11 @@ h031_DR_trajectory_mmap_20260908:
   bulk_counts: written432_reused3_total435
   bulk_elapsed_seconds: 6922.666271717055
   complete_marker: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1/bulk_complete.json
-  completion_decision: preserve_original_NPZ_no_retry_no_automatic_training_switch_adapter_and_input_parity_validation_still_pending
+  completion_decision: user_authorized_training_reader_switch_CPU136_and11real_K5_parity_passed_original_NPZ_preserved
+  reader_commit: 6ed0002f6bff0d6bc64aef34546d33f479016f19
+  reader_policy: complete_marker_index_SHA_bound_first_stream_full_source_and_member_SHA_then_frame_reads_stat_checks_missing_or_corrupt_fatal_RuntimeError_no_legacy_fallback
+  reader_gate: R-20260908143715-bf4dda
+  reader_gate_report: /data/WorldBridge4D-runs/h031-k5-dr-mmap-training-gate-20260908.json
   smoke_completed_at: 2026-09-08T12:24:12.490Z
   bulk_started_at: 2026-09-08T12:24:13.277Z
   output: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1
@@ -26,11 +30,16 @@ h031_DR_trajectory_mmap_20260908:
   resources: CPU_only_nice10_ionice2priority7_reserve64GiB_plus20pct_remaining_payload_SIGTERM_only
   current_GPU23_and_DR7: unchanged_no_midrun_input_switch
 h031_native512_capacity_20260908:
-  authority: user_authorized_implement_then_stop_current_GPU23_training_and_test512_B1_A4_K15
+  authority: user_explicitly_requests_completed_DR_mmap_training_then_K5_on_existing_GPU23_bounded_route
   scope: bounded_full150000_to150010_only_not_formal_long_training
   original_checkpoint_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
-  config: configs/h031_k512_po256_dr256_b1_a4_k9_timeout900.yaml
-  code_commit: 5aa3e3b3a077dbec9f4602788d4ee944f0f5f082
+  config: configs/h031_k512_po256_dr256_b1_a4_k5_dr_mmap.yaml
+  code_commit: 6ed0002f6bff0d6bc64aef34546d33f479016f19
+  K5_config_sha256: 4464c92e536053dd22361c93339f8802428481076f132ae77c07e15bb37bb31e
+  K5_mmap_complete_sha256: 714389c4f6d0dab9ef2393a6d032355eac77b94ef02615d21cc1ccae283256b3
+  K5_CPU_gate: R-20260908143715-bf4dda_136tests_and11real_requests_exact_all_geometry_RGB_camera_latent_targets_RNG
+  K5_gate_fix: R-20260908143450-a39ca2_all_checks_passed_but_report_writer_string_not_Path_fixed_rerun_no_GPU_bypass
+  K5_retired_chain: R-20260908143550-e85fa0_R-20260908143619-07bdda_dependency_on_old_failed_report_writer_no_training_started
   K9_authority: user_explicitly_requests_K15to9_after_confirmed_native512_GPU2_OOM
   K9_CPU: R-20260908131658-296077_60passed24p51s
   K9_config_sha256: e509d4119019e6aae7dc94cbbeb2690087a22b56a6a1a1b7c9adf0396215b8b2
@@ -40,8 +49,8 @@ h031_native512_capacity_20260908:
   timeout900_config_sha256: 426373dfa5f736999d88cc8f7ae937284428232cd55044be3098ba85b4880bbf
   live_start_authority: user_explicitly_requests_GPU_start_without_waiting_all80_replay_entries
   live_readiness_CPU: R-20260908120520-cae898_49passed24p64s_CLI_checked_OK
-  live_readiness: Gloo900s_before_each_micro_FSDP_forward_original_live_geometry_NCCL180s_unchanged
-  replay_policy: K15_producer_succeeded_preserve_complete_snapshot_not_compatible_with_current_K9_no_mid_run_switch
+  live_readiness: Gloo900s_before_each_micro_FSDP_forward_NCCL900s_DR_mmap_other_inputs_unchanged
+  replay_policy: K15_producer_succeeded_preserve_complete_snapshot_not_compatible_with_current_K5_no_mid_run_switch
   replay_authority: user_approved_bounded_geometry_snapshot_and_CPU_rank_readiness_fix_then_same_GPU23_capacity_retry
   replay_CPU: R-20260908115826-c7e473
   replay_CPU_observation: succeeded_exit0_at131529243Z_all80_entries_CPU_OK_payload2958651936bytes_elapsed4573p491s
@@ -52,15 +61,16 @@ h031_native512_capacity_20260908:
   replay_readiness: Gloo120s_monitored_barrier_before_each_micro_FSDP_forward_after_RGB_latent_cycle_input_preparation
   dataset_resolutions: K512_PO256_DR256
   native_decoder: spatial_grids64_to512_parameter_names_shapes_preserved_no_interpolated256_output
-  batching: B1_A4_K9_world2_8clips_72pairs_same4slots_per_rank_clip_plan_but_changed_targets
+  batching: B1_A4_K5_world2_8clips_40pairs_same4slots_per_rank_clip_plan_but_changed_targets_and_possible_eligible_source
   objective: ordinary_XYZ_no_boundary_or_contrast_cycle0_paths_retained_RGB1x_restart500warmup_all3e-6
   CPU_initial_tests: R-20260908092837-e86c91_300passed
   CPU_initial_data_failure: R-20260908092904-52c706_PO_uses_existing_per_clip_latents_not_compact_shards
   correction: discover_existing_PO_DR_per_clip256_tier_only_in_native_profile_actual_missing_reads_still_fatal_no_VAE_generation
   CPU_corrected_gate: R-20260908093507-6980a5
   CPU_observation: succeeded_exit0_20260908T094010Z_301tests_and_real_both_rank_10step_inputs_NATIVE512_CAPACITY_CPU_OK
-  GPU_test: R-20260908131757-c86295
-  CPU_fullstate_review: R-20260908131830-00f7be
+  GPU_test: R-20260908143820-96f650
+  CPU_fullstate_review: R-20260908143851-3e354d
+  previous_K9_GPU_review: R-20260908131757-c86295_R-20260908131830-00f7be_terminated_after512_OOM
   previous_K15_OOM_GPU_review: R-20260908124342-07a333_R-20260908124416-768c4c_superseded
   previous_live_GPU_review: R-20260908120609-c620f9_R-20260908120644-04ad1f_superseded
   superseded_replay_GPU_review: R-20260908115928-3e16b6_cancelled_before_start_R-20260908115958-b40da8_dependency_branch
@@ -68,7 +78,9 @@ h031_native512_capacity_20260908:
   superseded_initial_review: R-20260908113801-b13edd
   previous_GPU: R-20260908093602-618730_terminated_not_started
   previous_review: R-20260908093635-750669_superseded_dependency_branch_do_not_retry
-  GPU_state: K9_terminated_exit1_at134337972Z_after_GPU2_K512_reverse_query_OOM_completed150004_no512_update
+  GPU_state: K5_DR_mmap_running_initializing_no_resume_or_update_yet_confirmed
+  K5_started_UTC: 2026-09-08T14:38:47.752Z
+  K5_admission_foreign_observation: GPU2_PID336756_28090MiB_do_not_control_not_same_foreign_PID_as_prior_K9
   K9_started_UTC: 2026-09-08T13:24:54.849Z
   K9_resume_UTC: 2026-09-08T13:26:43Z_full150k_optimizer_RNG2
   K9_last_completed_update: 150004
@@ -97,7 +109,7 @@ h031_native512_capacity_20260908:
   first_update_pairs: 120
   failure_evidence: rank0_geometry_wait355s_then_forward114657Z_rank1_last_phase_geometry_wait_from114053Z_no_OOM_evidence
   stop_request: TERM-20260908115017-c190e9_SIGTERM_only_terminated_exit1_at115514Z_no_checkpoint_or_completed_update
-  next_capacity_action: fix_or_stage_bounded_DR_geometry_and_verify_rank_readiness_before_retry_no_automatic_K_or_GPU_change
+  next_capacity_action: observe_authorized_K5_DR_mmap_first_update_firstK512_update_and10step_fullstate_no_unrequested_long_training
   admission_override: user_explicitly_accepts_OOM_risk_remove4GiB_extra_headroom_resource_only_fork_same_scientific_commit
   launcher_metadata_caveat: inherited_admission_print_says_plus4GiB_but_authoritative_Run_resources_are49152plus0
   performance_caveat: PRL_first_update_ms191051_matches_update_start_not_completed_optimizer_update_use_explicit_loss_event
@@ -112,8 +124,9 @@ h031_native512_capacity_20260908:
   minimum_plus_safety_MiB_each: [49152, 0]
   capacity_budget: experimental_not_measured512_peak_no_K_reduction_or_other_GPU_fallback
   native_GT_snapshot: /data/WorldBridge4D-runs/h031-native512-capacity-inputs-20260908
-  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k9-timeout900-capacity-20260908
-  protocol: research/protocols/h031_native512_capacity.yaml
+  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k5-dr-mmap-capacity-20260908
+  protocol: research/protocols/h031_k5_dr_mmap_capacity.yaml
+  previous_protocol: research/protocols/h031_native512_capacity.yaml
   DR_GPU7_unchanged: R-20260908053440-b8f756
   training_ready: false
 h031_stream_local_rgb_20260908:

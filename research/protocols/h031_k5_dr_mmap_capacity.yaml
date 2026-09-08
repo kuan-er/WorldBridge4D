@@ -1,0 +1,36 @@
+version: 1
+hypothesis: H031
+task: T-20260908032232-e95da1
+authority: user_requests_completed_DR_mmap_training_and_K5
+status: GPU_started143847752Z_initializing_no_update_confirmed
+code_commit: 6ed0002f6bff0d6bc64aef34546d33f479016f19
+config: configs/h031_k512_po256_dr256_b1_a4_k5_dr_mmap.yaml
+config_sha256: 4464c92e536053dd22361c93339f8802428481076f132ae77c07e15bb37bb31e
+seed: 20260812
+decoder_seed: 424242
+origin: /data/WorldBridge4D-runs/h030-h027-140k-to-150k-cycle-all-norm30-gpu56-k13-b1-r1/checkpoint-0150000.pt
+origin_sha256: d682a5d53f41c06c3ebfd7ef41c305f271a12617a7c862cff56e42571323f2ee
+resume: full_model_Adam193_counters_world2_RNG2_not_weights_only
+budget: original150000_to150010_10updates_not_long_training
+batching: {B: 1, A: 4, K: 5, world: 2, clips: 8, pairs: 40}
+resolutions: {kubric: 512, pointodyssey: 256, dynamic_replica: 256}
+objective: ordinary_XYZ_cycle0_paths_retained_no_boundary_no_contrast_RGB1x_all3e-6_restart500warmup
+precision: FP32_decoder_masters_Adam_BF16_compute_Wan_geometry_frozen
+CPU: R-20260908143715-bf4dda
+CPU_result: 136tests_plus11real_DR_requests_exact_geometry_RGB_camera_latent_targets_RNG
+CPU_report: /data/WorldBridge4D-runs/h031-k5-dr-mmap-training-gate-20260908.json
+CPU_initial_failure: R-20260908143450-a39ca2_report_Path_type_after_tests_and_parity_fixed_then_rerun
+GPU: R-20260908143820-96f650
+review: R-20260908143851-3e354d
+output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k5-dr-mmap-capacity-20260908
+resources: {gpu_ids: [2, 3], mode: shared, min_free_memory_mib: 49152, memory_safety_mib: 0, allow_foreign_processes: true}
+termination: SIGTERM_only_checkpoint_first_no_SIGKILL
+storage: {min_free_bytes: 68719476736, estimated_checkpoint_bytes: 16000000000, reserve_multiplier: 1.2}
+readiness: Gloo900seconds_before_each_micro_FSDP_forward
+NCCL_timeout_seconds: 900
+DR_mmap_root: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1
+DR_mmap_complete_sha256: 714389c4f6d0dab9ef2393a6d032355eac77b94ef02615d21cc1ccae283256b3
+DR_reader: first_use_source_and_member_SHA_later_frame_mmap_stat_checks_no_legacy_decode_fallback
+sampling_caveat: K5_not_exact_K9_or_K15_sampling_replay_but_NPZ_vs_mmap_parity_at_sameK5
+acceptance: real_K512_forward_backward_update_then150010_fullstate193Adam_steps_plus10_RNG2_counters_and_SHA
+quality_or_long_training_ready: false
