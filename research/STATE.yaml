@@ -3,12 +3,20 @@ h030_gpu23_recovery_20260908:
   parent: R-20260908005122-ee663c
   parent_status: terminated_without_SIGKILL
   diagnosis: rank0_absent_rank1_NCCL_allgather_timeout_original_rank0_cause_unknown
-  recovery_run: R-20260908050540-a07d4a
-  observed_status: queued_not_training_progress
+  retired_K15_recovery: R-20260908050540-a07d4a
+  retired_K15_status: terminated_before_start_user_replaced_with_K9
+  recovery_run: R-20260908051017-18ab7d
+  CPU_gate: R-20260908050937-7d949b
+  CPU_tests: 81_passed
+  observed_status: K9_submitted_not_yet_verified_first_update
+  targets_per_source: 9
+  pairs_per_update: 72
+  scientific_caveat: user_changed_K_not_matched_K15_coefficient_only_trajectory
   resume_step: 151500
   physical_gpus: [2, 3]
   checkpoint_sha256: 94287399783b7e2f70bb62ed0e99aa7d0bdacd559fcaae5cba18abb003cdc9f3
-  resource_gate: unchanged_69632MiB_free_required_per_GPU_GPU2_observed67010MiB
+  resource_gate: experimental_K9_49152MiB_plus4096MiB_safety_not_measured_peak
+  config: configs/h030_151500_to_155k_gpu23_b2_k9_boundary2x_edgecontrast0p01.yaml
   note: research/notes/h030-gpu23-recovery-20260908.md
 active_hypotheses: [H030]
 recent_results:
