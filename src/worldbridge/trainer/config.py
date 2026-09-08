@@ -138,12 +138,16 @@ def validate_config(config: dict[str, Any], world: int) -> None:
                 or not config.get('pre_attention_rgb_query') or config.get('query_grid_size') != 32
                 or any(config.get(k, False) for k in ('cycle_b2_a2_k19', 'cycle_b2_a2_k15', 'xyz_b2_a2_k15'))):
             raise ValueError('native512 B1/A4 requires unchanged FP32 decoder XYZ/cycle0/RGB1x control')
+        gt_values = config.get('datasets', {}).get('kubric', {})
+        demand_gt = gt_values.get('native_geometry_mode', 'staged') == 'verified_cache_or_raw'
+        if demand_gt and not native_long:
+            raise ValueError('native on-demand GT requires explicit10k continuation')
         if native_long:
             if (config.get('native_capacity_test_only')
                     or int(config.get('max_steps', 0)) != 160010
                     or int(config.get('selected_checkpoint_step', -1)) != 150010
-                    or not config.get('datasets', {}).get('kubric', {}).get('native_geometry_full_corpus')):
-                raise ValueError('native10k requires full GT corpus and150010->160010 full continuation')
+                    or not (bool(gt_values.get('native_geometry_full_corpus')) ^ demand_gt)):
+                raise ValueError('native10k requires full or explicit native on-demand GT and150010->160010 continuation')
             restart = config.get('lr_restart', {})
             if (restart.get('start_step') != 150000 or restart.get('warmup_steps') != 500
                     or restart.get('end_step') != 160010 or restart.get('schedule') != 'warmup_hold'):

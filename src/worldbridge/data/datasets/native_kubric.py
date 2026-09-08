@@ -30,6 +30,17 @@ class NativeKubricDataset(MOViF256Dataset):
                 or not report.get('all_existing_training_index_entries_verified')):
             raise ValueError('native latent corpus is incomplete')
         self.geometry_root = Path(values['native_geometry_root'])
+        mode = values.get('native_geometry_mode', 'staged')
+        if mode not in ('staged', 'verified_cache_or_raw'):
+            raise ValueError('unknown native GT reader mode')
+        self.demand_reader = None
+        if mode == 'verified_cache_or_raw':
+            if values.get('native_geometry_full_corpus'):
+                raise ValueError('select staged-full or explicit native on-demand GT, not both')
+            from ..cache.native_gt_demand import NativeGTDemandReader
+            self.demand_reader = NativeGTDemandReader(self.geometry_root, m, self.local_rgb)
+            self.geometry_ready = None
+            return
         self.geometry_ready = json.loads((self.geometry_root / 'ready.json').read_text())
         if self.geometry_ready['manifest_sha256'] != m['sha256']:
             raise RuntimeError('native geometry manifest mismatch')
@@ -42,6 +53,8 @@ class NativeKubricDataset(MOViF256Dataset):
     @lru_cache(maxsize=4)
     def sample(self, index):
         index = int(index)
+        if getattr(self, 'demand_reader', None) is not None:
+            return self.demand_reader.read(index)
         entry = self.geometry_ready['entries'][str(index)]  # no raw-source or subset fallback
         path = self.geometry_root / entry['file']
         if file_sha256(path) != entry['sha256']:
