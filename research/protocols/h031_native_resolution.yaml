@@ -2,7 +2,8 @@ version: 1
 hypothesis: H031
 task: T-20260908032232-e95da1
 owner_session: 01a07615-f347-712a-910e-7f7eea16d709
-status: CPU94_and_both_dataset_source_shape_storage_gates_succeeded_GPU_cache_queued_not_training
+status: historical_GPU0_and_all_native_PO_plan_superseded_before_training
+superseded_by: research/protocols/h031_gpu6_po256.yaml
 upstream_scientific_code: a855f3a931b97d753ff6b228173121346d133063
 isolation: separate_Task_preserves_H030_worktree_training_and_immutable_validation_DAG
 cache_config: configs/h031_native_cache.yaml
@@ -65,6 +66,7 @@ CPU_gate:
     tensorflow-cpu: 2.16.2
     safetensors: 0.7.0
 GPU_relay:
+  status: all_four_retired_before_process_start_after_explicit_GPU6_authorization
   physical_gpu: '0'
   selection_authority: default_allowed_GPU0_and_latest_user_shared_cache_request_no_GPU4to7_authorization_inferred
   mode: shared
@@ -105,7 +107,7 @@ prestart_recoveries:
     never_started_GPU_descendants: [R-20260908035454-a61674, R-20260908035516-b83c3e, R-20260908035541-7f394a, R-20260908035603-944c77]
 prestart_recovery_policy: no_dependency_failed_bypass_no_GPU_process_or_cache_progress_from_retired_jobs_no_installed_worker_patch
 training_plan:
-  status: requested_planned_not_implemented_or_submitted
+  status: initial_all_native_proposal_superseded_by_user_PO256_retention_not_submitted
   requested_microbatch_per_gpu: 1
   requested_K: 7
   proposed_gradient_accumulation: 4

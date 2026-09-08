@@ -1,0 +1,114 @@
+version: 1
+hypothesis: H031
+task: T-20260908032232-e95da1
+owner_session: 01a07615-f347-712a-910e-7f7eea16d709
+status: GPU6_K_smoke_succeeded_bulk_running_DR_queued_PO256_retention_checked_training_not_started
+previous_protocol: research/protocols/h031_native_resolution.yaml
+user_authority:
+  cache_gpu: explicitly_authorized_physical_GPU6_for_Kubric_and_DynamicReplica
+  PointOdyssey: explicitly_keep_existing256_cache_due_to_NAS_outage
+  scope: mixed_resolution_not_all_native_PO_not_reencoded_or_upsampled
+  H030: leave_existing_GPU2and3_training_and_endpoint_DAG_unchanged
+configuration:
+  path: configs/h031_native_cache_gpu6.yaml
+  sha256: d3a8f25849af850c1249a4ce0f9e8aa7881c5f337313d746b20480aa61cfeee8
+  only_cache_config_delta: cache_gpu_string0_to6
+  immutable_execution_commit: 8e7e2bbe8d4f48084fd7c0047b3b1ddde08ec2c1
+  native_code_tests_and_old_config: identical_to_CPU94_4863f71b66f76c09de40fd4456bd0db328ba91f0
+  CPU94: reused_not_rerun
+  seed: 20260908
+handoff:
+  CPU_run: R-20260908042106-60b20a
+  status: succeeded
+  succeeded_at: 2026-09-08T04:21:11.448Z
+  output: /data/WorldBridge4D-runs/h031-native-gpu6-handoff-20260908
+  checks: owned_successful_old_K_and_DR_CPU_gates_unchanged_audited_code_only_GPU_config_delta_other_deltas_rejected_VAE_and_index_hashes
+  native_manifests: copied_byte_identical_not_recomputed_or_reselected
+  K_manifest_sha256: aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+  DR_manifest_sha256: bfc8e394a73243cff4050430c013f420efe44e36fe43a0eaeda9128f78051011
+  vae_sha256: 38071ab59bd94681c686fa51d75a1968f64e470262043be31f7a094e442fd981
+  GPU0_retirement:
+    runs: [R-20260908040110-8241e0, R-20260908040135-38a88a, R-20260908040158-c47dc1, R-20260908040221-57d5ff]
+    all_status: terminated
+    all_started_at: null
+    all_signal_audits: empty_no_application_process_was_signalled
+    reason: explicit_user_GPU6_migration_not_a_training_or_encoding_retry
+GPU_relay:
+  physical_gpu: '6'
+  mode: shared
+  allow_foreign_processes: true
+  K_minfree_plus_safety_MiB: [16384, 4096]
+  DR_minfree_plus_safety_MiB: [32768, 4096]
+  wait_seconds: 172800
+  cache_root: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1
+  native_policy: FP32_posterior_mean_no_resize_crop_pad_tiling_or_allocator_tuning
+  smoke_K: R-20260908042152-6440a6
+  bulk_K: R-20260908042214-89af79
+  smoke_DR: R-20260908042238-cb8e4e
+  bulk_DR: R-20260908042301-6aa58e
+  DAG: CPU_handoff_success_to_K_smoke_success_to_K_bulk_success_to_DR_smoke_success_to_DR_bulk
+  failure_bypass: none
+  no_SIGKILL_or_foreign_process_control: true
+  smoke_K_observed:
+    spawned_at: 2026-09-08T04:21:58.813Z
+    succeeded_at: 2026-09-08T04:23:01.004Z
+    real_indices: [0, 2868, 5736]
+    written: 3
+    native_RGB_shape: [21, 512, 512, 3]
+    latent_shape: [16, 6, 64, 64]
+    first_input_repeat_max_abs_error: 0.0
+    peak_cuda_GiB: 4.378378391265869
+    report: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1/kubric/aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6/smoke_complete.json
+    caveat: no_native_training_quality_or_B1_K7_or_DR_memory_claim
+  bulk_K_observed:
+    spawned_at: 2026-09-08T04:23:06.731Z
+    log_at: 2026-09-08T04:26:48.474Z
+    processed: 37
+    target: 5737
+    newly_written: 36
+    reused: 1
+    caveat: overlapping_smoke_and_bulk_coverage_not_additive_training_progress_or_full_cache_completion
+  DR: queued_after_K_bulk_not_yet_encoded
+PO256:
+  policy: retain_existing_VAE_RGB_GT_pipeline_in_both_training_arms_no_resize_or_reencoding
+  native_RGB_outage: no_longer_a_reason_to_block_this_mixed_resolution_route
+  failed_shard_only_check: R-20260908042540-f57d49
+  failure: allow_missing_latents_false_requires_compact_shards_but_existing_PO_latents_are_in_lazy_per_clip_tier
+  corrected_readonly_check: R-20260908042819-b00d89
+  correction: allow_missing_latents_true_only_opens_existing_lazy_tier_all9746_clean_latent_reads_still_mandatory_no_VAE_constructor_or_miss_fill
+  completed_marker_at: 2026-09-08T04:29:34.013Z
+  output: /data/WorldBridge4D-runs/h031-po256-retention-check-20260908/report.json
+  clips: 9746
+  all_latents_read_finite_FP32: true
+  latent_shape: [16, 6, 32, 32]
+  ordered_latent_values_sha256: 7eb9c8210441a1792d4bbbafd21b556787e76c50d4697a419ed96e496572418f
+  index_sha256: 936851a51f769599fcc62cb62e53ee8fd56ebfcef568c7cab949a901abc2df74
+  RGB_contract_sha256: 2eb99b6e5386c8dfbe1e36f0255cdf8149d46150a9d9b0f8e80d598be7823b4b
+  RGB_headers_completion_coverage: validated_by_existing_store
+  sample_indices: [0, 4873, 9745]
+  sample_RGB_shape: [21, 256, 256, 3]
+  GT_sources_each: [0, 10, 20]
+  GT_source_records: 9
+  GT_targets_each: 21
+  all_RGB_payloads_rehashed: false
+  all_future_geometry_reads_verified: false
+  raw_PO_RGB_access_or_reencoding: false
+training_plan:
+  status: not_implemented_or_submitted_requires_native_model_geometry_alignment_and_memory_gates
+  candidate_HW:
+    kubric: [512, 512]
+    pointodyssey: [256, 256]
+    dynamic_replica: [720, 1280]
+  microbatch_per_gpu: 1
+  K: 7
+  proposed_accumulation: 4
+  proposed_world_size: 2
+  proposed_training_GPUs: [2, 3]
+  clips_per_update: 8
+  pairs_per_update: 56
+  comparison: B1_K7_low_resolution_control_needed_PO256_identical_in_both_arms
+  DR_FOV_caveat: existing256_DR_pipeline_crops_native1280x720_to_center720x720_before_resizing_native_cache_is_full_frame
+  DR_FOV_admission: fix_or_explicitly_factor_FOV_and_common_ray_evaluation_before_claiming_a_resolution_only_effect_no_silent_latent_crop
+  same_learned_weights_resume: must_verify_not_assume_or_silently_weights_only
+  cache_success: not_training_readiness_or_quality
+  production: H023_100k_unchanged

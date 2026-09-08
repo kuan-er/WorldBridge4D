@@ -543,23 +543,25 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: >-
-  H031 user-requested native VAE cache route is isolated from H030. CPU94 and native
-  Kubric and DR source/shape/storage admissions both succeeded.
-  Native Kubric is512x512 latent16x6x64x64 and DR is720x1280 latent16x6x90x160.
-  GPU0 shared cache DAG R-20260908040110-8241e0 -> R-20260908040135-38a88a ->
-  R-20260908040158-c47dc1 -> R-20260908040221-57d5ff is queued; latest K smoke is
-  waiting for GPU0 with no process start. Never bypass leases or infer GPU4to7
-  authorization. Both dataset CPU gates remain mandatory; no failed-check bypass.
-  Cache all5737 K and6090 DR existing training-index entries, not availability-selected
-  training or a changed raw-release cohort. PO9746 native RGB is blocked because
-  configured and legacy raw roots are missing; request its actual path/mount, never
-  upsample256 caches. GPU smoke and bulk completion are not yet observed. No native
-  training submitted: plan B1/A4/K7 world2 on GPUs2/3, matched256 B1/K7 control,
-  first implement native model/geometry/intrinsics and test each actual shape/resume.
-  Native DR may not fit the requested B1/K7 despite a512/VAE-only smoke. H0300.01
-  remains unchanged in its own Task on GPUs2/3; retain milestone protection/reviews
-  and its existing endpoint DAG. H023 stays production. Details in
-  research/protocols/h031_native_resolution.yaml.
+  User explicitly authorizes GPU6 cache production and retaining original PO256.
+  H031 is now a mixed-resolution route: K512x512, PO256x256, DR720x1280. No PO
+  reencoding/upsampling or replacement clips; preserve PO256 in both comparison arms.
+  CPU GPU-only handoff R-20260908042106-60b20a succeeded with copied byte-identical
+  K/DR manifests and reused CPU94. Four old GPU0 jobs terminated before start.
+  GPU6 K smoke R-20260908042152-6440a6 succeeded with3real cached clips, repeat error0,
+  peak4.378378391GiB. K bulk R-20260908042214-89af79 actually started04:23:06.731Z;
+  observed37/5737 processed including1reused, not complete. DR smoke/bulk
+  R-20260908042238-cb8e4e / R-20260908042301-6aa58e remain success-gated successors.
+  All memory/storage/native-allocator/SIGTERM-only gates remain; no foreign control.
+  PO read-only R-20260908042819-b00d89 checked all9746 existing FP32 latents and
+  three cached RGB clips/nine GT source records. This does not verify every future
+  geometry read or rehash all RGB payloads. Cache production is not training readiness.
+  Next implement/test native model/geometry/camera alignment and B1/K7 memory per
+  shape; proposed A4/world2 gives8clips/56pairs. Existing256 DR is a center crop,
+  unlike the native full-frame cache: fix/factor FOV and common-ray evaluation before
+  claiming resolution-only effects. No training submitted yet. H0300.01 on GPUs2/3,
+  its milestone protection and endpoint DAG stay unchanged; H023 stays production.
+  Current protocol: research/protocols/h031_gpu6_po256.yaml.
 h030_previous_next_step: >-
   Contrast0.1 R-20260907185236-284f11 succeeded155000 normally at01:57:04.246Z.
   Full FP32 model/Adam/world2/RNG2/counters/193Adam+5000/all3e-6 endpoint is protected
@@ -2430,25 +2432,34 @@ h030_edgecontrast_endpoint_validation:
   policy: native_uncapped_single_GPU_workers_after_training_no_overlap_no_SIGKILL_no_GPU_substitution
   caveat: future_checkpoint_hashing_and_model_loading_are_not_zero_latency_no_occupancy_work
 h031_native_resolution:
-  status: CPU94_both_dataset_gates_succeeded_GPU0_queued_no_native_training
-  protocol: research/protocols/h031_native_resolution.yaml
+  status: mixed_resolution_PO256_retained_GPU6_K_smoke_succeeded_bulk_running_DR_queued
+  protocol: research/protocols/h031_gpu6_po256.yaml
+  previous_protocol: research/protocols/h031_native_resolution.yaml
   task: T-20260908032232-e95da1
   base_scientific_code: a855f3a931b97d753ff6b228173121346d133063
-  execution_commit: 4863f71b66f76c09de40fd4456bd0db328ba91f0
-  CPU_K: R-20260908035908-3ddd14
-  CPU_DR: R-20260908035946-2e071f
-  GPU_K_smoke: R-20260908040110-8241e0
-  GPU_K_bulk: R-20260908040135-38a88a
-  GPU_DR_smoke: R-20260908040158-c47dc1
-  GPU_DR_bulk: R-20260908040221-57d5ff
-  physical_cache_gpu: '0'
-  cache_mode: shared_with_memory_and_lease_gates_no_foreign_control
+  execution_commit: 8e7e2bbe8d4f48084fd7c0047b3b1ddde08ec2c1
+  CPU94_code_and_data_gates: reused_from4863_not_rerun
+  CPU_GPU6_handoff: R-20260908042106-60b20a
+  GPU_K_smoke: R-20260908042152-6440a6
+  GPU_K_bulk: R-20260908042214-89af79
+  GPU_DR_smoke: R-20260908042238-cb8e4e
+  GPU_DR_bulk: R-20260908042301-6aa58e
+  physical_cache_gpu: '6'
+  cache_mode: explicit_user_authorization_shared_unchanged_safety_gates_no_foreign_control
   cache_root: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1
   native_shape_K_DR: [[21, 512, 512, 3], [21, 720, 1280, 3]]
   cache_clips_K_DR: [5737, 6090]
-  blocked_PO_clips: 9746
-  PO_blocker: raw_RGB_root_missing_no_256_upsampling_or_training_subset_substitution
-  training: B1_K7_requested_not_implemented_or_submitted_native_data_model_geometry_and_memory_gates_pending
+  K_smoke_peak_GiB: 4.378378391265869
+  K_smoke_clips: 3
+  K_smoke_first_input_repeat_max_error: 0.0
+  K_bulk_spawned_at: 2026-09-08T04:23:06.731Z
+  K_bulk_observed_processed: 37
+  PO_policy: user_authorized_original256_VAE_RGB_GT_in_both_arms_no_raw_RGB_needed_or_reencoding
+  PO_readonly_check: R-20260908042819-b00d89
+  PO_latents_checked: 9746
+  PO_RGB_clips_checked: 3
+  PO_GT_source_records_checked: 9
+  training: B1_K7_not_submitted_model_geometry_FOV_camera_resume_and_memory_gates_pending
   H030: unchanged_in_own_worktree_running_GPU2and3_with_existing_endpoint_DAG
 h030_boundary2x_edgecontrast0p01:
   status: running_warmup150500_full_state_protected_registered_no_midpoint_or_endpoint_quality_claim
@@ -2555,4 +2566,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-08T04:11:45Z
+updated_at: 2026-09-08T04:29:34Z
