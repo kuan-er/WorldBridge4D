@@ -2,8 +2,14 @@ version: 1
 hypothesis: H031
 scope: user_authorized_code_then_safe_stop_current_training_then_test_native512_B1_A4_K15
 owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
-status: live_run_completed3updates_then_PO256_NCCL_timeout_after_both_CPU_ready_stop_requested_no_K512_result
-implementation_commit: 0612fa5b2312f8231cc54a3dda76ead8c627a071
+status: user_authorized_NCCL900_timeout_only_restart_started124359Z_no_update_yet
+implementation_commit: 7b8add01fcceb44c0d64bb9709a48cfc4ce5260a
+timeout_override:
+  authority: user_requests_longer_timeout_and_retest
+  only_config_delta: distributed_timeout_seconds180to900
+  CPU: R-20260908124251-de4ab8_18tests_passed_exact_delta_reuses_original_real_input_gate
+  Gloo: unchanged900s
+  previous_live_run: c620f9_terminated_exit1_at124332Z_no_SIGKILL
 live_start_override:
   authority: user_explicitly_requests_immediate_GPU_start
   CLI: --input-readiness --input-readiness-timeout-seconds 900
@@ -22,7 +28,7 @@ replay:
   readiness: separate_Gloo120s_monitored_barrier_each_micro_before_FSDP_forward_after_input_preparation
   CPU: R-20260908115826-c7e473
   tests: 49passed23p18s_including_real_two_rank_Gloo_success_timeout
-config: configs/h031_k512_po256_dr256_b1_a4_k15_capacity.yaml
+config: configs/h031_k512_po256_dr256_b1_a4_k15_timeout900.yaml
 seed: 20260812
 geometry_seed: 20260812
 decoder_seed: 424242
@@ -79,8 +85,9 @@ runs:
   initial_gate_failure: required_PO_compact_latent_shards_although_actual_existing_cache_is_lazy_per_clip_no_GPU_started
   correction: isolated_native_profile_allows_existing_external_per_clip_tier_discovery_missing_reads_remain_fatal_no_256_global_relaxation
   corrected_CPU_gate: R-20260908093507-6980a5
-  corrected_GPU: R-20260908120609-c620f9
-  corrected_CPU_fullstate_review: R-20260908120644-04ad1f
+  corrected_GPU: R-20260908124342-07a333
+  corrected_CPU_fullstate_review: R-20260908124416-768c4c
+  previous_live_GPU_review: R-20260908120609-c620f9_R-20260908120644-04ad1f_superseded
   replay_GPU_and_review: R-20260908115928-3e16b6_cancelled_before_start_R-20260908115958-b40da8_superseded
   initial_capacity: R-20260908113732-aad79b_terminated_exit1_at115514Z_after_NCCL_timeout_no_update
   initial_review: R-20260908113801-b13edd_superseded
@@ -89,7 +96,7 @@ runs:
   started_at: 2026-09-08T11:37:42.373Z
   fork_caveat: resources_only_same_f573376_commit_inherited_admission_print_is_stale_Run_resources_authoritative
   superseded_GPU_and_review: [R-20260908093221-3e2263, R-20260908093321-78d45c]
-  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-live-ready-capacity-20260908
+  GPU_output: /data/WorldBridge4D-runs/h031-k512-po256-dr256-b1-a4-k15-timeout900-capacity-20260908
 handoff:
   current_H030: R-20260908051017-18ab7d
   stop_only_after: code_CPU_tests_and_real_input_gate_succeeded
@@ -104,7 +111,7 @@ handoff:
     user_override: explicitly_accepts_OOM_risk_direct_test_removes_extra4GiB_headroom_no_foreign_control_no_K_change
     budget_type: experimental_admission_not_measured_native512_peak_not_guaranteed_fit
     wait_timeout_seconds: 172800
-  termination: SIGTERM_checkpoint_first900s_no_SIGKILL_soft_torchrun_NCCL_timeout180s
+  termination: SIGTERM_checkpoint_first900s_no_SIGKILL_soft_torchrun_NCCL_timeout900s
   progress_watchdog_seconds: 900
   minimum_disk_free_bytes: 68719476736
   expected_checkpoint_bytes: 16000000000
