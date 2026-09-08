@@ -1,0 +1,51 @@
+version: 1
+hypothesis: H031
+scope: user_requested_overlap_Kubric_CPU_RGB_staging_with_GPU6_local_VAE
+supersedes: h031_local_rgb_full_extraction_barrier_only
+owner_session: 01a07f60-0948-77e3-b208-0d890e3f1009
+seed: 20260908
+execution_commit: 02e4c83bd340751360fcf8f8f776d61e84567a0b
+producer:
+  run: R-20260908061931-15439f
+  unchanged_snapshot: 71fa350a9b95d34cc3a24767cbbc84f6b70135b6
+  root: /data/WorldBridge4D-persistent/worldbridge4d-native-rgb-v1
+  manifest_sha256: aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+  RGB_contract: unchanged_atomic_write_once_uint8_T21_H512_W512_C3
+  restart: not_required_producer_keeps_running
+consumer:
+  config: configs/h031_native_cache_gpu6.yaml
+  config_sha256: d3a8f25849af850c1249a4ce0f9e8aa7881c5f337313d746b20480aa61cfeee8
+  preflight: /data/WorldBridge4D-runs/h031-native-gpu6-handoff-20260908/kubric
+  VAE_sha256: 38071ab59bd94681c686fa51d75a1968f64e470262043be31f7a094e442fd981
+  additional_argv: [--rgb-root, /data/WorldBridge4D-persistent/worldbridge4d-native-rgb-v1, --rgb-producer-run, R-20260908061931-15439f, --rgb-wait-timeout, '900']
+  local_publication: ordered_indices_read_only_final_atomic_filename_verify_full_RGB_SHA256_before_latent_reuse_or_write
+  pending_publication: bounded900s_wait_per_missing_clip_cooperative_SIGTERM_no_NAS_fallback
+  corrupt_publication: immediate_failure_not_retried_or_replaced
+  producer_health: authoritative_PRL_readRun_owner_module_stage_root_config_preflight_binding_cached10s_subprocess_timeout10s
+  producer_failure: fail_closed_status_failed_terminated_checkpointed_stop_or_unknown
+  producer_success_with_missing_file: immediate_failure
+  final_completion: every5737_requested_latent_verified_plus_local_RGB_completion_and_exact_coverage_plus_producer_succeeded
+  timing_caveat: RGB_input_seconds_include_wait_for_next_publication
+relay:
+  retired_before_start: [R-20260908061953-4935ee, R-20260908062016-9f34d7]
+  CPU_gate: R-20260908064352-261513
+  CPU_result: 63tests_passed_three_local_RGB_hashes_match_original_preflight_no_NAS_reads
+  CPU_compatibility: original_RGB_writer_cache_and_raw_decoder_latent_cache_VAE_and_config_unchanged_from_running_producer_commit
+  GPU6_local_stream_smoke: R-20260908064415-efa0a2
+  GPU6_local_stream_bulk: R-20260908064439-4dcb6b
+  dependency: CPU_success_then_smoke_success_then_bulk_no_full_extraction_barrier_at_start
+  smoke: first_middle_last_already_published_RGB_reencode_exactly_equal_existing_latents_and_repeat_error0
+  physical_GPUs: ['6']
+  admission_MiB: 16384_plus4096_safety
+  shared: true
+  allow_foreign_processes: true
+  wait_timeout_seconds: 172800
+  minimum_free_bytes: 68719476736
+  termination: SIGTERM_clip_boundary_or_wait_loop_no_SIGKILL
+  watchdog_seconds: 900
+  events: all_listeners_max_triggers1_wait_event_does_not_count_as_progress
+unchanged_runs:
+  DR_GPU7: R-20260908053440-b8f756
+  H030_GPU23: R-20260908051017-18ab7d
+training_ready: false
+speedup: unmeasured_local_HDD_contention_can_limit_overlap_benefit
