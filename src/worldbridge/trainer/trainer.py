@@ -121,7 +121,7 @@ def main() -> None:
     geometry_replay = None
     input_ready_group = None
     if args.geometry_replay or args.input_readiness:
-        if not config.get('native_kubric512_b1_a4_k15', False):
+        if not (config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False)):
             raise ValueError('input readiness/replay is restricted to bounded native512 admission')
         if not 0 < args.input_readiness_timeout_seconds <= 900:
             raise ValueError('CPU input readiness timeout must be in (0,900] seconds')
@@ -153,7 +153,7 @@ def main() -> None:
         config, allow_missing_latents=args.lazy_vae_cache or args.lazy_vae_pipeline,
     )
     target_steps = int(args.steps if args.steps is not None else config["max_steps"])
-    if config.get('native_kubric512_b1_a4_k15', False):
+    if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False):
         if target_steps != int(config['max_steps']) or args.lazy_vae_cache or args.lazy_vae_pipeline or not args.resume:
             raise ValueError('native capacity test requires bounded full150k resume and no lazy input generation')
         from ..data.cache.native import file_sha256
@@ -667,7 +667,7 @@ def main() -> None:
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
                     trace_phase("forward_enqueued", step, micro)
-                    if config.get('native_kubric512_b1_a4_k15', False):
+                    if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False):
                         if prediction.shape != xyz.shape or tuple(prediction.shape[-2:]) != (image_size, image_size):
                             raise RuntimeError('native prediction/GT alignment mismatch')
                         if micro == 0:

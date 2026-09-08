@@ -122,14 +122,18 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError('audited source edge contrast weight must be 0, 0.01 or 0.1')
     if contrast_weight > 0 and (boundary is None or float(boundary['multiplier']) != 2.0):
         raise ValueError('source edge contrast control requires boundary2x')
-    native_512 = bool(config.get('native_kubric512_b1_a4_k15', False))
+    native_k15 = bool(config.get('native_kubric512_b1_a4_k15', False))
+    native_k9 = bool(config.get('native_kubric512_b1_a4_k9', False))
+    if native_k15 and native_k9:
+        raise ValueError('select only one native512 target profile')
+    native_512 = native_k15 or native_k9
     if native_512:
         if (mode != 'decoder_only' or master_precision != 'fp32' or not cycle_enabled
                 or set(cycle_names) != supported_cycle_names or boundary is not None
                 or contrast_weight != 0 or float(config.get('cycle_reprojection_weight', -1)) != 0
                 or not config.get('pre_attention_rgb_query') or config.get('query_grid_size') != 32
                 or any(config.get(k, False) for k in ('cycle_b2_a2_k19', 'cycle_b2_a2_k15', 'xyz_b2_a2_k15'))):
-            raise ValueError('native512 B1/A4/K15 requires unchanged FP32 decoder XYZ/cycle0/RGB1x control')
+            raise ValueError('native512 B1/A4 requires unchanged FP32 decoder XYZ/cycle0/RGB1x control')
         if (not config.get('native_capacity_test_only')
                 or not 150000 < int(config.get('max_steps', 0)) <= 150010
                 or int(config.get('selected_checkpoint_step', -1)) != 150000):
@@ -155,7 +159,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 15 if native_512 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)
+    required_targets = 9 if native_k9 else (15 if native_k15 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19))
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))

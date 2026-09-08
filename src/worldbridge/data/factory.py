@@ -146,14 +146,15 @@ def load_dataset(
         "rgb_cache_root": rgb_cache_root,
         "rgb_cache_max_open_shards": rgb_cache_max_open_shards,
     }
+    native_512 = bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False))
     if name == "kubric":
-        if config.get('native_kubric512_b1_a4_k15', False):
+        if native_512:
             if split != 'train' or allow_missing_latents:
                 raise ValueError('native512 admission uses complete train inputs only')
             from .datasets.native_kubric import NativeKubricDataset
             return NativeKubricDataset(values)
         return _load_kubric_dataset(values, **cache_options)
-    if config.get('native_kubric512_b1_a4_k15', False):
+    if native_512:
         # PO/DR already live in the atomic per-clip256 tier, not compact shards.
         # Permit discovering that tier; native admission forbids VAE generation
         # and pre-reads every requested latent, so an actual miss still fails.
