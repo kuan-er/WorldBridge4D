@@ -23,4 +23,8 @@ User explicitly confirmed: “好的，可释放的都删除吧”, following th
 
 Historical checkpoint artifact registrations, original review reports, symlinks and source code may still name retired files. They are historical evidence, not available bytes; do not retry old chains or claim those artifacts remain usable. Among removed weights are H030150000,151500,154059, boundary2x155000 and contrast0.1 endpoints; H031150001/150010, both150012 variants,152000/152500 and152769. Reproducing old evaluations or handoff/numerical gates from these retired weights is no longer directly possible. Current152768-based endpoint review and152774 fallback remain intact; training protocol/quality claims are unchanged.
 
-Execution completion is recorded in the audit directory; a submitted Run alone is not deletion completion. Filesystem free-space delta can differ from unlinked allocated bytes because training and other processes remain live.
+## Completed / stop cleanup
+
+Execution91be97 succeeded07:10:35.255Z (15:10 Beijing), exit0. All93 exact regular PT paths/58 unique inodes absent;412896894976 allocated bytes unlinked. Free space increased from108402921472 to521295142912bytes, measured delta412892221440bytes (~384.5GiB /412.9GB); concurrent live writes explain the4.67MB difference from unlinked allocation. Retained155000/152768/152774 identity/size/mtime checks passed;94 noncandidate regular files unchanged; current K11 directory untouched. Post-delete442-process audit found zero FD/mmap/direct-path references to deleted weights and zero unreadable processes.
+
+Completion and full per-path fsynced journal are in the audit directory. Cleanup is finished: no retry, additional deletion, cache producer restart or training intervention. Current K11 continues toward170000. Earlier inventory/cleanup proposals are historical; never reuse their removed paths as existing files.

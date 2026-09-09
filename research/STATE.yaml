@@ -1,7 +1,16 @@
 current_task: T-20260908032232-e95da1
 h031_checkpoint_retirement_20260909:
   authority: user_confirmed_delete_previous_H03046_H03112_proposal_after_selecting_plain_RGB1x155000_and_current_dependencies
-  status: execution_running_completion_not_yet_observed
+  status: succeeded_20260909T071035255Z
+  removed_unique_inodes: 58
+  removed_regular_pt_paths: 93
+  unlinked_allocated_bytes: 412896894976
+  observed_free_delta_bytes: 412892221440
+  free_after_bytes: 521295142912
+  preservation_verified: all_three_keep_checkpoints_same_identity_size_mtime_94_noncandidate_files_unchanged_active_K11_directory_untouched
+  post_delete_audit: 442_visible_processes_no_open_or_mapped_deleted_checkpoints_no_unreadable_processes
+  report_directory: /data/WorldBridge4D-runs/h031-checkpoint-cleanup-execution-20260909
+  decision: cleanup_complete_no_retry_no_further_deletion_keep_K11_running
   run: R-20260909070758-91be97
   dry_run: R-20260909070749-6b863a_pass_443_processes_no_blockers
   manifest: /data/WorldBridge4D-runs/h031-cleanup-keep155k-and-active-proposal-20260909.json
@@ -39,7 +48,7 @@ h031_K11_capacity_20260909:
   decision_on_capacity_pass: continue_same_run_to170000
   decision_on_confirmed_capacity_failure: stop_owned_K11_then_separate_K9_fallback_from_protected152774_using_h031_k11_run.py_--fallback-k9_no_new_approval_needed
   fallback_not_for: corrupt_missing_inputs_or_pagefault_progress_alarm
-  user_authorized_deleted: only_h031-geometry-replay-20260908_K15_NPZ_JSON_2959086710bytes_no_checkpoints_or_other_inputs
+  historical_pre_K11_cache_deletion: h031-geometry-replay-20260908_K15_NPZ_JSON_2959086710bytes_later_checkpoint_retirement_recorded_above
   disk_after_deletion: 108510064640bytes_free_required107119476736_reserve64GiB_unchanged
   old_K9_stop: f74bfd_TERM-20260909060441-0a543b_force_requested_only_SIGTERM_actually_sent_exit061131742Z_saved152774
 h031_prefix5_to170k_20260909:
@@ -984,8 +993,12 @@ next_step: >-
   paths. First complete native K11 update passes capacity => continue; confirmed capacity
   failure => stop owned trial and launch separate K9 fallback using h031_k11_run.py
   --fallback-k9 from same protected152774 full model/Adam/RNG. Missing/corrupt inputs
-  or pagefault warnings are not capacity failure. User authorized deletion ONLY of obsolete
-  K15 geometry replay h031-geometry-replay-20260908; deleted2.959GB, keep64GiB reserve.
+  or pagefault warnings are not capacity failure. K11 native capacity passed; continue same Run.
+  User-confirmed H03046/H03112 checkpoint cleanup91be97 succeeded071035Z:93 paths removed,
+  free521295142912bytes, keep64GiB reserve. Preserve plainRGB1x155000,152768 endpoint-review
+  origin,152774 resume/fallback and entire current K11 directory. Old manifest-listed
+  checkpoints and K15 replay are retired, not available for resume despite historical
+  artifact registrations. No additional deletion or cache producer restart authorized.
   CPU238 tests and fullstate handoff passed. Endpoint CPU R-20260909061837-8aafc4.
   See research/protocols/h031_k11_capacity_to170k.yaml. The following is historical:
   User requests switching current K9 full-preflight job to the tested prefix5 implementation
