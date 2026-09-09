@@ -54,7 +54,7 @@ report = dict(event='H031_K11_HANDOFF_OK', config_sha256=file_sha256(config),
     Adam_states=193, RNG_ranks=2, clips_seen=s['clips_seen'], startup_preflight_updates=5,
     CPU_regression_run='R-20260909060805-d6bbcd',
     fallback_config_sha256=file_sha256('configs/h031_k512_k9_mix50_prefix5_to170000.yaml'),
-    policy='K11_native_complete_update_then_continue170k_else_capacity_failure_restore_this_K9_fullstate'))
+    policy='K11_native_complete_update_then_continue170k_else_capacity_failure_restore_this_K9_fullstate')
 atomic_json(root/'complete.json', report)
 # Admission waits on storage, not on a GPU lease; never delete inputs or lower reserve.
 required_free = 68719476736 + 38400000000
