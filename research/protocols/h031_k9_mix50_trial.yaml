@@ -1,0 +1,51 @@
+version: 1
+hypothesis: H031
+task: T-20260908032232-e95da1
+authority: user_requests_both50_25_25_and_K9_after_proposed2000_step_trial
+scope: joint_change_trial_not_separate_K_or_mixture_causal_attribution
+config: configs/h031_k512_k9_mix50_152768_to154768.yaml
+config_sha256: 5c0def508f4b2a322dff0b4f33973e3542cc82a70aa131dae489d5ba54f27e03
+execution_commit: a4abc4ff0c41f09d6e5e49f4ddb175ecb148f5ba
+origin: /data/WorldBridge4D-runs/h031-k512-k5-original-prefetch-150012-to160010-gpu23-20260908/checkpoint-0152768.pt
+origin_sha256: 970ed406b28e4508a3ab206ff4492e0641cbe262f494e9dca3693b922f4b63f0
+origin_artifact: artifact://H031/R-20260908175858-c11e3e/checkpoint/970ed406b28e4508
+origin_stop: TERM-20260909045455-6c1cc7_SIGTERM_only_exit_boundary152768_no_failure_interpretation
+origin_validation: R-20260909050012-79f679_fullstate193Adam_plus2756_since150012_world2_RNG2_shapes_dtypes_counts_finite
+steps: {start: 152768, end: 154768, updates: 2000}
+batching: {B: 1, A: 4, K: 9, world: 2, clips_per_update: 8, pairs_per_update: 72}
+dataset_mix_counts_per20: {kubric: 10, pointodyssey: 5, dynamic_replica: 5}
+dataset_updates_over2000: {kubric: 1000, pointodyssey: 500, dynamic_replica: 500}
+origin_clips_seen: {kubric: 427744, pointodyssey: 366648, dynamic_replica: 427752}
+expected_end_clips_seen: {kubric: 435744, pointodyssey: 370648, dynamic_replica: 431752}
+schedule: seeded20_cycle_global_step_mod20_no_global_rng_consumption_legacy7_6_7_exactly_retained_for_old_configs
+phase_origin: 152768
+seed: 20260812
+decoder_seed: 424242
+resolutions: {kubric: 512, pointodyssey: 256, dynamic_replica: 256}
+state_resume: complete_model_193Adam_RNG2_counters_no_weights_only_no_optimizer_reset
+sampling_caveat: K9_changes_eligibility_and_targets_mixture_changes_dataset_assignment_not_old_K5_exact_replay
+objective: unchanged_ordinary_XYZ_cycle0_all_forward_backward_paths_no_boundary_or_contrast
+LR: preserve150000_origin500warmup_already_full3e-6_hold_all_decoder_RGB_groups_no_new_restart
+LR_horizon: 160010
+precision: decoder_FP32_masters_Adam_BF16_compute_Wan_geometry_frozen
+execution: original_async_geometry_prefetch_depth1_workers2_no_quiescence_no_allocator_changes
+input_policy: full_Kubric5737_sampling_verified_published_GT_or_original512_raw_no_missing_or_corrupt_input_fallback
+DR_trajectory_storage: existing_verified_mmap_unchanged
+GT_bulk: paused1466of5737_storage_guard_not_training_dependency
+checkpoints: first152769_half153768_end154768_every500_keep_last3_protect_external_origin152768
+resources: {gpu_ids: [2, 3], mode: shared, min_free_memory_mib: 49152, memory_safety_mib: 0, allow_foreign_processes: true}
+physical_memory_observation: both81036MiB_free_after_parent_exit_not_a_reservation_or_K9_capacity_proof
+termination: SIGTERM_checkpoint_boundary_only_no_SIGKILL_no_foreign_control
+page_fault_policy: observe_not_auto_stop_on_fault_or900s_progress_alarm
+storage: {reserve_bytes: 68719476736, checkpoint_budget_bytes: 38400000000}
+CPU: R-20260909051201-aad2b7
+GPU: R-20260909051228-4a9d90
+endpoint_review: R-20260909051240-389d30
+retired_chain: R-20260909050747-0e2308_R-20260909050921-cfb513_R-20260909051050-e7f00c
+retired_reason: stale_test_referenced_target_steps_instead_of_diagnostic_execution_end_no_GPU_started
+output: /data/WorldBridge4D-runs/h031-k512-k9-mix50-152768-to154768-gpu23-20260909
+acceptance: 193Adam_all_plus2000_RNG2_world2_names_shapes_FP32_moments_counters_new_mix_provenance_SHA
+quality: needs_fixed_heldout_Kubric_and_PO_DR_regression_checks_not_training_loss_or_capacity_alone
+CPU_result: 152tests_and_six_real_K9_requests_passed051303622Z
+status: GPU_spawned051337090Z_full_phase_payload_validation_began051511811Z_resume_first_update_not_yet_confirmed
+expected_first_completed_updates: {dynamic_replica: 152769, kubric: 152770, pointodyssey: 152771}
