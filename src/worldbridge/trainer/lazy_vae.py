@@ -20,13 +20,14 @@ from .schedulers import dataset_for_step
 
 def required_latent_requests(datasets: dict[str, Any], seed: int, start_step: int,
                              target_steps: int, rank: int, accumulation: int,
-                             microbatch_per_gpu: int = 1
+                             microbatch_per_gpu: int = 1,
+                             dataset_mix_counts=None
                              ) -> list[tuple[int, str, int]]:
     """Return rank-local requests in update order, including repeated clips."""
     requests = []
     slots_per_rank = int(accumulation) * int(microbatch_per_gpu)
     for step in range(int(start_step), int(target_steps)):
-        name = dataset_for_step(step, seed)
+        name = dataset_for_step(step, seed, dataset_mix_counts)
         dataset = datasets[name]
         for slot in range(slots_per_rank):
             index, _, _ = deterministic_sample_plan(
@@ -38,12 +39,13 @@ def required_latent_requests(datasets: dict[str, Any], seed: int, start_step: in
 
 def required_latent_indices(datasets: dict[str, Any], seed: int, start_step: int,
                             target_steps: int, rank: int, accumulation: int,
-                            microbatch_per_gpu: int = 1
+                            microbatch_per_gpu: int = 1,
+                            dataset_mix_counts=None
                             ) -> dict[str, list[int]]:
     required: dict[str, set[int]] = {name: set() for name in DATASET_NAMES}
     for _step, name, index in required_latent_requests(
         datasets, seed, start_step, target_steps, rank, accumulation,
-        microbatch_per_gpu,
+        microbatch_per_gpu, dataset_mix_counts,
     ):
         required[name].add(index)
     return {name: sorted(indices) for name, indices in required.items()}

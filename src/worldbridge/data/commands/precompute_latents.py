@@ -57,6 +57,7 @@ def main() -> None:
 
     local_required = required_latent_indices(
         datasets, seed, 0, target_steps, rank, accumulation, microbatch,
+        dataset_mix_counts=config.get('dataset_mix_counts'),
     )
     gathered: list[Any] = [None] * world
     dist.all_gather_object(gathered, local_required)

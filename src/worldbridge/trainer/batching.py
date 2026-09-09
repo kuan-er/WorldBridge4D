@@ -12,7 +12,7 @@ import numpy as np
 from ..data.boundaries import source_boundary_band, source_contrast_edges
 from ..data.sampling import deterministic_sample_plan, source_with_eligible_targets
 from ..data.types import TrainingDataset
-from .schedulers import dataset_for_step
+from .schedulers import dataset_for_step, validated_mix_counts
 
 SamplePlan = tuple[int, int, np.random.Generator]
 GeometryValue = tuple[
@@ -149,9 +149,11 @@ class GeometryPrefetcher:
         depth: int,
         workers: int,
         geometry_replay=None,
+        dataset_mix_counts=None,
     ) -> None:
         self.datasets = datasets
         self.geometry_replay = geometry_replay
+        self.dataset_mix_counts = validated_mix_counts(dataset_mix_counts)
         self.seed = int(seed)
         self.rank = int(rank)
         self.slots_per_rank = int(accumulation) * int(microbatch_per_gpu)
@@ -171,7 +173,7 @@ class GeometryPrefetcher:
         )
 
     def _plan_step(self, step: int) -> PlannedStep:
-        dataset_name = dataset_for_step(step, self.seed)
+        dataset_name = dataset_for_step(step, self.seed, self.dataset_mix_counts)
         dataset = self.datasets[dataset_name]
         sample_plans = [
             deterministic_sample_plan(

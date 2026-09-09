@@ -129,8 +129,18 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError('select only one native512 target profile')
     native_512 = native_k15 or native_k9 or native_k5
     native_long = bool(config.get('native_kubric512_k5_10k', False))
+    native_mix_trial = bool(config.get('native_kubric512_k9_mix_trial', False))
     if native_long and not native_k5:
         raise ValueError('native10k continuation requires the audited K5 profile')
+    if native_mix_trial and (not native_k9 or native_long):
+        raise ValueError('native mixture trial requires K9, not the K5-10k profile')
+    from .schedulers import validated_mix_counts
+    mix = validated_mix_counts(config.get('dataset_mix_counts'))
+    if native_mix_trial:
+        if mix != {'kubric': 10, 'pointodyssey': 5, 'dynamic_replica': 5}:
+            raise ValueError('native K9 mixture trial requires exact50/25/25')
+    elif mix != validated_mix_counts():
+        raise ValueError('non-legacy mixture requires an explicit native K9 mixture trial')
     if native_512:
         if (mode != 'decoder_only' or master_precision != 'fp32' or not cycle_enabled
                 or set(cycle_names) != supported_cycle_names or boundary is not None
@@ -140,9 +150,20 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             raise ValueError('native512 B1/A4 requires unchanged FP32 decoder XYZ/cycle0/RGB1x control')
         gt_values = config.get('datasets', {}).get('kubric', {})
         demand_gt = gt_values.get('native_geometry_mode', 'staged') == 'verified_cache_or_raw'
-        if demand_gt and not native_long:
-            raise ValueError('native on-demand GT requires explicit10k continuation')
-        if native_long:
+        if demand_gt and not (native_long or native_mix_trial):
+            raise ValueError('native on-demand GT requires explicit continuation')
+        if native_mix_trial:
+            selected = int(config.get('selected_checkpoint_step', -1))
+            if (config.get('native_capacity_test_only') or selected < 150500
+                    or config.get('max_steps') != selected + 2000
+                    or not (bool(gt_values.get('native_geometry_full_corpus')) ^ demand_gt)):
+                raise ValueError('native K9 mix trial requires full-resume2000 updates and verified GT reader')
+            restart = config.get('lr_restart', {})
+            if (restart.get('start_step') != 150000 or restart.get('warmup_steps') != 500
+                    or restart.get('end_step') != 160010 or restart.get('schedule') != 'warmup_hold'
+                    or config['max_steps'] > restart['end_step']):
+                raise ValueError('native K9 mix trial preserves existing150k warmup and3e-6 hold horizon')
+        elif native_long:
             if (config.get('native_capacity_test_only')
                     or int(config.get('max_steps', 0)) != 160010
                     or int(config.get('selected_checkpoint_step', -1)) != 150010

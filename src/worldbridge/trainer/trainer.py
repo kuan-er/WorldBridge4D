@@ -45,7 +45,8 @@ from .objective import (boundary_weighted_pair_smooth_l1, loss_scale_to_referenc
                         masked_pair_smooth_l1, source_edge_contrast_loss)
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .precision import assert_fp32_optimizer_storage, prepare_fsdp_master_parameters
-from .schedulers import apply_cosine_schedule, apply_lr_restart_schedule, training_diagnostic_due
+from .schedulers import (apply_cosine_schedule, apply_lr_restart_schedule, training_diagnostic_due,
+                         validated_mix_counts, deterministic_dataset_schedule)
 from .tracking import init_wandb, load_stats
 
 _STOP = False
@@ -136,6 +137,12 @@ def main() -> None:
         timeout_seconds=float(config.get("distributed_timeout_seconds", 86400)),
     )
     validate_config(config, world)
+    dataset_mix_counts = validated_mix_counts(config.get('dataset_mix_counts'))
+    if rank == 0:
+        print(json.dumps({'event': 'dataset_schedule_protocol', 'counts_per20': dataset_mix_counts,
+                          'schedule': deterministic_dataset_schedule(config.get('seed', 20260812), dataset_mix_counts),
+                          'phase_origin': config.get('selected_checkpoint_step'),
+                          'K': config['targets_per_source']}), flush=True)
     geometry_replay = None
     input_ready_group = None
     if args.geometry_replay or args.input_readiness:
@@ -217,6 +224,7 @@ def main() -> None:
         local_required = required_latent_indices(
             datasets, seed, planned_start, target_steps, rank,
             int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
+            dataset_mix_counts=dataset_mix_counts,
         )
         gathered: list[Any] = [None] * world
         dist.all_gather_object(gathered, local_required)
@@ -236,6 +244,7 @@ def main() -> None:
         local_requests = required_latent_requests(
             datasets, seed, planned_start, target_steps, rank,
             int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
+            dataset_mix_counts=dataset_mix_counts,
         )
         gathered_requests: list[Any] = [None] * world
         dist.all_gather_object(gathered_requests, local_requests)
@@ -259,6 +268,7 @@ def main() -> None:
         required_check = required_latent_indices(
             datasets, seed, planned_start, execution_end, rank,
             int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
+            dataset_mix_counts=dataset_mix_counts,
         )
         for name, indices in required_check.items():
             for index in indices:
@@ -448,8 +458,8 @@ def main() -> None:
             print(json.dumps({"event": "fp32_master_storage_verified", "step": start_step,
                               "parameters": "float32", "adam_moments": "float32",
                               "compute_precision": config["precision"]}), flush=True)
-    if config.get('native_kubric512_k5_10k') and start_step < int(config['selected_checkpoint_step']):
-        raise ValueError('native10k cannot resume before its verified150010 origin')
+    if (config.get('native_kubric512_k5_10k') or config.get('native_kubric512_k9_mix_trial')) and start_step < int(config['selected_checkpoint_step']):
+        raise ValueError('native continuation cannot resume before its verified phase origin')
     if start_step >= target_steps:
         raise ValueError(f"checkpoint step {start_step} already reaches target {target_steps}")
     lr_restart = config.get("lr_restart")
@@ -516,6 +526,7 @@ def main() -> None:
         depth=prefetch_depth,
         workers=prefetch_workers,
         geometry_replay=geometry_replay,
+        dataset_mix_counts=dataset_mix_counts,
     )
     optimizer.zero_grad(set_to_none=True)
     trace_updates = int(config.get("trace_first_updates", 0))
@@ -1010,6 +1021,9 @@ def main() -> None:
                     "dataset_cycle_offset": completed % 20,
                     "prompt_metadata": prompt_metadata,
                 }
+                if config.get('dataset_mix_counts') is not None:
+                    state['dataset_mix_counts'] = dataset_mix_counts
+                    state['dataset_mix_phase_origin'] = int(config['selected_checkpoint_step'])
                 # Materialize one immutable checkpoint on the fast local tier.
                 # ``latest.pt`` is an atomic hard link, avoiding a second 9+ GiB
                 # serialization. A detached low-priority copier independently
@@ -1065,6 +1079,7 @@ def main() -> None:
             "execution_end": execution_end, "diagnostic_stop_after_updates": args.stop_after_updates,
             "quiesce_geometry_before_forward": bool(args.quiesce_geometry_before_forward),
             "clips_seen": clips_seen, "non_wan_parameters": non_wan_count,
+            "dataset_mix_counts": dataset_mix_counts,
             "targets_per_source": k, "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,
             "elapsed_seconds": time.perf_counter() - started,
             "source_rgb_pyramid": use_source_rgb,

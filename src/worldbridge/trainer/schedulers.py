@@ -8,21 +8,33 @@ import torch
 
 from ..data.constants import DATASET_NAMES, MIX_CYCLE
 
-def deterministic_dataset_schedule(seed: int) -> tuple[str, ...]:
-    """One seeded 20-update cycle containing exactly 7/6/7 datasets."""
-    values = list(MIX_CYCLE)
+def validated_mix_counts(counts=None) -> dict[str, int]:
+    """Explicit 20-update composition; absent config preserves legacy7/6/7."""
+    if counts is None:
+        return {name: MIX_CYCLE.count(name) for name in DATASET_NAMES}
+    if (not isinstance(counts, dict) or set(counts) != set(DATASET_NAMES)
+            or any(type(v) is not int or v < 1 for v in counts.values())
+            or sum(counts.values()) != 20):
+        raise ValueError('dataset_mix_counts requires three positive integer counts totaling20')
+    return {name: counts[name] for name in DATASET_NAMES}
+
+
+def deterministic_dataset_schedule(seed: int, dataset_mix_counts=None) -> tuple[str, ...]:
+    """One seeded 20-update cycle, with a byte-compatible legacy default."""
+    counts = validated_mix_counts(dataset_mix_counts)
+    values = (list(MIX_CYCLE) if counts == validated_mix_counts() else
+              [name for name in DATASET_NAMES for _ in range(counts[name])])
     np.random.default_rng(np.random.SeedSequence([int(seed), 20])).shuffle(values)
-    assert values.count("kubric") == 7 and values.count("pointodyssey") == 6
-    assert values.count("dynamic_replica") == 7
+    assert all(values.count(name) == counts[name] for name in DATASET_NAMES)
     return tuple(values)
 
 
-def dataset_for_step(global_step: int, seed: int) -> str:
+def dataset_for_step(global_step: int, seed: int, dataset_mix_counts=None) -> str:
     if int(global_step) < 0:
         raise ValueError("global_step cannot be negative")
     # Every cycle has the same shuffled composition. This makes resume a pure
     # function of global_step while retaining the exact requested ratio.
-    return deterministic_dataset_schedule(seed)[int(global_step) % 20]
+    return deterministic_dataset_schedule(seed, dataset_mix_counts)[int(global_step) % 20]
 
 
 def cosine_learning_rate_factor(update_number: int, warmup_steps: int,
