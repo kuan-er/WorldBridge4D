@@ -1,4 +1,26 @@
 current_task: T-20260908032232-e95da1
+h031_prefix5_to170k_20260909:
+  authority: user_requests_stop_old_full_preflight_switch_new_prefix5_and_endpoint170000
+  protocol: research/protocols/h031_prefix5_to170k.yaml
+  config: configs/h031_k512_k9_mix50_prefix5_to170000.yaml
+  config_sha256: 83f50d1d3d6e9ed34452929f4494a91c1dc09bf7cec766dcdde7790e78103b53
+  GPU_commit: 78d1fabb67280439ecb4d086cf04efd9a31dd76a
+  phase_origin: 152768
+  endpoint: 170000
+  total_updates_since_phase_origin: 17232
+  old_GPU_stop: R-20260909051228-4a9d90_TERM-20260909054250-20d65c_SIGTERM_received054250814Z
+  stop_status: pending_old_preflight_not_immediately_cancellable_no_SIGKILL_or_hotpatch
+  CPU_tests: R-20260909054559-8a9def_230passed17p16seconds054618245Z
+  handoff: R-20260909054725-95e672_wait_old_terminal_then_select_latest_complete_or_protected152768_verify_fullstate_SHA_publish_alias
+  GPU: R-20260909054846-3b6711_queued_not_started
+  endpoint_review: R-20260909054938-7cc465_success_gated
+  resume: latest_verified_old_stop_checkpoint_preserve_model_193Adam_RNG2_counters_no_roll_back_saved_updates
+  startup: explicit_first5_updates_strict_reads_before_forward_complete_catalog_checks_retained
+  LR: original150000_warmup500_now3e-6_hold_extend_horizon170000_no_restart
+  unchanged: GPU23_B1_A4_K9_world2_mix50_25_25_K512_PO256_DR256_cycle0_fullpaths_async_allocator_seeds
+  handoff_root: /data/WorldBridge4D-runs/h031-k9-mix50-prefix5-to170000-handoff-20260909
+  output: /data/WorldBridge4D-runs/h031-k512-k9-mix50-prefix5-to170000-gpu23-20260909
+  safety: shared49152plus0MiB_per_GPU_64GiB_disk_reserve_no_foreign_control_SIGTERM_only
 h031_prefix_preflight_20260909:
   authority: user_requests_future_starts_only_preflight_first_few_updates_no_current_run_restart
   code_commit: 116ee4db0ddf08872805fc9e96e160b3c8459c49
@@ -10,7 +32,7 @@ h031_prefix_preflight_20260909:
   scope: startup_payload_window_only_no_change_to_LR_execution_end_mix_K_geometry_prefetch_or_checkpoint_resume
   audit: begin_progress_every16_reads_complete_logs_and_train_status_record_scope_counts_end
   verification: both_ranks_legacy_and50_25_25_plans_RNG_unchanged_missing_and_corrupt_RGB_latent_outside_prefix_fatal_at_use
-  running_GPU: R-20260909051228-4a9d90_immutable_a4abc4f_unchanged_no_restart_no_hotpatch
+  running_GPU: historical_no_restart_decision_superseded_by_explicit_user_switch_in_h031_prefix5_to170k_above
   caveat: future_payload_errors_detected_at_use_not_all_upfront_no_measured_startup_speedup_yet
 h031_k9_mix50_trial_20260909:
   authority: user_explicitly_requests_joint_K9_and_Kubric_PO_DR50_25_25_trial
@@ -903,25 +925,19 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: >-
-  User explicitly authorizes GPU6 cache production and retaining original PO256.
-  H031 is now a mixed-resolution route: K512x512, PO256x256, DR720x1280. No PO
-  reencoding/upsampling or replacement clips; preserve PO256 in both comparison arms.
-  CPU GPU-only handoff R-20260908042106-60b20a succeeded with copied byte-identical
-  K/DR manifests and reused CPU94. Four old GPU0 jobs terminated before start.
-  GPU6 K smoke R-20260908042152-6440a6 succeeded with3real cached clips, repeat error0,
-  peak4.378378391GiB. K bulk R-20260908042214-89af79 actually started04:23:06.731Z;
-  observed37/5737 processed including1reused, not complete. DR smoke/bulk
-  R-20260908042238-cb8e4e / R-20260908042301-6aa58e remain success-gated successors.
-  All memory/storage/native-allocator/SIGTERM-only gates remain; no foreign control.
-  PO read-only R-20260908042819-b00d89 checked all9746 existing FP32 latents and
-  three cached RGB clips/nine GT source records. This does not verify every future
-  geometry read or rehash all RGB payloads. Cache production is not training readiness.
-  Next implement/test native model/geometry/camera alignment and B1/K7 memory per
-  shape; proposed A4/world2 gives8clips/56pairs. Existing256 DR is a center crop,
-  unlike the native full-frame cache: fix/factor FOV and common-ray evaluation before
-  claiming resolution-only effects. No training submitted yet. H0300.01 on GPUs2/3,
-  its milestone protection and endpoint DAG stay unchanged; H023 stays production.
-  Current protocol: research/protocols/h031_gpu6_po256.yaml.
+  User requests switching current K9 full-preflight job to the tested prefix5 implementation
+  and extends the endpoint to170000. Old GPU R-20260909051228-4a9d90 received SIGTERM;
+  wait for safe terminal state, not SIGKILL or hotpatch. CPU handoff R-20260909054725-95e672
+  selects and verifies the latest complete checkpoint (protected152768 if no newer save).
+  GPU R-20260909054846-3b6711 is queued with exact GPUs2/3, B1/A4/K9, mix50/25/25,
+  K512/PO256/DR256, unchanged model/Adam/RNG/counters/loss/async/allocator and3e-6 hold.
+  Preserve150000 warmup500 origin, extend hold horizon170000. CPU230 tests passed.
+  Confirm actual prefix preflight, full resume, first complete K9 native update and capacity;
+  never interpret queued as started or page faults as failure. Endpoint CPU R-20260909054938-7cc465
+  checks full170000 state. NativeDR VAE6090 cache is complete but not used in currentDR256
+  training; GT bulk remains paused1466of5737 with verified-cache-or-original-raw full cohort.
+  No foreign control, input deletion or safety reserve reduction. H023 remains production;
+  quality needs fixed held-out evaluation. Protocol research/protocols/h031_prefix5_to170k.yaml.
 h030_previous_next_step: >-
   Contrast0.1 R-20260907185236-284f11 succeeded155000 normally at01:57:04.246Z.
   Full FP32 model/Adam/world2/RNG2/counters/193Adam+5000/all3e-6 endpoint is protected
@@ -2926,4 +2942,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-08T04:29:34Z
+updated_at: 2026-09-09T05:50:00Z

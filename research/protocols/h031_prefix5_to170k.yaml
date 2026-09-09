@@ -1,0 +1,42 @@
+version: 1
+hypothesis: H031
+task: T-20260908032232-e95da1
+authority: user_explicitly_requests_stop_current_full_preflight_switch_prefix5_and_extend_endpoint170000
+config: configs/h031_k512_k9_mix50_prefix5_to170000.yaml
+config_sha256: 83f50d1d3d6e9ed34452929f4494a91c1dc09bf7cec766dcdde7790e78103b53
+GPU_commit: 78d1fabb67280439ecb4d086cf04efd9a31dd76a
+phase_origin: 152768
+endpoint: 170000
+phase_updates_total: 17232
+actual_resume: latest_complete_old_run_checkpoint_after_worker_exit_else_protected152768
+origin_sha256: 970ed406b28e4508a3ab206ff4492e0641cbe262f494e9dca3693b922f4b63f0
+stop_run: R-20260909051228-4a9d90
+stop_request: TERM-20260909054250-20d65c
+stop_policy: SIGTERM_only_grace900_no_SIGKILL_no_foreign_control_no_hotpatch
+stop_caveat: old_preflight_has_no_immediate_cancellation_boundary_SIGTERM_requests_update_boundary_exit_not_instant_process_exit
+CPU_tests: R-20260909054559-8a9def
+CPU_result: 230passed17p16seconds054618245Z
+handoff: R-20260909054725-95e672
+handoff_dependency: old_run_terminal_succeeded_checkpointed_stop_or_explicit_terminated_class
+handoff_validation: source_SHA193Adam_increment_shapes_FP32_finite_world2_RNG2_mix_counters_publish_resume_alias_and_complete_marker
+handoff_root: /data/WorldBridge4D-runs/h031-k9-mix50-prefix5-to170000-handoff-20260909
+GPU: R-20260909054846-3b6711
+endpoint_review: R-20260909054938-7cc465
+output: /data/WorldBridge4D-runs/h031-k512-k9-mix50-prefix5-to170000-gpu23-20260909
+startup: explicit_--startup-preflight-updates_5_actual_resume_plus5_capped_endpoint
+input_safety: complete_catalog_manifest_checks_unchanged_strict_actual_batch_payload_reads_before_forward_no_missing_or_corrupt_skip_no_generation_no_subset
+batching: {B: 1, A: 4, K: 9, world: 2, clips_per_update: 8, pairs_per_update: 72}
+mixture_per20: {kubric: 10, pointodyssey: 5, dynamic_replica: 5}
+resolution: {kubric: 512, pointodyssey: 256, dynamic_replica: 256}
+seed: 20260812
+decoder_seed: 424242
+LR: preserve150000_origin500warmup_now_all_decoder_RGB3e-6_hold_extend_end160010_to170000_no_new_warmup
+unchanged: full_model_Adam_RNG_counters_FP32_masters_moments_BF16_compute_frozen_Wan_geometry_ordinaryXYZ_cycle0_fullpaths_async_prefetch_allocator
+resources: {gpu_ids: [2, 3], mode: shared, min_free_memory_mib: 49152, memory_safety_mib: 0, allow_foreign_processes: true}
+storage: {reserve_bytes: 68719476736, estimated_checkpoint_bytes: 32000000000, reserve_multiplier: 1.2}
+checkpoint_retention: own_output_keep_last3_every500_external_origin_and_old_stop_checkpoint_protected_no_data_deletion
+progress: preflight_complete_full_resume_first_update_first_native155k160k165k170k_and_fatal_events
+watchdog: 900seconds_record_wake_only_pagefault_not_failure
+acceptance: full170000_state_193Adam_plus17232_since152768_RNG2_world2_config_counts_SHA
+quality: capacity_and_training_loss_not_fixed_heldout_validation_H023_remains_production
+status: queued_wait_old_exit_then_CPU_handoff_then_GPU_not_yet_actual_start
