@@ -45,6 +45,7 @@ from .objective import (boundary_weighted_pair_smooth_l1, loss_scale_to_referenc
                         masked_pair_smooth_l1, source_edge_contrast_loss)
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .precision import assert_fp32_optimizer_storage, prepare_fsdp_master_parameters
+from .preflight import DEFAULT_PREFLIGHT_UPDATES, validate_startup_latents
 from .schedulers import (apply_cosine_schedule, apply_lr_restart_schedule, training_diagnostic_due,
                          validated_mix_counts, deterministic_dataset_schedule)
 from .tracking import init_wandb, load_stats
@@ -104,6 +105,8 @@ def main() -> None:
     parser.add_argument("--steps", type=int)
     parser.add_argument('--stop-after-updates', type=int,
                         help='bounded full-resume diagnosis: checkpoint and exit without changing LR horizon')
+    parser.add_argument('--startup-preflight-updates', type=int, default=DEFAULT_PREFLIGHT_UPDATES,
+                        help='non-lazy startup payload check: first N updates (default 5); 0 checks full invocation; later reads remain strict')
     parser.add_argument("--disable-wandb", action="store_true")
     parser.add_argument(
         "--wandb-log-after-step", type=int, default=-1,
@@ -126,6 +129,8 @@ def main() -> None:
     if args.stop_after_updates is not None and (args.stop_after_updates < 1 or not args.resume
             or args.lazy_vae_cache or args.lazy_vae_pipeline or args.no_checkpoint):
         parser.error('--stop-after-updates requires positive full-resume, checkpointed, non-lazy diagnosis')
+    if args.startup_preflight_updates < 0:
+        parser.error('--startup-preflight-updates must be nonnegative (0 = full invocation)')
     if args.quiesce_geometry_before_forward and not args.input_readiness:
         parser.error('--quiesce-geometry-before-forward requires CPU input readiness')
     if args.pipeline_lookahead_steps < 1:
@@ -219,6 +224,7 @@ def main() -> None:
     if planned_start >= target_steps:
         raise ValueError(f"checkpoint step {planned_start} already reaches target {target_steps}")
     lazy_counts = None
+    startup_preflight = None  # lazy production modes retain their own existing warmup policy
     pipeline: LazyVAEPipeline | None = None
     if args.lazy_vae_cache:
         local_required = required_latent_indices(
@@ -262,21 +268,17 @@ def main() -> None:
                 "lookahead_steps": args.pipeline_lookahead_steps,
             }), flush=True)
     else:
-        # Complete immutable shards remain fail-closed for formal training.
-        print(json.dumps({'event': 'startup_latent_payload_validation_begin', 'rank': rank,
-                          'start': planned_start, 'end': execution_end}), flush=True)
-        required_check = required_latent_indices(
+        # Keep complete catalog checks above, but do not scan the whole future phase.
+        # Actual batch indices are still read/validated before every forward below.
+        startup_preflight = validate_startup_latents(
             datasets, seed, planned_start, execution_end, rank,
             int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
-            dataset_mix_counts=dataset_mix_counts,
+            updates=args.startup_preflight_updates, dataset_mix_counts=dataset_mix_counts,
         )
-        for name, indices in required_check.items():
-            for index in indices:
-                datasets[name].clean_latent(index)
-        print(json.dumps({'event': 'startup_latent_payload_validation_complete', 'rank': rank,
-                          'counts': {name: len(indices) for name, indices in required_check.items()}}), flush=True)
     if rank == 0 and not args.lazy_vae_pipeline:
-        print(json.dumps({"event": "three_dataset_cache_ready", "clips": {k: len(v) for k, v in datasets.items()}}), flush=True)
+        print(json.dumps({"event": "three_dataset_cache_ready", "clips": {k: len(v) for k, v in datasets.items()},
+                          "startup_preflight": startup_preflight,
+                          "note": "catalog ready; prefix validation does not certify every future payload"}), flush=True)
 
     # A resume checkpoint is a strict full-model state dict. Construct the Wan
     # architecture without reading the original pretrained tensor file. Rank 0
@@ -1078,6 +1080,7 @@ def main() -> None:
             "completed_steps": completed, "target_steps": target_steps, "world_size": world,
             "execution_end": execution_end, "diagnostic_stop_after_updates": args.stop_after_updates,
             "quiesce_geometry_before_forward": bool(args.quiesce_geometry_before_forward),
+            "startup_preflight": startup_preflight,
             "clips_seen": clips_seen, "non_wan_parameters": non_wan_count,
             "dataset_mix_counts": dataset_mix_counts,
             "targets_per_source": k, "peak_cuda_memory_gib": torch.cuda.max_memory_allocated(device) / 2**30,

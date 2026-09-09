@@ -160,7 +160,8 @@ def load_dataset(
     if native_512:
         # PO/DR already live in the atomic per-clip256 tier, not compact shards.
         # Permit discovering that tier; native admission forbids VAE generation
-        # and pre-reads every requested latent, so an actual miss still fails.
+        # and reads actual batch latents strictly before forward. Startup checks
+        # only a prefix by default; an actual later miss still fails at use time.
         cache_options['allow_missing_latents'] = True
     if name == "pointodyssey":
         return _load_pointodyssey_dataset(
