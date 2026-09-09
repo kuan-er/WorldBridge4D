@@ -1,4 +1,23 @@
 current_task: T-20260908032232-e95da1
+h031_GT_resume_20260909:
+  authority: user_explicitly_requests_resume_Kubric_local_GT_cache_after_disk_cleanup
+  supersedes: prior_no_GT_producer_restart_authorization_only_no_new_deletion_authorized
+  run: R-20260909085057-913a3b
+  execution_commit: 14c4ab77b6186aeca61f330a64396e006edcfb5b
+  initial_status: process_started085057365Z_initializing_first_new_publication_not_yet_observed
+  producer: research/analysis/h031_stage_full_native_gt.py_unchanged
+  seed: 20260812
+  CPU_only: CUDA_VISIBLE_DEVICES_empty_OMP2_MKL2_TF1_single_sequential_producer_nice10_ionice_best_effort7
+  prelaunch_inventory: 1466_sidecars_4271_missing_no_orphan_npz_no_ready_marker_producer_lock_free_all24_bounded_reference_payloads_exist
+  estimated_remaining_bytes: 56154873095
+  required_with_20percent_and_64GiB_and_38p4GB_checkpoint_budget: 174505324450
+  free_bytes_at_inventory: 521111449600
+  estimated_headroom_bytes: 346606125150
+  estimate_caveat: three_sample_max_not_full_corpus_bound_live_per_clip_budget_check_retained
+  semantics: first_revalidate_all_published_SHA_and_source_then_only_missing_original512_GT_byte_exact_npz_readback_atomic_sidecar_single_lock
+  training: unchanged_running72f540_existing_demand_reader_checks_sidecar_at_read_time_no_restart_needed_no_speedup_claim
+  caveat: nice_ionice_not_NAS_bandwidth_reservation_concurrent_producer_can_temporarily_compete_with_training_IO
+  events: first_new1467_half2869_threequarter4303_full5737_process_exit_watchdog1800_record_wake_only
 h031_K11_segv_retry_20260909:
   failure: R-20260909061822-5d05f6_rank0_SIGSEGV_before_elastic_cleanup_at073929273Z_failed074002294Z
   last_completed: 152860_at073643572Z_86updates_since152774
@@ -1037,7 +1056,7 @@ next_step: >-
   free521295142912bytes, keep64GiB reserve. Preserve plainRGB1x155000,152768 endpoint-review
   origin,152774 resume/fallback and entire current K11 directory. Old manifest-listed
   checkpoints and K15 replay are retired, not available for resume despite historical
-  artifact registrations. No additional deletion or cache producer restart authorized.
+  artifact registrations. No additional deletion authorized. User now authorizes GT producer resume913a3b; see h031_GT_resume_20260909.
   CPU238 tests and fullstate handoff passed. Endpoint CPU R-20260909061837-8aafc4.
   See research/protocols/h031_k11_capacity_to170k.yaml. The following is historical:
   User requests switching current K9 full-preflight job to the tested prefix5 implementation
