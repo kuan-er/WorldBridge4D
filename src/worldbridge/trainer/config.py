@@ -130,6 +130,9 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     native_512 = native_k15 or native_k9 or native_k5
     native_long = bool(config.get('native_kubric512_k5_10k', False))
     native_mix_trial = bool(config.get('native_kubric512_k9_mix_trial', False))
+    native_mix_170k = bool(config.get('native_kubric512_k9_mix_170k', False))
+    if native_mix_170k and not native_mix_trial:
+        raise ValueError('native K9 170k extension requires the explicit mixture profile')
     if native_long and not native_k5:
         raise ValueError('native10k continuation requires the audited K5 profile')
     if native_mix_trial and (not native_k9 or native_long):
@@ -154,13 +157,14 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             raise ValueError('native on-demand GT requires explicit continuation')
         if native_mix_trial:
             selected = int(config.get('selected_checkpoint_step', -1))
+            endpoint = 170000 if native_mix_170k else selected + 2000
             if (config.get('native_capacity_test_only') or selected < 150500
-                    or config.get('max_steps') != selected + 2000
+                    or selected >= endpoint or config.get('max_steps') != endpoint
                     or not (bool(gt_values.get('native_geometry_full_corpus')) ^ demand_gt)):
-                raise ValueError('native K9 mix trial requires full-resume2000 updates and verified GT reader')
+                raise ValueError('native K9 mixture requires its declared full-resume budget and verified GT reader')
             restart = config.get('lr_restart', {})
             if (restart.get('start_step') != 150000 or restart.get('warmup_steps') != 500
-                    or restart.get('end_step') != 160010 or restart.get('schedule') != 'warmup_hold'
+                    or restart.get('end_step') != (170000 if native_mix_170k else 160010) or restart.get('schedule') != 'warmup_hold'
                     or config['max_steps'] > restart['end_step']):
                 raise ValueError('native K9 mix trial preserves existing150k warmup and3e-6 hold horizon')
         elif native_long:
