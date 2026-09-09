@@ -1,0 +1,49 @@
+version: 1
+hypothesis: H031
+task: T-20260908032232-e95da1
+authority: user_requests_K11_try_continue170000_if_capacity_pass_else_return_K9_and_allows_force_stop_current_K9
+config: configs/h031_k512_k11_mix50_prefix5_to170000.yaml
+config_sha256: 0439299ed29db629ff202a32269c86aef195dedfe9f8150afb285ba4f8fb6983
+execution_commit: 5e02aa427169c35c9871ca8954204cccb71c803f
+scientific_delta: K9_to11_only_50_25_25_unchanged_not_exact_target_or_eligibility_replay
+architecture: inherits_native_K9_route_boolean_with_explicit_K11_target_override_no_new_learned_weights
+phase_origin: 152768
+resume_step: 152774
+resume_checkpoint: /data/WorldBridge4D-runs/h031-k512-k9-mix50-prefix5-to170000-gpu23-20260909/checkpoint-0152774.pt
+resume_sha256: 291c2b889af85a3e089394d204de7b53d2978e8b3201db6bd416b9613f170fcb
+resume_artifact: artifact://H031/R-20260909055640-f74bfd/checkpoint/291c2b889af85a3e
+remaining_updates: 17226
+endpoint: 170000
+batching: {B: 1, A: 4, K: 11, world: 2, clips_per_update: 8, pairs_per_update: 88}
+mixture_per20: {kubric: 10, pointodyssey: 5, dynamic_replica: 5}
+resolution: {kubric: 512, pointodyssey: 256, dynamic_replica: 256}
+seed: 20260812
+decoder_seed: 424242
+unchanged: full_model_193Adam_RNG2_counters_FP32_masters_Adam_BF16_compute_frozen_Wan_geometry_XYZ_cycle0_fullpaths_LR3e-6_hold_origin150000warmup500_async_allocator_prefix5_strict_inputs
+old_stop: R-20260909055640-f74bfd_TERM-20260909060441-0a543b_force_requested_but_only_SIGTERM_sent_exited061131742Z_saved152774_no_SIGKILL
+CPU_tests: R-20260909060805-d6bbcd_238passed12p82seconds060819006Z
+CPU_handoff: R-20260909061741-d23339_fullstate193Adam_plus6_since152768_RNG2_FP32_counters_SHA_passed061756227Z
+retired_handoff: R-20260909061520-c9feb5_SyntaxError_extra_parenthesis_fixed_no_GPU_started_from_it
+handoff_root: /data/WorldBridge4D-runs/h031-k11-capacity-handoff-20260909
+GPU: R-20260909061822-5d05f6
+GPU_started_at: 2026-09-09T06:18:52.953Z
+endpoint_review: R-20260909061837-8aafc4
+output: /data/WorldBridge4D-runs/h031-k512-k11-mix50-prefix5-to170000-gpu23-20260909
+resources: {gpu_ids: [2, 3], mode: shared, min_free_memory_mib: 49152, memory_safety_mib: 0, allow_foreign_processes: true}
+storage: {reserve_bytes: 68719476736, checkpoint_budget_bytes: 38400000000}
+user_authorized_deletion:
+  path: /data/WorldBridge4D-runs/h031-geometry-replay-20260908
+  verified: K15_150000_to150010_complete_marker_only_npz_json_no_symlinks
+  deleted_file_bytes: 2959086710
+  free_bytes_after: 108510064640
+  scope: this_obsolete_replay_only_no_other_input_or_checkpoint_deleted_no_reserve_reduction
+capacity_success: first_complete_Kubric512_K11_forward_reverse_forward_backward_optimizer_update_then_continue_same_Run_to170000
+capacity_failure: on_confirmed_OOM_stop_own_K11_workers_then_launch_separate_K9_fallback_from_protected152774_model_Adam_RNG_no_reuse_of_failed_partial_update
+fallback_entry: research/analysis/h031_k11_run.py_--fallback-k9
+fallback_review: research/analysis/h031_k11_review.py_--fallback-k9
+fallback_output: /data/WorldBridge4D-runs/h031-k512-k9-after-k11-capacity-to170000-gpu23-20260909
+fallback_execution: event_driven_agent_launch_already_user_authorized_not_a_hidden_inprocess_switch
+failure_caveat: missing_or_corrupt_inputs_are_fatal_not_capacity_fallback_progress900s_or_pagefault_not_failure
+termination: new_K11_run_SIGTERM_only_no_SIGKILL_without_separate_authorization_no_foreign_control
+status: K11_GPU_initializing_no_complete_update_or_capacity_pass_yet_confirmed
+quality: capacity_not_quality_or_longterm_stability_H023_production_heldout_validation_needed

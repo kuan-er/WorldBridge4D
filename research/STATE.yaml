@@ -1,4 +1,28 @@
 current_task: T-20260908032232-e95da1
+h031_K11_capacity_20260909:
+  authority: user_tryK11_keep_if_fits_else_restoreK9_to170k_force_stop_current_allowed
+  protocol: research/protocols/h031_k11_capacity_to170k.yaml
+  config: configs/h031_k512_k11_mix50_prefix5_to170000.yaml
+  config_sha256: 0439299ed29db629ff202a32269c86aef195dedfe9f8150afb285ba4f8fb6983
+  GPU_commit: 5e02aa427169c35c9871ca8954204cccb71c803f
+  CPU: R-20260909060805-d6bbcd_238tests_pass12p82seconds
+  handoff: R-20260909061741-d23339_fullstate152774_193Adam_plus6_since152768_RNG2_counts_FP32_SHA
+  retired_handoff: c9feb5_syntax_error_fixed_no_gpu_started_from_it
+  GPU: R-20260909061822-5d05f6_started061852953Z_initializing_no_capacity_pass_yet
+  endpoint_review: R-20260909061837-8aafc4
+  protected_resume_step: 152774
+  protected_resume_sha256: 291c2b889af85a3e089394d204de7b53d2978e8b3201db6bd416b9613f170fcb
+  protected_resume_artifact: artifact://H031/R-20260909055640-f74bfd/checkpoint/291c2b889af85a3e
+  remaining_updates: 17226
+  endpoint: 170000
+  batching: B1_A4_K11_world2_8clips_88pairs
+  unchanged: GPU23_mix50_25_25_K512_PO256_DR256_prefix5_fullstate_LR3e-6_hold_XYZ_cycle0_fullpaths_async_allocator_seeds
+  decision_on_capacity_pass: continue_same_run_to170000
+  decision_on_confirmed_capacity_failure: stop_owned_K11_then_separate_K9_fallback_from_protected152774_using_h031_k11_run.py_--fallback-k9_no_new_approval_needed
+  fallback_not_for: corrupt_missing_inputs_or_pagefault_progress_alarm
+  user_authorized_deleted: only_h031-geometry-replay-20260908_K15_NPZ_JSON_2959086710bytes_no_checkpoints_or_other_inputs
+  disk_after_deletion: 108510064640bytes_free_required107119476736_reserve64GiB_unchanged
+  old_K9_stop: f74bfd_TERM-20260909060441-0a543b_force_requested_only_SIGTERM_actually_sent_exit061131742Z_saved152774
 h031_prefix5_to170k_20260909:
   authority: user_requests_stop_old_full_preflight_switch_new_prefix5_and_endpoint170000
   protocol: research/protocols/h031_prefix5_to170k.yaml
@@ -13,7 +37,7 @@ h031_prefix5_to170k_20260909:
   CPU_tests: R-20260909054559-8a9def_230passed17p16seconds054618245Z
   retired_chain: 95e672_3b6711_7cc465_dependency_failed_terminated_status_not_accepted_none_started
   handoff: R-20260909055609-57ac97_succeeded_full152769_193Adam_plus1_RNG2_counters_FP32_SHA
-  GPU: R-20260909055640-f74bfd_running_first_complete_nativeK9_update152770_at060127507Z
+  GPU: R-20260909055640-f74bfd_intentionally_stopped_saved152774_for_user_K11_trial_above
   prefix_preflight: both_ranks20clips_each_K8_PO12_DR0_elapsed0p194771_and0p328977seconds_055824Z_not_full_startup_time_or_cold_cache_benchmark
   full_resume: 152769_model_optimizer_world2_RNG2_confirmed055924320Z
   first_native_update: Kubric512_B1_A4_K9_72pairs_loss0p133423619_grad10p679125_LRfactor1_peak_logged55p511813GiB_step133p553955s
@@ -935,6 +959,16 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: >-
+  LATEST: user now authorizes K11; GPU R-20260909061822-5d05f6 actually started061852953Z
+  from verified protected152774 (SHA291c2b889af85a3e),17226 updates to170000. Keep
+  GPU2/3,B1/A4,K512/PO256/DR256,mix50/25/25,prefix5,LR3e-6 hold and all loss/compute
+  paths. First complete native K11 update passes capacity => continue; confirmed capacity
+  failure => stop owned trial and launch separate K9 fallback using h031_k11_run.py
+  --fallback-k9 from same protected152774 full model/Adam/RNG. Missing/corrupt inputs
+  or pagefault warnings are not capacity failure. User authorized deletion ONLY of obsolete
+  K15 geometry replay h031-geometry-replay-20260908; deleted2.959GB, keep64GiB reserve.
+  CPU238 tests and fullstate handoff passed. Endpoint CPU R-20260909061837-8aafc4.
+  See research/protocols/h031_k11_capacity_to170k.yaml. The following is historical:
   User requests switching current K9 full-preflight job to the tested prefix5 implementation
   and extends the endpoint to170000. Old GPU R-20260909051228-4a9d90 exited055538081Z
   after SIGTERM and saved152769. User later confirmed a one-off SIGKILL exception but the
@@ -2954,4 +2988,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-09T06:01:27Z
+updated_at: 2026-09-09T06:20:00Z
