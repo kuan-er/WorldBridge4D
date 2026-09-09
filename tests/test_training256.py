@@ -708,7 +708,9 @@ def test_strict_optimizer_restore_precedes_training_loop():
     source = trainer_source()
     restore = source.index("load_optimizer_checkpoint(", source.index("def main()"))
     loaded = source.index('"event": "resume_state_loaded"', restore)
-    loop = source.index("for step in range(start_step, target_steps):", loaded)
+    # Diagnostic invocations use a separate execution bound, preserving LR horizon.
+    loop = source.index("for step in range(start_step, execution_end):", loaded)
+    assert "execution_end = execution_stop_step(planned_start, target_steps, args.stop_after_updates)" in source
     assert restore < loaded < loop
     assert "launch_post_resume_checksum" not in source
 
