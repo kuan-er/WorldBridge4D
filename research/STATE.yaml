@@ -8,7 +8,13 @@ h031_K11_capacity_20260909:
   CPU: R-20260909060805-d6bbcd_238tests_pass12p82seconds
   handoff: R-20260909061741-d23339_fullstate152774_193Adam_plus6_since152768_RNG2_counts_FP32_SHA
   retired_handoff: c9feb5_syntax_error_fixed_no_gpu_started_from_it
-  GPU: R-20260909061822-5d05f6_started061852953Z_initializing_no_capacity_pass_yet
+  GPU: R-20260909061822-5d05f6_running_K11_native_capacity_pass_first152776_at062205027Z
+  latest_confirmed_update: 152786_at062635598Z_12updates_since152774_all3datasets
+  capacity_evidence: complete_native512_forward_reverse_forward_backward_optimizer_88pairs_logged_peak63p683007GiB_multiple_Kubric_updates_LRfactor1
+  prefix_check: 20clips_per_rank_K8_PO4_DR8_0p195479_and0p402888seconds
+  full_resume: 152774_193Adam_world2_RNG2_confirmed062104972Z
+  current_decision: K11_capacity_pass_continue_same_Run_to170000_no_K9_fallback
+  caveat: not_longterm_stability_or_quality_not_saved152786_last_protected_durable152774
   endpoint_review: R-20260909061837-8aafc4
   protected_resume_step: 152774
   protected_resume_sha256: 291c2b889af85a3e089394d204de7b53d2978e8b3201db6bd416b9613f170fcb
@@ -2988,4 +2994,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-09T06:20:00Z
+updated_at: 2026-09-09T06:26:35Z
