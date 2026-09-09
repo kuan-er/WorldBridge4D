@@ -10,12 +10,16 @@ from worldbridge.utils.io import atomic_json
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--fallback-k9', action='store_true')
+parser.add_argument('--config', default=None)
+parser.add_argument('--output-dir', default=None)
 args = parser.parse_args()
-config = ('configs/h031_k512_k9_mix50_prefix5_to170000.yaml' if args.fallback_k9 else
+config = args.config or ('configs/h031_k512_k9_mix50_prefix5_to170000.yaml' if args.fallback_k9 else
           'configs/h031_k512_k11_mix50_prefix5_to170000.yaml')
 cfg = yaml.safe_load(Path(config).read_text())
 root = Path('/data/WorldBridge4D-runs/h031-k512-k9-after-k11-capacity-to170000-gpu23-20260909' if args.fallback_k9 else
             '/data/WorldBridge4D-runs/h031-k512-k11-mix50-prefix5-to170000-gpu23-20260909')
+if args.output_dir is not None:
+    root = Path(args.output_dir)
 summary = json.loads((root/'train_status.json').read_text())
 assert summary['completed_steps'] == summary['execution_end'] == summary['target_steps'] == 170000
 assert summary['diagnostic_stop_after_updates'] is None and not summary['quiesce_geometry_before_forward']
@@ -31,6 +35,7 @@ assert s['global_step'] == 170000 and s['world_size'] == 2 and len(s['rng_states
 assert s['dataset_cycle_offset'] == 0 and s['dataset_mix_phase_origin'] == origin
 assert s['dataset_mix_counts'] == c['config']['dataset_mix_counts'] == cfg['dataset_mix_counts']
 assert c['config']['lr_restart'] == cfg['lr_restart'] and c['config']['targets_per_source'] == cfg['targets_per_source']
+assert c['config']['runtime_stall_traceback_seconds'] == cfg['runtime_stall_traceback_seconds']
 assert set(c['model']) == set(o['model']) and all(v.shape == o['model'][k].shape for k,v in c['model'].items())
 a,b = c['optimizer']['state'],o['optimizer']['state']
 assert len(a) == len(b) == 193 and set(a) == set(b)
