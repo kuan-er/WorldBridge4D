@@ -52,7 +52,20 @@ h031_K11_segv_retry_20260909:
   retry_first_update: DR256_K11_88pairs_loss0p018725271802395582_grad0p7736977934837341_LRfactor1_peak18p999993GiB
   retry_first_update_caveat: logged_loss_and_grad_match_previous_first_update_not_full_Adam_parity_not_native512_or_SIGSEGV_fix_proof_not_saved
   retry_first_step_seconds: 555.7403145430144
-  latest_retry_observed_update: 154500_at172500951Z_1726updates_since152774
+  latest_retry_observed_update: 155000_at190440554Z_2226updates_since152774
+  milestone155000_observation:
+    notification: N-4b99f55028454356b630_acknowledged_via_log_search
+    loss: 0.14586646342650056
+    gradient_norm: 9.343461036682129
+    step_seconds: 19.87350718397647
+    cumulative_peak_cuda_GiB: 73.54284620285034
+    last500_trainer_elapsed_seconds: 5971.080576061969
+    last500_seconds_per_update: 11.942161152123939
+    speed_scope: observational_154500_to155000_250K_125PO_125DR_includes_intermediate_checkpoint_overhead_not_future_guarantee_or_controlled_cache_causality
+    files_at191113Z: 154000_154500_155000_each7864620135bytes_regular_paths_normal_keep_last3
+    free_bytes_at191113Z: 450682372096
+    latest_independently_verified_checkpoint: 154500_SHA5ca4dc529f327e0c_still_present_155000_file_not_yet_independently_fullstate_reviewed
+    decision: continue_same_K11_Run_to170000_no_signal_restart_or_scientific_change
   periodic_checkpoint_observation:
     notification: first_periodic_checkpoint_false_positive_filename_matched_prune_of153000_at172601055Z_not_first_save
     current_regular_files: 153500_154000_154500_each7864620135bytes
