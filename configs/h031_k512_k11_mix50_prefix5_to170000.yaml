@@ -1,0 +1,151 @@
+# User authorizes K11 capacity trial; keep going to170000 if it fits, else return to K9.
+# Full latest durable state, phase origin152768; GPU2/3, unchanged loss/allocator/async/cycle.
+native_kubric512_b1_a4_k9: true
+native_kubric512_k9_mix_trial: true
+native_kubric512_k9_mix_170k: true
+# Inherit native512 architecture/profile; override only sampled K, no new weights.
+native_kubric512_k11_trial: true
+dataset_mix_counts: {kubric: 10, pointodyssey: 5, dynamic_replica: 5}
+native_capacity_test_only: false
+# Legacy source_rgb_learning_rate_multiplier=10 below initializes group metadata;
+# the explicit lr_restart absolute rates override it BEFORE every optimizer step.
+image_size: 256
+clip_length: 21
+latent_spatial_size: 32
+coordinate_frame: source
+wan_root: /data/WorldBridge4D/Wan2.1-T2V-1.3B
+vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
+backbone_readout: wan_hidden_structured
+wan_hidden_layers: [13, 14, 15, 29]
+layer_gate_initial_logits: [0.0, 0.0, 0.0, -1.0986122887]
+layer_gate_temperature: 1.0
+layer_gate_top_k: 4
+geometry_dim: 512
+geometry_spatial_size: 32
+geometry_num_heads: 8
+geometry_clean_skip: true
+motion_slots: 8
+structured_local_queries: true
+query_dim: 1536
+embedding_dim: 768
+num_cross_attn_layers: 5
+num_heads: 12
+query_grid_size: 32
+upsample_channels: [1536, 768, 384, 192]
+source_rgb_pyramid: true
+source_rgb_channels: [32, 64, 128]
+source_rgb_fusion_scales: [32, 64, 128, 256]
+source_rgb_fusion_32: true
+pre_attention_rgb_query: true
+source_rgb_zero_init: true
+source_rgb_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-rgb-uint8-256
+source_rgb_cache_max_open_shards: 16
+expected_non_wan_parameters: 194597133
+precision: bf16
+fsdp_master_precision: fp32
+trainable_mode: decoder_only
+source_rgb_separate_optimizer_group: true
+source_rgb_learning_rate_multiplier: 10.0
+joint_fresh_group_warmup_steps: 0
+joint_fresh_group_max_lr_scale: 1.0
+fsdp: full_shard
+fsdp_min_num_params: 5000000
+microbatch_per_gpu: 1
+gradient_accumulation: 4
+targets_per_source: 11
+# These initialize group metadata. lr_restart below applies absolute rates
+# AFTER restoring AdamW, overriding the parent's exhausted _base_lr schedule.
+learning_rate: 0.000003
+geometry_learning_rate: 0.000003
+backbone_learning_rate: 0.0000005
+weight_decay: 0.0001
+warmup_steps: 1000
+lr_schedule: cosine
+schedule_horizon_steps: 100000
+lr_restart:
+  start_step: 150000
+  end_step: 170000
+  warmup_steps: 500
+  schedule: warmup_hold
+  group_learning_rates:
+    dense_decoder: 0.000003
+    source_rgb_decay: 0.000003
+    source_rgb_no_decay: 0.000003
+parent_schedule_provenance:
+  schedule_horizon_steps: 100000
+  schedule_extension_start_step: 56503
+  schedule_extension_horizon_steps: 150000
+max_steps: 170000
+# The resume planning sidecar is resolved beside the actual --resume checkpoint.
+# These selected_checkpoint fields identify the phase origin, not later resumes.
+selected_checkpoint_step: 152768
+selected_checkpoint_sha256: 970ed406b28e4508a3ab206ff4492e0641cbe262f494e9dca3693b922f4b63f0
+selected_checkpoint_path: /data/WorldBridge4D-runs/h031-k512-k5-original-prefetch-150012-to160010-gpu23-20260908/checkpoint-0152768.pt
+gradient_clip: 1.0
+smooth_l1_beta: 0.05
+cycle_reprojection_enabled: true
+cycle_reprojection_datasets: [kubric, pointodyssey, dynamic_replica]
+cycle_reprojection_weight: 0.0
+cycle_reprojection_normalize_to_xyz: true
+cycle_reprojection_normalization_epsilon: 0.000001
+cycle_reprojection_normalization_max_scale: 1000.0
+cycle_reprojection_pixel_stride: 4
+cycle_reprojection_huber_delta: 0.01
+gradient_checkpointing: true
+seed: 20260812
+geometry_seed: 20260812
+decoder_seed: 424242
+checkpoint_steps: [152769, 155000, 160000, 165000, 170000]
+checkpoint_every_after: 500
+checkpoint_keep_last: 3
+diagnostic_every_steps: 1
+diagnostic_ensure_dataset_coverage: true
+graceful_stop_hours: 48
+geometry_prefetch_workers: 2
+geometry_prefetch_depth: 1
+# Read-only observability remains; caching behavior is restored to the legacy default.
+cuda_empty_cache_every_steps: 0
+trace_first_updates: 2
+runtime_stall_traceback_seconds: 180
+distributed_timeout_seconds: 900
+mixture_coordinate_stats: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_b2_k16_a2/coordinate_stats_gate_bootstrap.npz
+text_conditions:
+  kubric: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/kubric.pt
+  pointodyssey: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/pointodyssey.pt
+  dynamic_replica: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/dynamic_replica.pt
+  metadata: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/text_conditions/metadata.json
+prompts:
+  kubric: Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows multiple rigid objects moving independently in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.
+  pointodyssey: Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated characters and objects undergoing diverse rigid and non-rigid motion in a rendered three-dimensional scene. The camera viewpoint may change over time, and objects may become occluded and reappear.
+  dynamic_replica: Estimate dense three-dimensional point trajectories over time from this monocular video. The video shows articulated people moving through a rendered furnished indoor three-dimensional scene. The camera viewpoint may change over time, and people may become occluded and reappear.
+datasets:
+  kubric:
+    raw_root: /dataset/nas0/yejun/MOVi-F/512x512
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/kubric
+    geometry_compact_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/kubric_geometry
+    native_manifest: /data/WorldBridge4D-runs/h031-native-gpu6-handoff-20260908/kubric/kubric.json
+    native_rgb_root: /data/WorldBridge4D-persistent/worldbridge4d-native-rgb-v1
+    native_latent_root: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1
+    native_geometry_root: /data/WorldBridge4D-persistent/worldbridge4d-native-gt-v1/kubric/aba0c5e4f5d5bae8d897608eef9e0199df10088d0cc28cc00ab0548283a181f6
+    native_geometry_full_corpus: false
+    native_geometry_mode: verified_cache_or_raw
+  pointodyssey:
+    raw_root: /dataset/nas0/PointOdyssey
+    geometry_cache_root: /data/WorldBridge4D-persistent/pointodyssey_worldbridge4d_v1
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/pointodyssey
+    annotation_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/anno
+    annotation_npy_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/anno_npy
+    depth_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/depth/pointodyssey
+  dynamic_replica:
+    raw_root: /dataset/data/Dynamic_dataset/dynamic_stereo
+    geometry_cache_root: /data/WorldBridge4D-persistent/datasets/dynamic_stereo_worldbridge4d_v1
+    cache_root: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica
+    trajectory_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/trajectories
+    trajectory_mmap_root: /data/WorldBridge4D-persistent/worldbridge4d-dr-trajectory-mmap-v1
+    trajectory_mmap_complete_sha256: 714389c4f6d0dab9ef2393a6d032355eac77b94ef02615d21cc1ccae283256b3
+    depth_cache_root: /data/WorldBridge4D-persistent/worldbridge4d-cache/depth/dynamic_replica
+tracking:
+  enabled: true
+  project: worldbridge4d
+  group: h031-k512-k11-mix50-prefix5-to170k
+  tags: [h031, k11-capacity-to170k-prefix5, full152768, native-k512, po256, dr256, dr-mmap, decoder512, b1-a4-k11, gpu23, rgb-lr1x, cycle0, no-boundary-contrast]
