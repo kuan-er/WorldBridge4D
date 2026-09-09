@@ -4,16 +4,21 @@ h031_prefix5_to170k_20260909:
   protocol: research/protocols/h031_prefix5_to170k.yaml
   config: configs/h031_k512_k9_mix50_prefix5_to170000.yaml
   config_sha256: 83f50d1d3d6e9ed34452929f4494a91c1dc09bf7cec766dcdde7790e78103b53
-  GPU_commit: 78d1fabb67280439ecb4d086cf04efd9a31dd76a
+  GPU_commit: ad22a33bf5a583e2cb51ce0052484c0ed00db1dc
   phase_origin: 152768
   endpoint: 170000
   total_updates_since_phase_origin: 17232
   old_GPU_stop: R-20260909051228-4a9d90_TERM-20260909054250-20d65c_SIGTERM_received054250814Z
-  stop_status: pending_old_preflight_not_immediately_cancellable_no_SIGKILL_or_hotpatch
+  stop_status: old_SIGTERM_exit055538081Z_saved152769_user_later_confirmed_SIGKILL_exception_but_control_returned_not_active_no_SIGKILL_sent
   CPU_tests: R-20260909054559-8a9def_230passed17p16seconds054618245Z
-  handoff: R-20260909054725-95e672_wait_old_terminal_then_select_latest_complete_or_protected152768_verify_fullstate_SHA_publish_alias
-  GPU: R-20260909054846-3b6711_queued_not_started
-  endpoint_review: R-20260909054938-7cc465_success_gated
+  retired_chain: 95e672_3b6711_7cc465_dependency_failed_terminated_status_not_accepted_none_started
+  handoff: R-20260909055609-57ac97_succeeded_full152769_193Adam_plus1_RNG2_counters_FP32_SHA
+  GPU: R-20260909055640-f74bfd_started055713318Z_initializing
+  endpoint_review: R-20260909055652-8c96a4_success_gated
+  actual_resume_step: 152769
+  remaining_updates: 17231
+  resume_sha256: 91c1a06bea74f1cb304df38f7e9825e9db308022f35b555999bf96016dbe19e3
+  resume_artifact: artifact://H031/R-20260909051228-4a9d90/checkpoint/91c1a06bea74f1cb
   resume: latest_verified_old_stop_checkpoint_preserve_model_193Adam_RNG2_counters_no_roll_back_saved_updates
   startup: explicit_first5_updates_strict_reads_before_forward_complete_catalog_checks_retained
   LR: original150000_warmup500_now3e-6_hold_extend_horizon170000_no_restart
@@ -926,14 +931,16 @@ h023_256_three_dataset_200m:
     complete 256 latent shards before any four-card formal run.
 next_step: >-
   User requests switching current K9 full-preflight job to the tested prefix5 implementation
-  and extends the endpoint to170000. Old GPU R-20260909051228-4a9d90 received SIGTERM;
-  wait for safe terminal state, not SIGKILL or hotpatch. CPU handoff R-20260909054725-95e672
-  selects and verifies the latest complete checkpoint (protected152768 if no newer save).
-  GPU R-20260909054846-3b6711 is queued with exact GPUs2/3, B1/A4/K9, mix50/25/25,
+  and extends the endpoint to170000. Old GPU R-20260909051228-4a9d90 exited055538081Z
+  after SIGTERM and saved152769. User later confirmed a one-off SIGKILL exception but the
+  control found it already inactive: no SIGKILL sent. Retired95e672/3b6711/7cc465 were
+  dependency_failed before start. CPU handoff R-20260909055609-57ac97 verified full152769;
+  SHA91c1a06b,193Adam+1,RNG2,counters preserved. GPU R-20260909055640-f74bfd actually
+  started055713318Z with17231 remaining updates, exact GPUs2/3, B1/A4/K9, mix50/25/25,
   K512/PO256/DR256, unchanged model/Adam/RNG/counters/loss/async/allocator and3e-6 hold.
   Preserve150000 warmup500 origin, extend hold horizon170000. CPU230 tests passed.
   Confirm actual prefix preflight, full resume, first complete K9 native update and capacity;
-  never interpret queued as started or page faults as failure. Endpoint CPU R-20260909054938-7cc465
+  never interpret queued as started or page faults as failure. Endpoint CPU R-20260909055652-8c96a4
   checks full170000 state. NativeDR VAE6090 cache is complete but not used in currentDR256
   training; GT bulk remains paused1466of5737 with verified-cache-or-original-raw full cohort.
   No foreign control, input deletion or safety reserve reduction. H023 remains production;
@@ -2942,4 +2949,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-09T05:50:00Z
+updated_at: 2026-09-09T05:58:00Z
