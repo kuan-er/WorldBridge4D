@@ -55,8 +55,21 @@ h031_K5_gpu24_resume_20260910:
       interpretation: CPU_active_input_geometry_preparation_not_just_disk_read_not_exact_hot_function_or_deadlock_proof
       first_complete155001: not_yet_observed
     watchdog053240_followup: notification_N_2f7ad1b2762409a00ccd_created053240261Z_900s_without_complete_update_acknowledged
-    latest_phase: both_ranks_micro0_forward_start_logged052902976Z_no_complete155001_or_fatal_in_inspected_log
-    decision: continue_same_Run_forward_has_started_no_signal_or_retry_for_watchdog_only
+    latest_phase: complete155001_logged054712524Z_first_update_event_inspected
+    first_complete_update:
+      step: 155001
+      dataset: kubric512
+      pairs: 40
+      clips: 8
+      loss: 0.1646240707486868
+      gradient_norm: 3.987779140472412
+      step_seconds: 1602.4622659990564
+      geometry_wait_max_rank_seconds: 493.9216078231111
+      latent_load_max_rank_seconds: 5.043794934172183
+      peak_cuda_GiB: 39.185118198394775
+      clips_seen_K_PO_DR: [436672, 371120, 432216]
+      caveat: completed_optimizer_update_not_new_saved_checkpoint_or_stable_throughput_unattributed_time_remains
+    decision: continue_same_Run_to170000_observe_subsequent_throughput_and155500_save_no_retry_or_change
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
