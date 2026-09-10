@@ -83,8 +83,17 @@ h031_K5_gpu24_resume_20260910:
       file_bytes: 7864620135
       free_bytes_at090958Z: 440812851200
       review_run: R-20260910091011-614c12
-      review_status: submitted_CPU_readonly_not_yet_independently_verified_or_registered
-    decision: continue_same_Run_to170000_and_await155500_review_no_retry_or_change
+      review_status: succeeded_fullstate_structural_finite_counters_SHA_not_quality_or_exact_RNG_replay
+      review_report: /data/WorldBridge4D-runs/h031-k5-gpu24-periodic155500-review-20260910/complete.json
+      checkpoint_sha256: 1857c0adfa0f077ca2110a74b96bad569fdc781e66715af2e053e14b62b1a775
+      Adam_states: 193
+      Adam_increment_vs152768: 2732
+      world_size: 2
+      RNG_ranks: 2
+      artifact_id: artifact://H031/R-20260910050816-6c43a9/checkpoint/1857c0adfa0f077c
+      registered_UTC: '2026-09-10T09:11:41.956Z'
+      retention: normal_keep_last3_not_permanent_pin_preserve_old155000_source
+    decision: continue_same_Run_to170000_latest_independently_verified155500_no_retry_or_change
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
