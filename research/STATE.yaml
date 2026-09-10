@@ -55,7 +55,7 @@ h031_K5_gpu24_resume_20260910:
       interpretation: CPU_active_input_geometry_preparation_not_just_disk_read_not_exact_hot_function_or_deadlock_proof
       first_complete155001: not_yet_observed
     watchdog053240_followup: notification_N_2f7ad1b2762409a00ccd_created053240261Z_900s_without_complete_update_acknowledged
-    latest_phase: rank0_reverse_query_upsampler_CUDA_OOM130157760Z_rank0_exit1_elastic_rank1_cleanup_pending
+    latest_phase: failed_cuda_oom_exit1_131720121Z_all_workers_and_launcher_absent131740Z
     first_complete_update:
       step: 155001
       dataset: kubric512
@@ -105,7 +105,14 @@ h031_K5_gpu24_resume_20260910:
       other_process_usage_GiB: 30.42
       cause_scope: explicit_OOM_not_ECC_own_peak_growth_vs_foreign_usage_vs_fragmentation_not_isolated
       rank0: exited1_before_elastic_cleanup130210290Z
-      rank1: elastic_SIGTERM130210296Z_alive_at130235Z_final_exit_pending
+      rank1: elastic_SIGTERM130210296Z_then_SIGTERM130240297Z_NCCL_ALLGATHER_timeout900067ms131643423Z
+      final_exit_UTC: '2026-09-10T13:17:20.121Z'
+      failure_class: cuda_oom
+      cleanup_verified_UTC: '2026-09-10T13:17:40.634936Z'
+      launcher_and_workers: all_absent_3862049_3863037_3863038
+      termination_audit: empty_no_agent_signals_no_SIGKILL
+      final_files: only155500_and156000_no_new156500
+      endpoint_d62171: dependency_failed_not_started131720837Z_acknowledged
       latest_complete_logged: 156499
       latest_checkpoint_candidate: 156000
       files: regular155500_and156000_each7864620135bytes_no156500_observed
@@ -125,7 +132,7 @@ h031_K5_gpu24_resume_20260910:
       review_report: /data/WorldBridge4D-runs/h031-k5-gpu24-post-oom156000-review-20260910/complete.json
       unsaved_updates_after156000: 499
       note: research/notes/h031-k5-gpu24-oom-20260910.md
-    decision: latest156000_review_passed_await_existing_elastic_exit_no_auto_retry_K_change_allocator_change_device_substitution_or_foreign_control
+    decision: Run_fully_exited_preserve_verified156000_wait_user_recovery_authorization_no_auto_retry_K_change_allocator_change_device_substitution_or_foreign_control
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
