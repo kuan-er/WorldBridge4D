@@ -55,7 +55,7 @@ h031_K5_gpu24_resume_20260910:
       interpretation: CPU_active_input_geometry_preparation_not_just_disk_read_not_exact_hot_function_or_deadlock_proof
       first_complete155001: not_yet_observed
     watchdog053240_followup: notification_N_2f7ad1b2762409a00ccd_created053240261Z_900s_without_complete_update_acknowledged
-    latest_phase: complete155500_logged090903795Z_500_updates_since_resume_milestone_inspected
+    latest_phase: rank0_reverse_query_upsampler_CUDA_OOM130157760Z_rank0_exit1_elastic_rank1_cleanup_pending
     first_complete_update:
       step: 155001
       dataset: kubric512
@@ -93,7 +93,28 @@ h031_K5_gpu24_resume_20260910:
       artifact_id: artifact://H031/R-20260910050816-6c43a9/checkpoint/1857c0adfa0f077c
       registered_UTC: '2026-09-10T09:11:41.956Z'
       retention: normal_keep_last3_not_permanent_pin_preserve_old155000_source
-    decision: continue_same_Run_to170000_latest_independently_verified155500_no_retry_or_change
+    OOM_20260910:
+      fatal_notification: N-6a8effaf7130fbb02163
+      time_UTC: '2026-09-10T13:01:57.760Z'
+      physical_GPU: 2
+      path: trainer772_reverse_prediction_query_decoder246_upsampler108_bilinear
+      requested_MiB: 384
+      free_MiB_at_error: 26.56
+      pytorch_allocated_GiB: 46.93
+      pytorch_reserved_unallocated_MiB: 961.74
+      other_process_usage_GiB: 30.42
+      cause_scope: explicit_OOM_not_ECC_own_peak_growth_vs_foreign_usage_vs_fragmentation_not_isolated
+      rank0: exited1_before_elastic_cleanup130210290Z
+      rank1: elastic_SIGTERM130210296Z_alive_at130235Z_final_exit_pending
+      latest_complete_logged: 156499
+      latest_checkpoint_candidate: 156000
+      files: regular155500_and156000_each7864620135bytes_no156500_observed
+      free_bytes: 430275166208
+      candidate_review: R-20260910130253-1aa104
+      candidate_review_status: submitted_not_yet_verified
+      unsaved_if156000_accepted: 499
+      note: research/notes/h031-k5-gpu24-oom-20260910.md
+    decision: await_existing_elastic_exit_and156000_review_no_auto_retry_K_change_allocator_change_device_substitution_or_foreign_control
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
