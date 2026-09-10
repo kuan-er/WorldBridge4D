@@ -111,10 +111,21 @@ h031_K5_gpu24_resume_20260910:
       files: regular155500_and156000_each7864620135bytes_no156500_observed
       free_bytes: 430275166208
       candidate_review: R-20260910130253-1aa104
-      candidate_review_status: submitted_not_yet_verified
-      unsaved_if156000_accepted: 499
+      candidate_review_status: succeeded_fullstate_structure_finite_counters_SHA_report130624899Z
+      latest_independently_verified: 156000
+      checkpoint_sha256: 3260b9f05c7297c40c926a6e9b7310be8007678450c05735b628668049dcc682
+      checkpoint_bytes: 7864620135
+      artifact_id: artifact://H031/R-20260910050816-6c43a9/checkpoint/3260b9f05c7297c4
+      registered_UTC: '2026-09-10T13:06:55.184Z'
+      Adam_states: 193
+      Adam_increment_vs152768: 3232
+      world_size: 2
+      RNG_ranks: 2
+      saved_clips_K_PO_DR: [440664, 373120, 434216]
+      review_report: /data/WorldBridge4D-runs/h031-k5-gpu24-post-oom156000-review-20260910/complete.json
+      unsaved_updates_after156000: 499
       note: research/notes/h031-k5-gpu24-oom-20260910.md
-    decision: await_existing_elastic_exit_and156000_review_no_auto_retry_K_change_allocator_change_device_substitution_or_foreign_control
+    decision: latest156000_review_passed_await_existing_elastic_exit_no_auto_retry_K_change_allocator_change_device_substitution_or_foreign_control
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
