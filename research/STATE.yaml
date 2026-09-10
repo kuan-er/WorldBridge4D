@@ -50,11 +50,13 @@ h031_K5_gpu24_resume_20260910:
     first_step_delay_followup:
       rank0_geometry_wait_seconds: 299.846371228
       rank0: micro0_CPU_INPUT_READY_ENTER4247_at052532Z_waiting_rank1
-      rank1: GT4251_read149p383s_but_no_geometry_ready_observed_through052632Z
+      rank1: geometry_ready_after494p019s_then_CPU_INPUT_READY_ALL_and_forward_start_both_ranks_logged052902976Z
       readonly3s_sample: rank0_CPU3p04s_rank1_CPU5p99s_two_active_rank1_worker_threads_both_rchar_syscr_read_bytes_delta0
       interpretation: CPU_active_input_geometry_preparation_not_just_disk_read_not_exact_hot_function_or_deadlock_proof
       first_complete155001: not_yet_observed
-    decision: continue_same_Run_wait_first_complete_update_no_changes_no_restart_for_slow_input
+    watchdog053240_followup: notification_N_2f7ad1b2762409a00ccd_created053240261Z_900s_without_complete_update_acknowledged
+    latest_phase: both_ranks_micro0_forward_start_logged052902976Z_no_complete155001_or_fatal_in_inspected_log
+    decision: continue_same_Run_forward_has_started_no_signal_or_retry_for_watchdog_only
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
