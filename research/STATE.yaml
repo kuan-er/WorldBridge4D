@@ -5,7 +5,13 @@ h031_K5_gpu47_resume_20260910:
   GPU_run: R-20260910154229-04788c
   endpoint_review: R-20260910154244-9a9611
   immutable_commit: 62a75b64061ec44cb1aef0f784023a96020ad723
-  status: submitted_success_SHA_marker_gated_not_yet_observed_full_resume_or_update
+  status: CPU_gate_succeeded_GPU_workers_spawned_initializing_no_full_resume_or_update_observed
+  CPU_result: 35tests_passed2p34seconds_GATE_OK154218690Z_SHA_config_review_NVML_verified
+  CPU_notification: N-a0928f486a4ff1470aa5_acknowledged
+  workers_observed_UTC: '2026-09-10T15:43:17.491Z'
+  worker_pids_at_observation: [1765242, 1765243]
+  dataset_protocol_154347Z: K5_mix10_5_5_phase152768
+  decision: continue_same_immutable_Run_wait_declared_first_update_or_fatal_events_no_retry
   resume_step: 156000
   target_step: 170000
   checkpoint_sha256: 3260b9f05c7297c40c926a6e9b7310be8007678450c05735b628668049dcc682
