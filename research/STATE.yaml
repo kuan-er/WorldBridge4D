@@ -5,13 +5,31 @@ h031_K5_gpu47_resume_20260910:
   GPU_run: R-20260910154229-04788c
   endpoint_review: R-20260910154244-9a9611
   immutable_commit: 62a75b64061ec44cb1aef0f784023a96020ad723
-  status: CPU_gate_succeeded_GPU_workers_spawned_initializing_no_full_resume_or_update_observed
+  status: rank1_GPU7_main_forward_OOM154529234Z_rank1_exit1_elastic_rank0_cleanup_pending
+  fatal_notification: N-a498fb7bb4f01c7622ca_acknowledged
+  begin_UTC: '2026-09-10T15:43:14.703Z'
+  full_resume_UTC: '2026-09-10T15:44:47.725Z'
+  full_resume_state: step156000_world2_optimizer_restored_RNG2
+  new_complete_updates: 0
+  OOM_path: trainer718_main_forward_query_decoder246_upsampler108_bilinear
+  OOM_physical_gpu: 7
+  OOM_request_GiB: 1.88
+  OOM_free_MiB: 183
+  OOM_PyTorch_allocated_GiB: 20.17
+  OOM_reserved_unallocated_GiB: 1.25
+  OOM_other_process_GiB: [44.92, 11.88]
+  OOM_NVML_namespace_PIDs: [867212, 863176, 890736]
+  rank1_exit_UTC: '2026-09-10T15:45:34.656Z'
+  cleanup: elastic_SIGTERM_rank0_154534657Z_launcher1763222_rank01765242_still_alive154556Z_rank11765243_absent
+  new_output_checkpoints_154556Z: none
+  latest_verified_recovery: unchanged156000_SHA3260b9f0_no_additional_lost_updates
+  capacity_result: initial64GiB_admission_did_not_prevent_later_shared_GPU7_occupancy_no_hard_reservation
   CPU_result: 35tests_passed2p34seconds_GATE_OK154218690Z_SHA_config_review_NVML_verified
   CPU_notification: N-a0928f486a4ff1470aa5_acknowledged
   workers_observed_UTC: '2026-09-10T15:43:17.491Z'
   worker_pids_at_observation: [1765242, 1765243]
   dataset_protocol_154347Z: K5_mix10_5_5_phase152768
-  decision: continue_same_immutable_Run_wait_declared_first_update_or_fatal_events_no_retry
+  decision: await_existing_elastic_final_exit_no_auto_retry_foreign_control_GPU_substitution_K_or_allocator_changes
   resume_step: 156000
   target_step: 170000
   checkpoint_sha256: 3260b9f05c7297c40c926a6e9b7310be8007678450c05735b628668049dcc682
