@@ -135,6 +135,9 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     native_k11 = bool(config.get('native_kubric512_k11_trial', False))
     if native_k11 and not (native_k9 and native_mix_trial and native_mix_170k):
         raise ValueError('K11 capacity trial requires the native K9 mixture170k base route')
+    native_k5_mix = bool(config.get('native_kubric512_k5_mix_resume', False))
+    if native_k5_mix and (native_k11 or not (native_k9 and native_mix_trial and native_mix_170k)):
+        raise ValueError('K5 mixture resume requires the native K9 mixture170k base route without K11')
     if native_mix_170k and not native_mix_trial:
         raise ValueError('native K9 170k extension requires the explicit mixture profile')
     if native_long and not native_k5:
@@ -206,7 +209,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 11 if native_k11 else (5 if native_k5 else (9 if native_k9 else (15 if native_k15 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19))))
+    required_targets = 11 if native_k11 else (5 if native_k5 or native_k5_mix else (9 if native_k9 else (15 if native_k15 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19))))
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
