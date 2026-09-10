@@ -43,8 +43,11 @@ h031_K5_gpu24_resume_20260910:
     notification: N-5644052eccfad945ea31_acknowledged
     rank0_pid: 3863037
     rank1_pid: 3863038
-    scope: checkpoint_identity_and_NVML_rechecked_launcher_and_two_workers_started_not_yet_full_resume_or_complete155001
-    decision: continue_same_Run_wait_first_complete_update_no_changes
+    scope: checkpoint_identity_NVML_launch_gates_passed_two_workers_started
+    full_resume: resume_state_loaded155000_world2_optimizer_restored_RNG2_at052032125Z
+    startup_preflight: prefix155000to155005_rank0_20clips_K12_PO4_DR4_6p522928s_catalog5737_9746_6090_not_full_future_payload_certification
+    latest_input: published_native_GT_indices4248_4252_read_path55p108s_89p287s_at052132_052202Z_no_complete155001_observed
+    decision: continue_same_Run_wait_first_complete_update_no_changes_no_restart_for_slow_input
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
