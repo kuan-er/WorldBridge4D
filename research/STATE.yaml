@@ -55,7 +55,7 @@ h031_K5_gpu24_resume_20260910:
       interpretation: CPU_active_input_geometry_preparation_not_just_disk_read_not_exact_hot_function_or_deadlock_proof
       first_complete155001: not_yet_observed
     watchdog053240_followup: notification_N_2f7ad1b2762409a00ccd_created053240261Z_900s_without_complete_update_acknowledged
-    latest_phase: complete155001_logged054712524Z_first_update_event_inspected
+    latest_phase: complete155500_logged090903795Z_500_updates_since_resume_milestone_inspected
     first_complete_update:
       step: 155001
       dataset: kubric512
@@ -69,7 +69,22 @@ h031_K5_gpu24_resume_20260910:
       peak_cuda_GiB: 39.185118198394775
       clips_seen_K_PO_DR: [436672, 371120, 432216]
       caveat: completed_optimizer_update_not_new_saved_checkpoint_or_stable_throughput_unattributed_time_remains
-    decision: continue_same_Run_to170000_observe_subsequent_throughput_and155500_save_no_retry_or_change
+    periodic155500:
+      time_UTC: '2026-09-10T09:09:03.795Z'
+      loss: 0.12974928738549352
+      gradient_norm: 11.323873519897461
+      step_seconds: 20.234707276104018
+      elapsed_seconds: 13698.169255042914
+      subsequent499_mean_seconds: 24.23982872756736
+      all500_mean_seconds: 27.39633851008583
+      peak_cuda_GiB: 41.31264686584473
+      clips_seen_K_PO_DR: [438664, 372120, 433216]
+      checkpoint: /data/WorldBridge4D-runs/h031-k512-k5-mix50-155000-to170000-gpu24-20260910/checkpoint-0155500.pt
+      file_bytes: 7864620135
+      free_bytes_at090958Z: 440812851200
+      review_run: R-20260910091011-614c12
+      review_status: submitted_CPU_readonly_not_yet_independently_verified_or_registered
+    decision: continue_same_Run_to170000_and_await155500_review_no_retry_or_change
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
