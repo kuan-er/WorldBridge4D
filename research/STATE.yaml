@@ -5,7 +5,12 @@ h031_K5_gpu47_resume_20260910:
   GPU_run: R-20260910154229-04788c
   endpoint_review: R-20260910154244-9a9611
   immutable_commit: 62a75b64061ec44cb1aef0f784023a96020ad723
-  status: rank1_GPU7_main_forward_OOM154529234Z_rank1_exit1_elastic_rank0_cleanup_pending
+  status: failed_exit1_cuda_oom160022621Z_all_launcher_workers_absent160041Z
+  final_exit_UTC: '2026-09-10T16:00:22.621Z'
+  final_exit_notification: N-519c6139cf917c67940e_acknowledged
+  final_cleanup: launcher1763222_workers1765242_1765243_absent160041478Z_no_new_checkpoint
+  endpoint_result: 9a9611_dependency_failed_not_started160022872Z_acknowledged
+  agent_termination_audit: empty
   fatal_notification: N-a498fb7bb4f01c7622ca_acknowledged
   begin_UTC: '2026-09-10T15:43:14.703Z'
   full_resume_UTC: '2026-09-10T15:44:47.725Z'
@@ -29,7 +34,7 @@ h031_K5_gpu47_resume_20260910:
   workers_observed_UTC: '2026-09-10T15:43:17.491Z'
   worker_pids_at_observation: [1765242, 1765243]
   dataset_protocol_154347Z: K5_mix10_5_5_phase152768
-  decision: await_existing_elastic_final_exit_no_auto_retry_foreign_control_GPU_substitution_K_or_allocator_changes
+  decision: fully_exited_preserve156000_wait_separately_authorized_recovery_no_auto_retry_foreign_control_GPU_substitution_K_or_allocator_changes
   resume_step: 156000
   target_step: 170000
   checkpoint_sha256: 3260b9f05c7297c40c926a6e9b7310be8007678450c05735b628668049dcc682
