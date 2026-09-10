@@ -38,7 +38,13 @@ h031_K5_gpu24_resume_20260910:
   supersedes: unlaunched_GPU34_request_and_no_restart_pending_user_decision_not_automatic_retry
   CPU_gate: R-20260910050725-a8285a_succeeded_exit0_at051218438Z_129tests_pass12p71s_155000_SHA_revalidated_handoff_published_NVML_pass
   config_sha256: f7de3065a82ac3e31820ae83b63b5448697461b3b43d8791aa46fbed311cefd1
-  GPU: R-20260910050816-6c43a9_resources_acquired_waiting_checkpoint_validation_started_at_null_after_stale_lease_format_repair
+  GPU: R-20260910050816-6c43a9_running_BEGIN_at051759360Z_workers_spawned_at051801891Z
+  begin_observation:
+    notification: N-5644052eccfad945ea31_acknowledged
+    rank0_pid: 3863037
+    rank1_pid: 3863038
+    scope: checkpoint_identity_and_NVML_rechecked_launcher_and_two_workers_started_not_yet_full_resume_or_complete155001
+    decision: continue_same_Run_wait_first_complete_update_no_changes
   admission_block_resolved:
     user: allows_entering_existing_GPU24_K5_Run
     observed_memory_MiB: GPU2_50892_GPU4_66574_both_exceed49152_no_threshold_override
