@@ -1,4 +1,31 @@
 current_task: T-20260908032232-e95da1
+h031_K5_gpu47_resume_20260910:
+  authority: user_explicitly_requests_physical_GPUs4_and7_after_GPU24_OOM
+  CPU_gate: R-20260910154200-245d58
+  GPU_run: R-20260910154229-04788c
+  endpoint_review: R-20260910154244-9a9611
+  immutable_commit: 62a75b64061ec44cb1aef0f784023a96020ad723
+  status: submitted_success_SHA_marker_gated_not_yet_observed_full_resume_or_update
+  resume_step: 156000
+  target_step: 170000
+  checkpoint_sha256: 3260b9f05c7297c40c926a6e9b7310be8007678450c05735b628668049dcc682
+  launcher: research/analysis/h031_k5_gpu47_resume.py
+  config: configs/h031_k512_k5_mix50_gpu24_to170000.yaml
+  config_SHA: f7de3065a82ac3e31820ae83b63b5448697461b3b43d8791aa46fbed311cefd1
+  config_filename_caveat: gpu24_filename_tracking_are_unchanged_provenance_actual_CUDA_VISIBLE_DEVICES_and_PRL_are4_7
+  output: /data/WorldBridge4D-runs/h031-k512-k5-mix50-156000-to170000-gpu47-20260910
+  physical_gpus: [4, 7]
+  gate_MiB_per_card: 65536
+  resource_policy: shared_foreign_allowed_48h_wait_no_bypass_or_foreign_control
+  capacity_mitigation: move_off_GPU2_and_raise_free_admission48to64GiB_no_allocator_or_model_change
+  capacity_caveat: admission_not_hard_reservation_against_future_unmanaged_jobs_or_proof_all_samples_fit
+  health_153229Z: exact_UUIDs_volatile_uncorrectable_ECC0_pendingNo_remapFailureNo_free79394_81033MiB
+  contract: same_K5_B1_A4_world2_8clips40pairs_mix50_25_25_nativeK512_PO_DR256_async_reverse_cycle0_FP32Adam_BF16_compute
+  resume: full193Adam_RNG2_counters_original_phase152768_LR3e6_hold_no_new_warmup
+  unsaved_updates_to_replay: 499
+  storage: preserve64GiB_plus38400000000bytes_checkpoint_budget_no_deletion
+  termination: checkpoint_first_SIGTERM900_thenSIGTERM_noSIGKILL_no_auto_retry
+  quality: no_promotion_H023100000_production_unchanged
 h031_GT_resume_20260909:
   authority: user_explicitly_requests_resume_Kubric_local_GT_cache_after_disk_cleanup
   supersedes: prior_no_GT_producer_restart_authorization_only_no_new_deletion_authorized
