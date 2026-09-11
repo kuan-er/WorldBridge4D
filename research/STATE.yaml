@@ -7,7 +7,19 @@ h031_K3_gpu25_resume_20260911:
   endpoint_review: R-20260911024308-1a77e2
   immutable_commit: 7272a498214ad6c2b0a8a5427e2448422195a377
   original_CPU_code_commit: c31d1f8ece8e21769b075c2fc69d7b04459d54d7
-  status: replacement_process_started024333517Z_initializing_no_fullresume_update_observed
+  status: full156000_restored_first_complete156001024645394Z_continue_same_Run
+  full_resume_UTC: '2026-09-11T02:45:57.207Z'
+  full_resume_result: world2_optimizer_restored_RNG2
+  first_update_notification: N-fa767cad0045445dacfc_acknowledged
+  first_complete_step: 156001
+  first_complete_UTC: '2026-09-11T02:46:45.394Z'
+  first_loss: 0.14612511731684208
+  first_gradient_norm: 3.986572027206421
+  first_step_seconds: 43.163980493089184
+  first_peak_cuda_GiB: 31.01721715927124
+  first_pairs: 24
+  first_clips_K_PO_DR: [440672, 373120, 434216]
+  first_update_caveat: capacity_at_this_step_not_all_future_samples_or_quality_or_new_checkpoint
   process_pid_at_launch: 1168430
   started_at: '2026-09-11T02:43:33.517Z'
   admission_override_authority: user_says_directly_start_after_explanation_of64GiB_gate
@@ -16,7 +28,7 @@ h031_K3_gpu25_resume_20260911:
   gate_report_caveat: reused_complete_json_capacity64GiB_is_historical_new_PRL_resource_contract48GiB_no_report_bytes_modified
   CPU_result: 141tests_passed11p86seconds_GATE_OK022822368Z_SHA_config_review_UUID_NVML_verified
   CPU_notification: N-3c633bdb9bd09c2fe1e3_acknowledged
-  decision: launch_authorized48GiB_attempt_exact_GPU2_5_no_allocator_science_or_checkpoint_changes_no_foreign_control
+  decision: first_update_passed_continue_same_immutable_GPU2_5_K3_Run_to170000_no_change_or_retry
   physical_gpus: [2, 5]
   config: configs/h031_k512_k3_mix50_gpu25_to170000.yaml
   config_sha256: 667571c64f5943fab02ebb0ec50f44e0d000878843b66ef88e046ee3a64fc7fb
