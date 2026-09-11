@@ -3,13 +3,20 @@ h031_K3_gpu25_resume_20260911:
   authority: user_requests_K3_then_explicitly_changes_physical_GPUs4_7_to2_5
   supersedes: K3_gpu47_never_submitted_no_GPU47_K3_Run
   CPU_gate: R-20260911022725-04b026
-  GPU_run: R-20260911022750-9ab553
-  endpoint_review: R-20260911022759-b2af41
-  immutable_commit: c31d1f8ece8e21769b075c2fc69d7b04459d54d7
-  status: CPU_gate_succeeded_GPU_queued_waiting_gpu2_5_started_at_null
+  GPU_run: R-20260911024259-312496
+  endpoint_review: R-20260911024308-1a77e2
+  immutable_commit: 7272a498214ad6c2b0a8a5427e2448422195a377
+  original_CPU_code_commit: c31d1f8ece8e21769b075c2fc69d7b04459d54d7
+  status: replacement_process_started024333517Z_initializing_no_fullresume_update_observed
+  process_pid_at_launch: 1168430
+  started_at: '2026-09-11T02:43:33.517Z'
+  admission_override_authority: user_says_directly_start_after_explanation_of64GiB_gate
+  previous_GPU: R-20260911022750-9ab553_terminated024226326Z_not_started_no_signals
+  previous_endpoint: R-20260911022759-b2af41_dependency_failed024226922Z_not_started_acknowledged
+  gate_report_caveat: reused_complete_json_capacity64GiB_is_historical_new_PRL_resource_contract48GiB_no_report_bytes_modified
   CPU_result: 141tests_passed11p86seconds_GATE_OK022822368Z_SHA_config_review_UUID_NVML_verified
   CPU_notification: N-3c633bdb9bd09c2fe1e3_acknowledged
-  decision: retain_same_queued_Run_and64GiB_gate_wait_declared_begin_or_failure_no_retry_or_bypass
+  decision: launch_authorized48GiB_attempt_exact_GPU2_5_no_allocator_science_or_checkpoint_changes_no_foreign_control
   physical_gpus: [2, 5]
   config: configs/h031_k512_k3_mix50_gpu25_to170000.yaml
   config_sha256: 667571c64f5943fab02ebb0ec50f44e0d000878843b66ef88e046ee3a64fc7fb
@@ -28,10 +35,11 @@ h031_K3_gpu25_resume_20260911:
   preserved: mix50_25_25_K512_PO_DR256_original_async_cycle0_reverse_paths_BF16_compute_allocator_seeds20260812_424242
   unsaved_updates_to_replay: 499
   replay_caveat: K_changes_eligibility_and_RNG_not_exact_K5_replay
-  gate_MiB_per_card: 65536
-  resource_policy: shared_foreign_allowed_172800seconds_wait_no_bypass_or_foreign_control
+  gate_MiB_per_card: 49152
+  previous_gate_MiB: 65536
+  resource_policy: shared_foreign_allowed_172800seconds_wait_no_live_lease_bypass_or_foreign_control
   free_MiB_before_submission: [81036, 55185]
-  capacity_caveat: GPU5_below_gate_wait_required_K3_not_measured_capacity_no_reservation_against_unmanaged_jobs
+  capacity_caveat: priorGPU5_free55185MiB_exceeds_new48GiB_gate_K3_not_yet_measured_no_reservation_against_unmanaged_jobs
   health: exact_UUID_ECC_remap_checks_in_CPU_gate_and_again_at_GPU_launch
   storage: preserve64GiB_plus38400000000bytes_checkpoint_budget_no_deletion
   termination: checkpoint_first_SIGTERM900_thenSIGTERM_noSIGKILL_no_auto_retry
