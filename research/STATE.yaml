@@ -6,7 +6,10 @@ h031_K3_gpu25_resume_20260911:
   GPU_run: R-20260911022750-9ab553
   endpoint_review: R-20260911022759-b2af41
   immutable_commit: c31d1f8ece8e21769b075c2fc69d7b04459d54d7
-  status: submitted_success_SHA_marker_gated_not_yet_observed_process_resume_or_update
+  status: CPU_gate_succeeded_GPU_queued_waiting_gpu2_5_started_at_null
+  CPU_result: 141tests_passed11p86seconds_GATE_OK022822368Z_SHA_config_review_UUID_NVML_verified
+  CPU_notification: N-3c633bdb9bd09c2fe1e3_acknowledged
+  decision: retain_same_queued_Run_and64GiB_gate_wait_declared_begin_or_failure_no_retry_or_bypass
   physical_gpus: [2, 5]
   config: configs/h031_k512_k3_mix50_gpu25_to170000.yaml
   config_sha256: 667571c64f5943fab02ebb0ec50f44e0d000878843b66ef88e046ee3a64fc7fb
