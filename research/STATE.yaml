@@ -20,10 +20,18 @@ h031_K3_gpu25_resume_20260911:
     clips_K_PO_DR: [442664, 374120, 435216]
     checkpoint_bytes_observed: 7864620199
     CPU_review: R-20260911033954-6457db
-    review_status: submitted_not_yet_verified
+    review_status: succeeded_full_state_finite_counters_SHA034107246Z
+    review_notification: N-d09427607b9341c08e3d_acknowledged
     review_report: /data/WorldBridge4D-runs/h031-k3-gpu25-periodic156500-review-20260911/complete.json
-    caveat: update_is_not_independent_checkpoint_acceptance_or_quality_stable_capacity_proof
-    latest_independently_verified_step: 156000
+    checkpoint_sha256: 4fa434b7e23f98ccaff19c0e211e47791da626cc49a9548e1ea1a2d8f0980487
+    artifact_id: artifact://H031/R-20260911024259-312496/checkpoint/4fa434b7e23f98cc
+    registered_UTC: '2026-09-11T03:41:50.529Z'
+    Adam_states: 193
+    Adam_increment_vs152768: 3732
+    world_size: 2
+    RNG_ranks: 2
+    caveat: full_state_review_not_exact_RNG_replay_or_quality_normal_keep_last3_not_pin
+    latest_independently_verified_step: 156500
   full_resume_UTC: '2026-09-11T02:45:57.207Z'
   full_resume_result: world2_optimizer_restored_RNG2
   first_update_notification: N-fa767cad0045445dacfc_acknowledged
