@@ -7,7 +7,23 @@ h031_K3_gpu25_resume_20260911:
   endpoint_review: R-20260911024308-1a77e2
   immutable_commit: 7272a498214ad6c2b0a8a5427e2448422195a377
   original_CPU_code_commit: c31d1f8ece8e21769b075c2fc69d7b04459d54d7
-  status: completed156500033932502Z_500updates_since_resume_continue_same_K3_GPU25_Run
+  status: running_progress_resumed_last_observed_complete157780075501779Z_slow_input_path_no_fatal_observed
+  stall_20260911:
+    notification: N-99e4af743e16366ec858_acknowledged
+    last_complete_step: 157780
+    last_complete_UTC: '2026-09-11T07:55:01.779Z'
+    last_step_seconds: 198.5462628719397
+    prior_complete157775_UTC: '2026-09-11T07:34:30.094Z'
+    prior_step157775_seconds: 735.1857710031327
+    current_update: 157781
+    current_phase: rank0_CPU_INPUT_READY_ENTER_micro1_at075902251Z
+    worker_evidence: both_alive_D_R_S_states_major_faults_and_read_bytes_increased_during_observed_window
+    diagnosis: active_input_paging_stalls_supported_not_confirmed_OOM_deadlock_or_full_cause
+    fatal_log_search: no_OutOfMemoryError_ECC_Traceback_rank_worker_exit_matches
+    periodic_candidates: [156500, 157000, 157500]
+    candidate_bytes_each: 7864620199
+    latest_independently_verified: 156500
+    decision: continue_same_Run_no_signals_restart_timeout_allocator_change_defer_optional_checkpoint_IO_review_during_stall
   milestone156500:
     notification: N-1416996ffc68d3878f6d_acknowledged
     UTC: '2026-09-11T03:39:32.502Z'
