@@ -7,7 +7,23 @@ h031_K3_gpu25_resume_20260911:
   endpoint_review: R-20260911024308-1a77e2
   immutable_commit: 7272a498214ad6c2b0a8a5427e2448422195a377
   original_CPU_code_commit: c31d1f8ece8e21769b075c2fc69d7b04459d54d7
-  status: full156000_restored_first_complete156001024645394Z_continue_same_Run
+  status: completed156500033932502Z_500updates_since_resume_continue_same_K3_GPU25_Run
+  milestone156500:
+    notification: N-1416996ffc68d3878f6d_acknowledged
+    UTC: '2026-09-11T03:39:32.502Z'
+    elapsed_seconds: 3193.4792925349902
+    mean_seconds_per_update500: 6.38695858507
+    loss: 0.17602339386940002
+    gradient_norm: 144.11912536621094
+    step_seconds: 9.819875888992101
+    peak_cuda_GiB: 40.881088733673096
+    clips_K_PO_DR: [442664, 374120, 435216]
+    checkpoint_bytes_observed: 7864620199
+    CPU_review: R-20260911033954-6457db
+    review_status: submitted_not_yet_verified
+    review_report: /data/WorldBridge4D-runs/h031-k3-gpu25-periodic156500-review-20260911/complete.json
+    caveat: update_is_not_independent_checkpoint_acceptance_or_quality_stable_capacity_proof
+    latest_independently_verified_step: 156000
   full_resume_UTC: '2026-09-11T02:45:57.207Z'
   full_resume_result: world2_optimizer_restored_RNG2
   first_update_notification: N-fa767cad0045445dacfc_acknowledged
