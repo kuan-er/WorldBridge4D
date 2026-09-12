@@ -7,7 +7,12 @@ h031_K3_gpu25_resume_20260911:
   endpoint_review: R-20260911024308-1a77e2
   immutable_commit: 7272a498214ad6c2b0a8a5427e2448422195a377
   original_CPU_code_commit: c31d1f8ece8e21769b075c2fc69d7b04459d54d7
-  status: rank1_failed_CPU_input_readiness_Gloo_timeout115252Z_elastic_cleanup_pending
+  status: failed_exit1_nonzero_exit115847519Z_all_launcher_workers_absent115905Z
+  final_exit_UTC: '2026-09-12T11:58:47.519Z'
+  final_exit_notification: N-37302763dc9dc7df25f9_acknowledged
+  final_cleanup: launcher1168430_workers1170608_1170609_all_absent115905Z_no_newer_checkpoint_than169500
+  endpoint_result: R-20260911024308-1a77e2_dependency_failed_not_started115847605Z_acknowledged
+  termination_audit: no_agent_termination_entries
   failure_20260912:
     notifications_acknowledged: [N-4987a0cc80dba98d74e0, N-23272175ecc403a57f5b, N-5507a1afcc8c94ee7d2e]
     milestones: step160000_20260911T135709Z_step165000_20260911T235740Z
@@ -44,7 +49,7 @@ h031_K3_gpu25_resume_20260911:
     review_caveat: structural_finite_counters_SHA_not_exact_RNG_replay_or_quality_registration_not_permanent_pin
     review_report: /data/WorldBridge4D-runs/h031-k3-gpu25-post-timeout169500-review-20260912/complete.json
     historical156500: previously_verified_registered_but_now_pruned_by_normal_keep_last3_not_available_for_resume
-    decision: protect_accepted169500_await_elastic_exit_no_auto_retry_device_K_timeout_allocator_change
+    decision: final_exit_confirmed_protect_accepted169500_await_authorization_no_auto_retry_device_K_timeout_allocator_change
   stall_20260911:
     notification: N-99e4af743e16366ec858_acknowledged
     last_complete_step: 157780
@@ -105,7 +110,7 @@ h031_K3_gpu25_resume_20260911:
   gate_report_caveat: reused_complete_json_capacity64GiB_is_historical_new_PRL_resource_contract48GiB_no_report_bytes_modified
   CPU_result: 141tests_passed11p86seconds_GATE_OK022822368Z_SHA_config_review_UUID_NVML_verified
   CPU_notification: N-3c633bdb9bd09c2fe1e3_acknowledged
-  decision: fatal_input_readiness_timeout169500_accepted_registered_await_cleanup_no_automatic_retry
+  decision: training_fully_exited169500_accepted_registered_await_authorized_recovery_no_automatic_retry
   physical_gpus: [2, 5]
   config: configs/h031_k512_k3_mix50_gpu25_to170000.yaml
   config_sha256: 667571c64f5943fab02ebb0ec50f44e0d000878843b66ef88e046ee3a64fc7fb
