@@ -10,6 +10,7 @@ import yaml
 
 from worldbridge.data.cache.native import file_sha256
 from worldbridge.trainer.schedulers import dataset_for_step
+from worldbridge.trainer.config import validate_config
 from worldbridge.utils.io import atomic_json
 
 p = argparse.ArgumentParser()
@@ -25,6 +26,7 @@ assert not report_path.exists()
 snapshot_stat = checkpoint.lstat()
 assert stat.S_ISREG(snapshot_stat.st_mode)
 cfg = yaml.safe_load(Path(a.config).read_text())
+validate_config(cfg, 2)
 origin_path = Path(cfg['selected_checkpoint_path'])
 origin_sha = '970ed406b28e4508a3ab206ff4492e0641cbe262f494e9dca3693b922f4b63f0'
 assert file_sha256(origin_path) == origin_sha
@@ -34,7 +36,7 @@ o = torch.load(origin_path, map_location='cpu', mmap=True, weights_only=True)
 s = c['training_state']
 origin = 152768
 delta = a.step - origin
-assert 0 < delta and a.step <= 170000
+assert 0 < delta and a.step <= int(cfg['max_steps'])
 assert o['training_state']['global_step'] == origin
 assert s['global_step'] == a.step and s['world_size'] == 2 and len(s['rng_states']) == 2
 assert s['dataset_cycle_offset'] == a.step % 20
