@@ -30,10 +30,21 @@ h031_K3_gpu25_resume_20260911:
     latest_candidate_step: 169500
     unsaved_logged_updates_since_candidate: 139
     CPU_review: R-20260912115349-628fee
-    review_status: submitted_not_yet_accepted
+    review_status: succeeded_full_state_finite_counters_SHA115453356Z
+    review_notification: N-44e2410d8307d5250630_acknowledged
+    latest_independently_verified_step: 169500
+    Adam_states: 193
+    Adam_increment_vs152768: 16732
+    world_size: 2
+    RNG_ranks: 2
+    clips_K_PO_DR: [494664, 400120, 461216]
+    checkpoint_sha256: dfbf16c586ae3b15c054fe48e501b1246dc40c8104b44a82c5c839a05e8ba78b
+    artifact_id: artifact://H031/R-20260911024259-312496/checkpoint/dfbf16c586ae3b15
+    registered_UTC: '2026-09-12T11:55:47.137Z'
+    review_caveat: structural_finite_counters_SHA_not_exact_RNG_replay_or_quality_registration_not_permanent_pin
     review_report: /data/WorldBridge4D-runs/h031-k3-gpu25-post-timeout169500-review-20260912/complete.json
     historical156500: previously_verified_registered_but_now_pruned_by_normal_keep_last3_not_available_for_resume
-    decision: await_elastic_exit_and_independent169500_review_no_auto_retry_device_K_timeout_allocator_change
+    decision: protect_accepted169500_await_elastic_exit_no_auto_retry_device_K_timeout_allocator_change
   stall_20260911:
     notification: N-99e4af743e16366ec858_acknowledged
     last_complete_step: 157780
@@ -94,7 +105,7 @@ h031_K3_gpu25_resume_20260911:
   gate_report_caveat: reused_complete_json_capacity64GiB_is_historical_new_PRL_resource_contract48GiB_no_report_bytes_modified
   CPU_result: 141tests_passed11p86seconds_GATE_OK022822368Z_SHA_config_review_UUID_NVML_verified
   CPU_notification: N-3c633bdb9bd09c2fe1e3_acknowledged
-  decision: fatal_input_readiness_timeout_await_cleanup_and169500_review_no_automatic_retry
+  decision: fatal_input_readiness_timeout169500_accepted_registered_await_cleanup_no_automatic_retry
   physical_gpus: [2, 5]
   config: configs/h031_k512_k3_mix50_gpu25_to170000.yaml
   config_sha256: 667571c64f5943fab02ebb0ec50f44e0d000878843b66ef88e046ee3a64fc7fb
