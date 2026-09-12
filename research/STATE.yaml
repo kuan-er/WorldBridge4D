@@ -7,7 +7,33 @@ h031_K3_gpu25_resume_20260911:
   endpoint_review: R-20260911024308-1a77e2
   immutable_commit: 7272a498214ad6c2b0a8a5427e2448422195a377
   original_CPU_code_commit: c31d1f8ece8e21769b075c2fc69d7b04459d54d7
-  status: running_progress_resumed_last_observed_complete157780075501779Z_slow_input_path_no_fatal_observed
+  status: rank1_failed_CPU_input_readiness_Gloo_timeout115252Z_elastic_cleanup_pending
+  failure_20260912:
+    notifications_acknowledged: [N-4987a0cc80dba98d74e0, N-23272175ecc403a57f5b, N-5507a1afcc8c94ee7d2e]
+    milestones: step160000_20260911T135709Z_step165000_20260911T235740Z
+    last_complete_step: 169639
+    last_complete_UTC: '2026-09-12T11:18:50.889Z'
+    failed_update: 169640
+    failed_context: rank1_step169639_micro0_kubric_clip221
+    error: CPU_input_readiness_failed_Gloo_monitored_barrier_send_timeout900000ms_waiting_rank0
+    rank1_exception_UTC: '2026-09-12T11:52:52.337Z'
+    rank1_exit: exit1_before_elastic_cleanup115303262Z
+    rank0_readiness_enter_UTC: '2026-09-12T11:46:23.528Z'
+    rank1_readiness_enter_UTC: '2026-09-12T11:21:21.217Z'
+    timing_caveat: log_timestamps_may_be_buffered_no_pure_compute_or_IO_duration_inferred
+    fatal_search: no_OOM_ECC_or_rank0_traceback_observed_at_initial_inspection
+    root_cause: synchronization_timeout_confirmed_underlying_rank_skew_stall_cause_not_isolated
+    cleanup: elastic_SIGTERM_rank0_115303273Z_launcher1168430_rank01170608_alive115411Z_rank11170609_absent
+    agent_signals: none
+    checkpoints_observed: [168500, 169000, 169500]
+    checkpoint_bytes_each: 7864620199
+    latest_candidate_step: 169500
+    unsaved_logged_updates_since_candidate: 139
+    CPU_review: R-20260912115349-628fee
+    review_status: submitted_not_yet_accepted
+    review_report: /data/WorldBridge4D-runs/h031-k3-gpu25-post-timeout169500-review-20260912/complete.json
+    historical156500: previously_verified_registered_but_now_pruned_by_normal_keep_last3_not_available_for_resume
+    decision: await_elastic_exit_and_independent169500_review_no_auto_retry_device_K_timeout_allocator_change
   stall_20260911:
     notification: N-99e4af743e16366ec858_acknowledged
     last_complete_step: 157780
@@ -68,7 +94,7 @@ h031_K3_gpu25_resume_20260911:
   gate_report_caveat: reused_complete_json_capacity64GiB_is_historical_new_PRL_resource_contract48GiB_no_report_bytes_modified
   CPU_result: 141tests_passed11p86seconds_GATE_OK022822368Z_SHA_config_review_UUID_NVML_verified
   CPU_notification: N-3c633bdb9bd09c2fe1e3_acknowledged
-  decision: first_update_passed_continue_same_immutable_GPU2_5_K3_Run_to170000_no_change_or_retry
+  decision: fatal_input_readiness_timeout_await_cleanup_and169500_review_no_automatic_retry
   physical_gpus: [2, 5]
   config: configs/h031_k512_k3_mix50_gpu25_to170000.yaml
   config_sha256: 667571c64f5943fab02ebb0ec50f44e0d000878843b66ef88e046ee3a64fc7fb
