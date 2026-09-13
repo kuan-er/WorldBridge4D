@@ -18,8 +18,18 @@ h031_B1_K9_gpu67_20260913:
   unchanged: full193FP32Adam_RNG2_counters_model_shapes_mix50_25_25_seed20260812_decoder424242_LR3e-6_oldwarmup_allocator_async_readiness900s_prefix5
   output: /data/WorldBridge4D-runs/h031-k512-b1-a4-k9-mix50-175361-to200000-gpu67-20260913
   handoff: /data/WorldBridge4D-runs/h031-b1-k9-gpu67-175361-handoff-20260913
-  status: running_initializing_started030554898Z_CPU_gate_succeeded030529083Z_no_fullrestore_or_firstupdate_observed
-  next: await_CPU_gate_fullrestore_first175362_native512_update_no_automatic_retry_or_fallback
+  status: running_first175362_native512_B1A4K9_complete030850605Z_next175363_entered
+  first_update_notifications: N-af9239ef1315e893ea4c_and_N-df6650beefc13e4dedbb_acknowledged
+  first_update_metrics: {step: 175362, loss: 0.07932955306023359, peak_cuda_memory_gib: 55.51097917556763, step_seconds: 47.64677167101763, gradient_norm: 10.284093856811523, pairs: 72, lr_factor: 1.0}
+  capacity_scope: complete_native512_forward_backward_optimizer_update_passed_not_longrun_stability_or_new_checkpoint
+  latest_verified_checkpoint: 175361
+  full_restore: N-5f1e0ad79b981debbda2_acknowledged_step175361_world2_optimizer_restored_RNG2_continue_unchanged
+  startup_intrusion: N-dce53ebee0d10fe5ed8b_acknowledged_NVML2660887_GPU7_initial12MiB
+  startup_snapshot: NVML_one_compute_process_each_2660886and2660887_roughly3GiB_used76GiB_free_own_container_workers3811853and3811854_confirmed_correct_cmdline_parent3807822
+  PID_caveat: host_container_mapping_unproven_possible_namespace_false_positive_as_previous_B2_trial_no_confirmed_foreign_intrusion
+  startup_progress: both_ranks_prefix5_latent_validation_complete030713938Z_each20_payloads_full_cohort_catalog_ready_not_future_payload_certification
+  intrusion_decision: continue_unchanged_await_fullrestore_and_firstupdate_no_foreign_control_or_resource_policy_relaxation
+  next: continue_same_B1A4K9_GPU6_7_to200000_monitor_periodic_checkpoints_milestones_and_fatal_events_no_automatic_retry_or_fallback
 h031_B2_K5_gpu67_20260913:
   authority: user_explicitly_requests_K5_after_B2K9_OOM_same_GPU6_7_B2A2_and200k
   CPU_gate: R-20260913025246-a1df32
@@ -1623,7 +1633,9 @@ next_step: >-
   LATEST September13: user explicitly requests B1/A4/K9 after both B2K9/B2K5 OOM.
   Submitted CPUc75879 -> GPU725945 -> endpoint35c826, full175361->200000,
   exact physical6/7,8clips/72pairs, unchanged fullstate/LR/allocator/input policy.
-  Await gate/fullrestore/first complete175362 native512 update; no automatic further change.
+  Gate/fullrestore passed;175362 native512 completed030850605Z loss0p07933,
+  peakCUDA55p51GiB,47p65s startup step,72pairs;175363 entered. Continue unchanged to200k.
+  First-update success is not durable175362 or long-run stability; verified175361 remains recovery.
   See h031_B1_K9_gpu67_20260913. Following B2 notes are historical.
   September13: user explicitly requests K5 after B2K9 first-forward OOM.
   Submitted CPUa1df32 -> GPUa41ffc -> endpoint0e4a1e, full175361->200000,
@@ -3697,4 +3709,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T03:05:54Z
+updated_at: 2026-09-13T03:08:50Z
