@@ -53,6 +53,11 @@ def test_b2_k9_forward_reverse_backward_native_alignment(resolution):
         output_size=(256,256),query_grid_size=32,structured_motion_slots=2,
         structured_local_queries=True,source_rgb_pyramid=True,source_rgb_channels=(4,4,8),
         source_rgb_fusion_32=True,pre_attention_rgb_query=True,native_512=True)
+    # Fresh RGB gates are exactly zero by design. Emulate learned nonzero gates
+    # only in this synthetic fixture to test both clips' RGB gradient paths.
+    with torch.no_grad():
+        for fusion in net.upsampler.source_fusions.values():
+            fusion.alpha.fill_(0.1)
     hw=resolution//8
     z=StructuredZ4D(torch.randn(2,8,21,hw,hw),torch.randn(2,21,2,8))
     rgb=torch.randn(2,3,resolution,resolution,requires_grad=True)
