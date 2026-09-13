@@ -1,4 +1,30 @@
 current_task: T-20260908032232-e95da1
+h031_B1_K11_gpu67_20260913:
+  authority: user_explicit_K11_same_B1A4_GPU6_7_and200k_after_K9_firstupdate_capacity_passed
+  CPU_gate: R-20260913031306-99fcd6
+  GPU_run: R-20260913031335-9eddf0
+  endpoint_review: R-20260913031349-3f2dae
+  execution_commit: 2c1db54fb524af76f824252585397348f7e9aaf8
+  config: configs/h031_k512_b1_a4_k11_mix50_gpu67_to200000.yaml
+  config_sha256: 6f8836acc0a70864e2961f5056b724af06ae3a791fc43f1939794a5974cb10c7
+  launcher: research/analysis/h031_b1_k11_gpu67_resume.py
+  source: /data/WorldBridge4D-runs/h031-k512-b1-a4-k9-mix50-175361-to200000-gpu67-20260913/checkpoint-0175374.pt
+  checkpoint_sha256: 12abbe3cbb6f10587e8098fd67340d46a2384d2541abd368ec516fbc1b8713ce
+  artifact_id: artifact://H031/R-20260913030511-725945/checkpoint/12abbe3cbb6f1058
+  checkpoint_bytes: 7864620263
+  resume_step: 175374
+  target_step: 200000
+  remaining_updates: 24626
+  batching: {B: 1, A: 4, K: 11, world_size: 2, clips: 8, pairs: 88}
+  resources: {gpu_ids: [6, 7], mode: exclusive, min_free_memory_mib: 77824, memory_safety_mib: 0, allow_foreign_processes: false}
+  unchanged: full193FP32Adam_RNG2_counters_model_shapes_mix50_25_25_seed20260812_decoder424242_LR3e-6_oldwarmup_allocator_async_readiness900s_prefix5
+  old_K9_stop: TERM-20260913031021-054f77_SIGTERM031021868Z_terminal031109500Z_intentional_terminated_exit1_noSIGKILL
+  old_K9_endpoint: R-20260913030525-35c826_terminated031021465Z_never_started
+  output: /data/WorldBridge4D-runs/h031-k512-b1-a4-k11-mix50-175374-to200000-gpu67-20260913
+  handoff: /data/WorldBridge4D-runs/h031-b1-k11-gpu67-175374-handoff-20260913
+  status: running_initializing_started031423336Z_CPU_full175374_gate_succeeded031403804Z_no_fullrestore_or_first_K11_update_observed
+  latest_verified_checkpoint: 175374_full193FP32Adam_world2_RNG2_22606Adam_increments_SHA12abbe3cbb6f1058_verified031351847Z
+  next: await_full175374_review_restore_first175375_and_first_native512_update_no_auto_retry_or_fallback
 h031_B1_K9_gpu67_20260913:
   authority: user_explicitly_requests_B1_A4_K9_after_B2K9_and_B2K5_OOM_same_GPU6_7_and200k
   CPU_gate: R-20260913030436-c75879
@@ -1630,7 +1656,13 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: >-
-  LATEST September13: user explicitly requests B1/A4/K9 after both B2K9/B2K5 OOM.
+  LATEST September13: user now requests K11 on same B1/A4 physical6/7 through200000.
+  K9 Run725945 intentionally stopped with SIGTERM, published175374 SHA12abbe3cbb6f1058
+  registered; CPU99fcd6 -> GPU9eddf0 -> endpoint3f2dae submitted success-gated.
+  Same model/Adam/RNG/counters/LR/allocator/input policy,8clips/88pairs.
+  Await full175374 review/restore and first175375/native512 complete update.
+  No automatic further change. See h031_B1_K11_gpu67_20260913; following K9 notes historical.
+  September13: user explicitly requests B1/A4/K9 after both B2K9/B2K5 OOM.
   Submitted CPUc75879 -> GPU725945 -> endpoint35c826, full175361->200000,
   exact physical6/7,8clips/72pairs, unchanged fullstate/LR/allocator/input policy.
   Gate/fullrestore passed;175362 native512 completed030850605Z loss0p07933,
@@ -3709,4 +3741,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T03:08:50Z
+updated_at: 2026-09-13T03:14:23Z
