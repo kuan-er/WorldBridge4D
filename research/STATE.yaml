@@ -22,7 +22,12 @@ h031_B1_K11_gpu67_20260913:
   old_K9_endpoint: R-20260913030525-35c826_terminated031021465Z_never_started
   output: /data/WorldBridge4D-runs/h031-k512-b1-a4-k11-mix50-175374-to200000-gpu67-20260913
   handoff: /data/WorldBridge4D-runs/h031-b1-k11-gpu67-175374-handoff-20260913
-  status: running_completed175845_at054056760Z_after_900s_watchdog_recovered_no_fatal_seen
+  status: running_completed180000_at234339897Z_continue_same_B1A4K11_GPU6_7_to200000
+  milestone180k_notification: N-bbf4c9a3420275861ae4_acknowledged
+  milestone180k_metrics: {step: 180000, loss: 0.07947914861142635, peak_cuda_memory_gib: 73.5456428527832, step_seconds: 20.363857372896746, gradient_norm: 9.472386360168457, elapsed_seconds: 73609.74870395311, pairs: 88, lr_factor: 1.0}
+  milestone180k_checkpoint: checkpoint-0180000.pt_7864620263bytes_published2343_full_review_pending
+  periodic180k_review: R-20260913234522-08f559_CPU_submitted
+  periodic180k_report: /data/WorldBridge4D-runs/h031-b1-k11-gpu67-periodic180000-review-20260913/complete.json
   stall_notification: N-429728395e2dfbe4a25c_acknowledged_trigger052123558Z_inspected_after0541Z
   stall_evidence: update175819_PO256_took1086p914s_completed052425283Z_latent41p519s_geometry_wait0p000158s_root_cause_not_isolated
   later_progress: completed175845_DR256_loss0p00538265_peakCUDA65p8055GiB_step19p779s_471updates_since_resume
@@ -1670,6 +1675,10 @@ h023_256_three_dataset_200m:
     complete 256 latent shards before any four-card formal run.
 next_step: >-
   LATEST September13: user now requests K11 on same B1/A4 physical6/7 through200000.
+  K11 Run9eddf0 reached180000 at234339897Z loss0p07947915,peakCUDA73p5456GiB,
+  20p3639s native step,88pairs,20000updates remaining. Checkpoint180000 published;
+  CPU08f559 full-state review submitted; no verification claim until it passes.
+  Continue unchanged GPU6/7 B1/A4/K11. Following startup/watchdog notes historical.
   K9 Run725945 intentionally stopped with SIGTERM, published175374 SHA12abbe3cbb6f1058
   registered; CPU99fcd6 -> GPU9eddf0 -> endpoint3f2dae submitted success-gated.
   Same model/Adam/RNG/counters/LR/allocator/input policy,8clips/88pairs.
@@ -3759,4 +3768,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T05:42:10Z
+updated_at: 2026-09-13T23:45:22Z
