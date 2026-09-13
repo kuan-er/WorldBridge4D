@@ -22,7 +22,15 @@ h031_B1_K11_gpu67_20260913:
   old_K9_endpoint: R-20260913030525-35c826_terminated031021465Z_never_started
   output: /data/WorldBridge4D-runs/h031-k512-b1-a4-k11-mix50-175374-to200000-gpu67-20260913
   handoff: /data/WorldBridge4D-runs/h031-b1-k11-gpu67-175374-handoff-20260913
-  status: running_first_native512_K11_update175376_completed031735633Z_continue_to200000
+  status: running_completed175845_at054056760Z_after_900s_watchdog_recovered_no_fatal_seen
+  stall_notification: N-429728395e2dfbe4a25c_acknowledged_trigger052123558Z_inspected_after0541Z
+  stall_evidence: update175819_PO256_took1086p914s_completed052425283Z_latent41p519s_geometry_wait0p000158s_root_cause_not_isolated
+  later_progress: completed175845_DR256_loss0p00538265_peakCUDA65p8055GiB_step19p779s_471updates_since_resume
+  bounded_fatal_search: no_Traceback_OOM_readiness_failure_NCCL_watchdog_or_worker_exit
+  GPU_snapshot_054210Z: GPU6_used78406MiB_free2644MiB_GPU7_used79270MiB_free1780MiB_utilization0_both_one_NVML_process2889962and2889963
+  snapshot_caveat: low_free_headroom_current_total_includes_reservations_not_equivalent_to_logged_peak_allocated_no_foreign_process_or_deadlock_proof
+  published_checkpoint: checkpoint-0175500.pt_7864620263bytes_mtime0342_not_independently_fullstate_verified
+  stall_decision: continue_same_Run_no_retry_signal_allocator_timeout_change_IO_and_rank_delay_rootcause_unresolved
   native_capacity_notification: N-9e8a27ecfc3fe96c9ac0_acknowledged
   native_capacity_metrics: {step: 175376, loss: 0.0755088715814054, peak_cuda_memory_gib: 63.681400775909424, step_seconds: 27.34417835297063, gradient_norm: 7.458038330078125, pairs: 88, lr_factor: 1.0}
   full_restore: N-b8c83bee2ed6e19caa9d_acknowledged_step175374_optimizer_restored_world2_RNG2
@@ -1666,7 +1674,10 @@ next_step: >-
   registered; CPU99fcd6 -> GPU9eddf0 -> endpoint3f2dae submitted success-gated.
   Same model/Adam/RNG/counters/LR/allocator/input policy,8clips/88pairs.
   Full175374 review/restore passed;175375 DR256 and175376 nativeKubric512 updates complete.
-  First native peakCUDA63p6814GiB,loss0p0755089,27p3442s,88pairs;continue unchanged to200k.
+  Watchdog052123558Z inspected after0541Z:175819 took1086p914s then completed052425283Z,
+  resumed through175845 at054056760Z. No fatal found. Continue unchanged to200k,
+  rank/input latency root cause unresolved; GPUfree2p6/1p8GiB snapshot with0percent util.
+  Checkpoint175500 published but not fully reviewed; latest independently verified175374.
   Latest verified checkpoint175374; first-update capacity is not long-run stability or a new save.
   No automatic further change. See h031_B1_K11_gpu67_20260913; following K9 notes historical.
   September13: user explicitly requests B1/A4/K9 after both B2K9/B2K5 OOM.
@@ -3748,4 +3759,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T03:17:35Z
+updated_at: 2026-09-13T05:42:10Z
