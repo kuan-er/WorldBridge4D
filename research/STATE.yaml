@@ -1,4 +1,25 @@
 current_task: T-20260908032232-e95da1
+h031_B2_K5_gpu67_20260913:
+  authority: user_explicitly_requests_K5_after_B2K9_OOM_same_GPU6_7_B2A2_and200k
+  CPU_gate: R-20260913025246-a1df32
+  GPU_run: R-20260913025314-a41ffc
+  endpoint_review: R-20260913025327-0e4a1e
+  execution_commit: 012f1afdde748b211d6983fc2553da72affe7f4b
+  config: configs/h031_k512_b2_a2_k5_mix50_gpu67_to200000.yaml
+  config_sha256: 3f57608fac807c43589fdb24b16becda868944bbc589eb9bdca653cb93fb413f
+  launcher: research/analysis/h031_b2_k5_gpu67_resume.py
+  source: /data/WorldBridge4D-runs/h031-k512-k3-mix50-169500-to200000-gpu56-20260912/checkpoint-0175361.pt
+  checkpoint_sha256: b3b965cffb7e1fb11da88bc4bdd4c0592a61d690ef0e5793134651f13d3d43be
+  resume_step: 175361
+  target_step: 200000
+  remaining_updates: 24639
+  batching: {B: 2, A: 2, K: 5, world_size: 2, clips: 8, pairs: 40}
+  delta_from_failed_K9: only_K9_to5_explicit_profile_and_tracking_no_model_weights_shapes_or_operational_change
+  resources: {gpu_ids: [6, 7], mode: exclusive, min_free_memory_mib: 77824, memory_safety_mib: 0, allow_foreign_processes: false}
+  status: submitted_CPU_success_gated_no_actual_B2K5_capacity_claim
+  output: /data/WorldBridge4D-runs/h031-k512-b2-a2-k5-mix50-175361-to200000-gpu67-20260913
+  handoff: /data/WorldBridge4D-runs/h031-b2-k5-gpu67-175361-handoff-20260913
+  next: await_CPU_full175361_and_regression_gate_full_restore_first175362_native512_update_no_auto_retry_or_fallback
 h031_B2_K9_gpu67_20260913:
   authority: user_requests_stop_current_then_physicalGPUs6_7_perGPU_batch2_K9
   target_step: 200000
@@ -1569,7 +1590,13 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: >-
-  LATEST September13: user requests GPU6/7 perGPU B2 K9 switch, continue200k.
+  LATEST September13: user explicitly requests K5 after B2K9 first-forward OOM.
+  Submitted CPUa1df32 -> GPUa41ffc -> endpoint0e4a1e, full175361->200000,
+  physical6/7 B2/A2/K5,8clips/40pairs, same LR3e-6/fullAdam/RNG2/counters/allocator/readiness.
+  Exact selected GPUs each76GiB admission; new output preserves recovery and failedK9 diagnostics.
+  Await gate, fullrestore and first complete175362 native512 update; no fit claim from CPU tests.
+  No automatic retry/fallback. See h031_B2_K5_gpu67_20260913. Following K9 notes are historical.
+  September13: user requests GPU6/7 perGPU B2 K9 switch, continue200k.
   Old74cc47 terminal after SIGTERM saved175361 SHA b3b965cffb7e1fb1 registered and independently verified.
   CPU73ccad succeeded192tests and full175361 state/SHA/UUID/ECC checks.
   GPUe5d9b2 started024528Z and full-restored024719521Z B2/A2/K9 (8clips/72pairs),
@@ -3633,4 +3660,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T02:48:07Z
+updated_at: 2026-09-13T02:53:27Z
