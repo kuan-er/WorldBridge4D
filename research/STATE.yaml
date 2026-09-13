@@ -25,8 +25,11 @@ h031_B1_K11_gpu67_20260913:
   status: running_completed180000_at234339897Z_continue_same_B1A4K11_GPU6_7_to200000
   milestone180k_notification: N-bbf4c9a3420275861ae4_acknowledged
   milestone180k_metrics: {step: 180000, loss: 0.07947914861142635, peak_cuda_memory_gib: 73.5456428527832, step_seconds: 20.363857372896746, gradient_norm: 9.472386360168457, elapsed_seconds: 73609.74870395311, pairs: 88, lr_factor: 1.0}
-  milestone180k_checkpoint: checkpoint-0180000.pt_7864620263bytes_published2343_full_review_pending
-  periodic180k_review: R-20260913234522-08f559_CPU_submitted
+  milestone180k_checkpoint: checkpoint-0180000.pt_7864620263bytes_fullstate_verified234616014Z
+  periodic180k_review: R-20260913234522-08f559_succeeded_N-50f9bf8990768066841e_acknowledged
+  checkpoint180k_sha256: 227c007514d849858e45d3730c12380a03d0f11aab458f2d72ba7190d2a51ead
+  checkpoint180k_artifact: artifact://H031/R-20260913031335-9eddf0/checkpoint/227c007514d84985
+  checkpoint180k_retention: rolling_keep_last3_not_pinned_revalidate_path_before_future_resume
   periodic180k_report: /data/WorldBridge4D-runs/h031-b1-k11-gpu67-periodic180000-review-20260913/complete.json
   stall_notification: N-429728395e2dfbe4a25c_acknowledged_trigger052123558Z_inspected_after0541Z
   stall_evidence: update175819_PO256_took1086p914s_completed052425283Z_latent41p519s_geometry_wait0p000158s_root_cause_not_isolated
@@ -41,7 +44,7 @@ h031_B1_K11_gpu67_20260913:
   full_restore: N-b8c83bee2ed6e19caa9d_acknowledged_step175374_optimizer_restored_world2_RNG2
   first_update: {step: 175375, dataset: dynamic_replica, resolution: 256, B: 1, A: 4, K: 11, pairs: 88, loss: 0.0032259143772535026, peak_cuda_memory_gib: 19.001752853393555, step_seconds: 22.84001336991787}
   capacity_caveat: first_native512_full_forward_backward_optimizer_update_passed_not_longrun_stability_quality_or_new_checkpoint
-  latest_verified_checkpoint: 175374_full193FP32Adam_world2_RNG2_22606Adam_increments_SHA12abbe3cbb6f1058_verified031351847Z
+  latest_verified_checkpoint: 180000_full193FP32Adam_world2_RNG2_27232Adam_increments_SHA227c007514d84985_verified234616014Z
   next: continue_same_B1A4K11_GPU6_7_to200000_monitor_periodic_saves_milestones_and_fatal_events_no_auto_retry_or_fallback
 h031_B1_K9_gpu67_20260913:
   authority: user_explicitly_requests_B1_A4_K9_after_B2K9_and_B2K5_OOM_same_GPU6_7_and200k
@@ -1677,7 +1680,8 @@ next_step: >-
   LATEST September13: user now requests K11 on same B1/A4 physical6/7 through200000.
   K11 Run9eddf0 reached180000 at234339897Z loss0p07947915,peakCUDA73p5456GiB,
   20p3639s native step,88pairs,20000updates remaining. Checkpoint180000 published;
-  CPU08f559 full-state review submitted; no verification claim until it passes.
+  CPU08f559 succeeded234616014Z full180000 model/193Adam/world2/RNG2/counters/SHA,
+  registered227c007514d84985. Periodic path remains rolling, not pinned against retention.
   Continue unchanged GPU6/7 B1/A4/K11. Following startup/watchdog notes historical.
   K9 Run725945 intentionally stopped with SIGTERM, published175374 SHA12abbe3cbb6f1058
   registered; CPU99fcd6 -> GPU9eddf0 -> endpoint3f2dae submitted success-gated.
@@ -3768,4 +3772,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T23:45:22Z
+updated_at: 2026-09-13T23:49:46Z
