@@ -14,7 +14,55 @@ h031_K3_gpu56_to200k_20260912:
   remaining_updates: 30500
   previously_unsaved_updates_to_replay: 139
   CPU_result: 154tests_passed13p27s_fullstate_review_bytes_rehashed_NVML5_6_passed121153907Z
-  latest_status: GPU_queued_checkpoint_validation_started_at_null_not_first_update
+  latest_status: complete170000_at142332896Z_continue_same_Run_to200000
+  milestone170k:
+    notification: N-47ff9d8da7822347c733_acknowledged
+    completed_step: 170000
+    UTC: '2026-09-12T14:23:32.896Z'
+    loss: 0.1425568899139762
+    gradient_norm: 7.813471794128418
+    peak_cuda_GiB: 31.0186185836792
+    step_seconds: 16.806472651893273
+    elapsed_seconds: 7705.8637307561
+    clips_K_PO_DR: [496664, 401120, 462216]
+    checkpoint_status: not_yet_present_at_immediate_post_milestone_metadata_check_no_durability_claim
+    decision: continue_unchanged_GPU5_6_K3_3e-6_to200000_remaining30000_no_stop_or_retry
+  past_timeout:
+    notification: N-5c4d5d69d91be573a630_acknowledged
+    completed_step: 169640
+    UTC: '2026-09-12T13:17:26.352Z'
+    loss: 0.09200955182313919
+    gradient_norm: 4.153204441070557
+    peak_cuda_GiB: 31.0186185836792
+    step_seconds: 18.309660278027877
+    elapsed_seconds: 3747.7791570450645
+    decision: continue_same_Run_GPU5_6_K3_to200000_no_changes
+    caveat: boundary_crossed_not_root_cause_fix_or_new_checkpoint_latest_verified169500
+  first_update:
+    notification: N-875cc416d8433892a320_acknowledged
+    completed_step: 169501
+    UTC: '2026-09-12T12:50:13.188Z'
+    loss: 0.06761136651039124
+    gradient_norm: 3.2976486682891846
+    peak_cuda_GiB: 31.018134593963623
+    step_seconds: 2126.612919999985
+    geometry_wait_seconds_max_rank: 1905.239522856893
+    pairs: 24
+    LR_factor: 1.0
+    decision: continue_same_Run_no_retry_or_modification_startup_stall_resolved_not_root_cause_proven
+    caveat: first_update_not_stable_throughput_or_new_checkpoint_latest_durable169500
+  startup_stall:
+    notification: N-f64bb7d9f4cdb94b2ced_acknowledged
+    scope: no_completed_update_since_launch_not_a_confirmed_Gloo_timeout_or_deadlock
+    last_stage: both_ranks169501_micro0_geometry_wait_start
+    native_GT_reads: published_cache1172_1173_1176_1177_completed228_to265seconds_by121920959Z
+    health: both_workers_sleeping_futex_RSS_growing_last122751750Z
+    fatal_search: no_Traceback_OOM_CPU_readiness_failure_worker_exit_NCCL_error_or_ECC_matches
+    diagnostic: bounded_readonly_proc_thread_snapshot_timed_out20s_no_result_no_signal_sent
+    decision: continue_same_Run_unchanged_await_first_update_or_fatal_not_stop_for_watchdog_alone
+  resume_notification: N-6f21d30e2883deafc639_acknowledged
+  resume_verified: optimizer_restored_world2_RNG2_FP32_parameters_Adam_BF16_compute_LR3e-6_hold_end200000
+  resume_decision: continue_same_Run_await_first_complete_update_no_changes
   output: /data/WorldBridge4D-runs/h031-k512-k3-mix50-169500-to200000-gpu56-20260912
   handoff: /data/WorldBridge4D-runs/h031-k3-gpu56-169500-handoff-20260912
   resources: {gpu_ids: [5, 6], mode: shared, min_free_memory_mib: 49152, memory_safety_mib: 0, allow_foreign_processes: true}
@@ -1484,7 +1532,10 @@ h023_256_three_dataset_200m:
 next_step: >-
   LATEST September12: user authorizes GPUs5/6 full169500 K3 recovery to200000.
   CPU R-20260912121117-48108c passed154tests/SHA/health; GPU R-20260912121145-74cc47
-  queued checkpoint validation, not started at last inspection. Endpoint R-20260912121157-0b6dbf
+  restored full169500 optimizer/world2/RNG2 and completed169501 at12:50:13Z;
+  completed170000 at14:23:32Z. Continue unchanged to200000 (30000 remaining);
+  immediate metadata check found no published170000 checkpoint yet, latest verified169500.
+  Endpoint R-20260912121157-0b6dbf
   success-gated full200000 review. Preserve fullAdam/RNG/counters and3e-6 hold without
   new warmup; only endpoint/devices/tracking/save milestones/walltime168h changed.
   Prior Gloo timeout root cause unresolved; keep900s readiness and allocator unchanged.
@@ -3530,4 +3581,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-12T12:12:00Z
+updated_at: 2026-09-12T14:23:32Z

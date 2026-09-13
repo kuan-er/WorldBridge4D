@@ -144,6 +144,10 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     native_k3_200k = bool(config.get('native_kubric512_k3_mix_200k', False))
     if native_k3_200k and not native_k3_mix:
         raise ValueError('native200k extension requires the audited K3 mixture resume route')
+    native_b2_k9_200k = bool(config.get('native_kubric512_b2_a2_k9_mix_200k', False))
+    if native_b2_k9_200k and (native_k11 or native_k5_mix or native_k3_mix or native_k3_200k
+                            or not (native_k9 and native_mix_trial and native_mix_170k)):
+        raise ValueError('native B2/A2/K9 200k requires the K9 mixture base without other K overrides')
     if native_mix_170k and not native_mix_trial:
         raise ValueError('native K9 170k extension requires the explicit mixture profile')
     if native_long and not native_k5:
@@ -170,7 +174,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             raise ValueError('native on-demand GT requires explicit continuation')
         if native_mix_trial:
             selected = int(config.get('selected_checkpoint_step', -1))
-            endpoint = 200000 if native_k3_200k else (170000 if native_mix_170k else selected + 2000)
+            endpoint = 200000 if native_k3_200k or native_b2_k9_200k else (170000 if native_mix_170k else selected + 2000)
             if (config.get('native_capacity_test_only') or selected < 150500
                     or selected >= endpoint or config.get('max_steps') != endpoint
                     or not (bool(gt_values.get('native_geometry_full_corpus')) ^ demand_gt)):
@@ -208,7 +212,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError("select only one B2/A2 cycle target profile")
     if (cycle_b2_k19 or cycle_b2_k15) and not cycle_enabled:
         raise ValueError("B2/A2 cycle profiles require the cycle objective")
-    allowed_batching = {(4, 1)} if native_512 else ({(2, 2)} if cycle_b2_k19 or cycle_b2_k15 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)}))
+    allowed_batching = {(2, 2)} if native_b2_k9_200k else ({(4, 1)} if native_512 else ({(2, 2)} if cycle_b2_k19 or cycle_b2_k15 else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})))
     if (accumulation, microbatch) not in allowed_batching:
         expected = " or ".join(
             f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
