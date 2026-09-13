@@ -22,9 +22,14 @@ h031_B1_K11_gpu67_20260913:
   old_K9_endpoint: R-20260913030525-35c826_terminated031021465Z_never_started
   output: /data/WorldBridge4D-runs/h031-k512-b1-a4-k11-mix50-175374-to200000-gpu67-20260913
   handoff: /data/WorldBridge4D-runs/h031-b1-k11-gpu67-175374-handoff-20260913
-  status: running_initializing_started031423336Z_CPU_full175374_gate_succeeded031403804Z_no_fullrestore_or_first_K11_update_observed
+  status: running_first_native512_K11_update175376_completed031735633Z_continue_to200000
+  native_capacity_notification: N-9e8a27ecfc3fe96c9ac0_acknowledged
+  native_capacity_metrics: {step: 175376, loss: 0.0755088715814054, peak_cuda_memory_gib: 63.681400775909424, step_seconds: 27.34417835297063, gradient_norm: 7.458038330078125, pairs: 88, lr_factor: 1.0}
+  full_restore: N-b8c83bee2ed6e19caa9d_acknowledged_step175374_optimizer_restored_world2_RNG2
+  first_update: {step: 175375, dataset: dynamic_replica, resolution: 256, B: 1, A: 4, K: 11, pairs: 88, loss: 0.0032259143772535026, peak_cuda_memory_gib: 19.001752853393555, step_seconds: 22.84001336991787}
+  capacity_caveat: first_native512_full_forward_backward_optimizer_update_passed_not_longrun_stability_quality_or_new_checkpoint
   latest_verified_checkpoint: 175374_full193FP32Adam_world2_RNG2_22606Adam_increments_SHA12abbe3cbb6f1058_verified031351847Z
-  next: await_full175374_review_restore_first175375_and_first_native512_update_no_auto_retry_or_fallback
+  next: continue_same_B1A4K11_GPU6_7_to200000_monitor_periodic_saves_milestones_and_fatal_events_no_auto_retry_or_fallback
 h031_B1_K9_gpu67_20260913:
   authority: user_explicitly_requests_B1_A4_K9_after_B2K9_and_B2K5_OOM_same_GPU6_7_and200k
   CPU_gate: R-20260913030436-c75879
@@ -1660,7 +1665,9 @@ next_step: >-
   K9 Run725945 intentionally stopped with SIGTERM, published175374 SHA12abbe3cbb6f1058
   registered; CPU99fcd6 -> GPU9eddf0 -> endpoint3f2dae submitted success-gated.
   Same model/Adam/RNG/counters/LR/allocator/input policy,8clips/88pairs.
-  Await full175374 review/restore and first175375/native512 complete update.
+  Full175374 review/restore passed;175375 DR256 and175376 nativeKubric512 updates complete.
+  First native peakCUDA63p6814GiB,loss0p0755089,27p3442s,88pairs;continue unchanged to200k.
+  Latest verified checkpoint175374; first-update capacity is not long-run stability or a new save.
   No automatic further change. See h031_B1_K11_gpu67_20260913; following K9 notes historical.
   September13: user explicitly requests B1/A4/K9 after both B2K9/B2K5 OOM.
   Submitted CPUc75879 -> GPU725945 -> endpoint35c826, full175361->200000,
@@ -3741,4 +3748,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T03:14:23Z
+updated_at: 2026-09-13T03:17:35Z
