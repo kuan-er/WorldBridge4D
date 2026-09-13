@@ -46,7 +46,7 @@ def test_invalid_new_profile_rejected(key, value):
     with pytest.raises(ValueError): validate_config(c, 2)
 
 @pytest.mark.parametrize('resolution', [256,512])
-def test_b2_k9_forward_reverse_backward_native_alignment(resolution):
+def test_b2_k9_forward_reverse_backward_native_alignment(resolution, pairs=9):
     torch.manual_seed(424242)
     net = DenseQueryDecoder(num_frames=21, latent_shape=(8,21,32,32), query_dim=16,
         embedding_dim=8,num_layers=0,num_heads=2,upsample_channels=(16,8,8,4),
@@ -61,10 +61,11 @@ def test_b2_k9_forward_reverse_backward_native_alignment(resolution):
     hw=resolution//8
     z=StructuredZ4D(torch.randn(2,8,21,hw,hw),torch.randn(2,21,2,8))
     rgb=torch.randn(2,3,resolution,resolution,requires_grad=True)
-    source=torch.tensor([[0]*9,[20]*9]); target=torch.tensor([list(range(1,10)),list(range(19,10,-1))])
-    assert all(len(set(row.tolist())) == 9 for row in target)
+    source=torch.tensor([[0]*pairs,[20]*pairs])
+    target=torch.tensor([list(range(1,pairs+1)),list(range(19,19-pairs,-1))])
+    assert all(len(set(row.tolist())) == pairs for row in target)
     pred=net(z,source,target,source_rgb=rgb).normalized_xyz
-    assert pred.shape == (2,9,3,resolution,resolution)
+    assert pred.shape == (2,pairs,3,resolution,resolution)
     reverse=net(z,target[:,:1],source[:,:1],source_rgb=rgb).normalized_xyz
     assert reverse.shape == (2,1,3,resolution,resolution)
     (pred.square().mean()+reverse.square().mean()).backward()

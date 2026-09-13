@@ -1,4 +1,43 @@
 current_task: T-20260908032232-e95da1
+h031_B2_K9_gpu67_20260913:
+  authority: user_requests_stop_current_then_physicalGPUs6_7_perGPU_batch2_K9
+  target_step: 200000
+  CPU_gate: R-20260913024333-73ccad
+  GPU_run: R-20260913024415-e5d9b2
+  endpoint_review: R-20260913024432-40122a
+  execution_commit: c03dc19fb3b2acb28949d6c7b3b82e6cdee336db
+  config: configs/h031_k512_b2_a2_k9_mix50_gpu67_to200000.yaml
+  config_sha256: d7ce6285650e73164794373c2f3ea09b14fade61a4bf967b4e6569e49253d916
+  launcher: research/analysis/h031_b2_k9_gpu67_resume.py
+  old_run: R-20260912121145-74cc47
+  old_termination: TERM-20260913023603-341fed_SIGTERM_sent023603545Z_terminal023732403Z_exit1_terminated_noSIGKILL
+  old_endpoint: R-20260912121157-0b6dbf_retired_before_start
+  source: /data/WorldBridge4D-runs/h031-k512-k3-mix50-169500-to200000-gpu56-20260912/checkpoint-0175361.pt
+  resume_step: 175361
+  checkpoint_sha256: b3b965cffb7e1fb11da88bc4bdd4c0592a61d690ef0e5793134651f13d3d43be
+  artifact_id: artifact://H031/R-20260912121145-74cc47/checkpoint/b3b965cffb7e1fb1
+  remaining_updates: 24639
+  batching: {B: 2, A: 2, K: 9, world_size: 2, clips: 8, pairs: 72}
+  unchanged: full_model_193FP32Adam_RNG2_counters_phase152768_mix50_25_25_K512_PO256_DR256_cycle0_async_allocator_prefix5_900s_readiness_LR3e-6_hold_no_new_warmup
+  scientific_delta: B1A4K3_toB2A2K9_same_deterministic_clip_slots_not_exact_target_eligibility_or_numerical_replay
+  CPU_observation: succeeded_192passed21p92s_full175361_verified024451136Z_gate_ok024500282Z_UUID_ECC_remap_passed
+  full_restore: 024719521Z_step175361_optimizer_restored_world2_RNG2
+  actual_start: 2026-09-13T02:45:28Z
+  status: failed_cuda_oom_terminal024807300Z_no_completed_new_update_no_new_checkpoint
+  failure_stage: first_update175362_nativeKubric_B2K9_micro0_decoder_forward_upsampler_py109
+  OOM: both_ranks_allocate1p69GiB_failed_rank0_free1p08_process78p04_allocated74p60_reserved_unallocated2p73_GiB_rank1_free1p18_process77p95
+  endpoint_status: R-20260913024432-40122a_dependency_failed_never_started
+  postexit_gpu_snapshot: GPU6and7_each13MiB_used81036MiB_free_utilization0
+  latest_verified_checkpoint: 175361_193Adam_Fp32_finite_world2_RNG2_22593Adam_increments_clips_K518112_PO411840_DR472936
+  resources: {gpu_ids: [6, 7], mode: exclusive, min_free_memory_mib: 77824, memory_safety_mib: 0, allow_foreign_processes: false}
+  admission_caveat: both81036MiB_free_observed_after_old_stop_B2K9_fit_unproven_no_hard_reservation_against_unmanaged_future_jobs
+  output: /data/WorldBridge4D-runs/h031-k512-b2-a2-k9-mix50-175361-to200000-gpu67-20260913
+  handoff: /data/WorldBridge4D-runs/h031-b2-k9-gpu67-175361-handoff-20260913
+  first_gate_failure: R-20260913024112-5e6825_190passed_two_synthetic_RGB_gradient_assertions_failed_due_to_fresh_zero_gates
+  fixture_correction: set_test_only_RGB_alphas0p1_retain_nonzero_perclip_gradient_assertions_no_training_weight_or_code_change
+  retired_chain: R-20260913024221-6d3256_and_R-20260913024240-f08935_dependency_failed_not_started
+  decision: stop_after_observed_B2K9_native512_forward_OOM_report_user_no_fallback_retry_allocator_change_or_foreign_control
+  safety: retain_old_saves_64GiB_disk_reserve_38p4GB_budget_SIGTERM_only_no_foreign_control
 h031_K3_gpu56_to200k_20260912:
   authority: user_explicitly_requests_physical_GPUs5_6_continue_to200000
   CPU_gate: R-20260912121117-48108c
@@ -1530,7 +1569,20 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: >-
-  LATEST September12: user authorizes GPUs5/6 full169500 K3 recovery to200000.
+  LATEST September13: user requests GPU6/7 perGPU B2 K9 switch, continue200k.
+  Old74cc47 terminal after SIGTERM saved175361 SHA b3b965cffb7e1fb1 registered and independently verified.
+  CPU73ccad succeeded192tests and full175361 state/SHA/UUID/ECC checks.
+  GPUe5d9b2 started024528Z and full-restored024719521Z B2/A2/K9 (8clips/72pairs),
+  failed first update175362 micro0 nativeKubric decoder forward with both-rank CUDA OOM024754Z,
+  terminal024807300Z. Each process about78GiB,1p69GiB allocation failed with1p08/1p18GiB free.
+  Zero new completed updates/checkpoints; endpoint40122a dependency_failed before start.
+  Both GPUs now13MiB used/81036MiB free/0percent util; recovery175361 intact.
+  Keep193FP32Adam/RNG2/counters/LR3e-6 and original inputs/async/allocator/readiness900s;
+  76GiB exclusive admission each on exact6/7 did not make actual nativeB2K9 fit;
+  current implementation cannot complete this first forward under unchanged allocator.
+  Stop/report user, no automatic fallback/retry/allocator change; await authorization for another route.
+  See h031_B2_K9_gpu67_20260913. All following is historical.
+  September12: user authorizes GPUs5/6 full169500 K3 recovery to200000.
   CPU R-20260912121117-48108c passed154tests/SHA/health; GPU R-20260912121145-74cc47
   restored full169500 optimizer/world2/RNG2 and completed169501 at12:50:13Z;
   completed170000 at14:23:32Z. Continue unchanged to200000 (30000 remaining);
@@ -3581,4 +3633,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-12T14:23:32Z
+updated_at: 2026-09-13T02:48:07Z
