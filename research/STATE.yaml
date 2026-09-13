@@ -1,4 +1,25 @@
 current_task: T-20260908032232-e95da1
+h031_B1_K9_gpu67_20260913:
+  authority: user_explicitly_requests_B1_A4_K9_after_B2K9_and_B2K5_OOM_same_GPU6_7_and200k
+  CPU_gate: R-20260913030436-c75879
+  GPU_run: R-20260913030511-725945
+  endpoint_review: R-20260913030525-35c826
+  execution_commit: 907025d9487bfe9610fdc5217d63fbac8c771781
+  config: configs/h031_k512_b1_a4_k9_mix50_gpu67_to200000.yaml
+  config_sha256: 346819917764096102c0062a24581e8c88a10be914904e26e0995a7634400dae
+  launcher: research/analysis/h031_b1_k9_gpu67_resume.py
+  source: /data/WorldBridge4D-runs/h031-k512-k3-mix50-169500-to200000-gpu56-20260912/checkpoint-0175361.pt
+  checkpoint_sha256: b3b965cffb7e1fb11da88bc4bdd4c0592a61d690ef0e5793134651f13d3d43be
+  resume_step: 175361
+  target_step: 200000
+  remaining_updates: 24639
+  batching: {B: 1, A: 4, K: 9, world_size: 2, clips: 8, pairs: 72}
+  resources: {gpu_ids: [6, 7], mode: exclusive, min_free_memory_mib: 77824, memory_safety_mib: 0, allow_foreign_processes: false}
+  unchanged: full193FP32Adam_RNG2_counters_model_shapes_mix50_25_25_seed20260812_decoder424242_LR3e-6_oldwarmup_allocator_async_readiness900s_prefix5
+  output: /data/WorldBridge4D-runs/h031-k512-b1-a4-k9-mix50-175361-to200000-gpu67-20260913
+  handoff: /data/WorldBridge4D-runs/h031-b1-k9-gpu67-175361-handoff-20260913
+  status: running_initializing_started030554898Z_CPU_gate_succeeded030529083Z_no_fullrestore_or_firstupdate_observed
+  next: await_CPU_gate_fullrestore_first175362_native512_update_no_automatic_retry_or_fallback
 h031_B2_K5_gpu67_20260913:
   authority: user_explicitly_requests_K5_after_B2K9_OOM_same_GPU6_7_B2A2_and200k
   CPU_gate: R-20260913025246-a1df32
@@ -1599,7 +1620,12 @@ h023_256_three_dataset_200m:
     update and run the extended 100-200-update K=6 gate. Generate and audit
     complete 256 latent shards before any four-card formal run.
 next_step: >-
-  LATEST September13: user explicitly requests K5 after B2K9 first-forward OOM.
+  LATEST September13: user explicitly requests B1/A4/K9 after both B2K9/B2K5 OOM.
+  Submitted CPUc75879 -> GPU725945 -> endpoint35c826, full175361->200000,
+  exact physical6/7,8clips/72pairs, unchanged fullstate/LR/allocator/input policy.
+  Await gate/fullrestore/first complete175362 native512 update; no automatic further change.
+  See h031_B1_K9_gpu67_20260913. Following B2 notes are historical.
+  September13: user explicitly requests K5 after B2K9 first-forward OOM.
   Submitted CPUa1df32 -> GPUa41ffc -> endpoint0e4a1e, full175361->200000,
   physical6/7 B2/A2/K5,8clips/40pairs, same LR3e-6/fullAdam/RNG2/counters/allocator/readiness.
   Exact selected GPUs each76GiB admission; new output preserves recovery and failedK9 diagnostics.
@@ -3671,4 +3697,4 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T03:00:25Z
+updated_at: 2026-09-13T03:05:54Z
