@@ -153,6 +153,10 @@ def validate_config(config: dict[str, Any], world: int) -> None:
                             or not native_k5_mix):
         raise ValueError('native B2/A2/K5 200k requires K5 mixture without other K overrides')
     native_b2_200k = native_b2_k9_200k or native_b2_k5_200k
+    native_b1_k9_200k = bool(config.get('native_kubric512_b1_a4_k9_mix_200k', False))
+    if native_b1_k9_200k and (native_b2_200k or native_k11 or native_k5_mix or native_k3_mix
+                            or native_k3_200k or not (native_k9 and native_mix_trial and native_mix_170k)):
+        raise ValueError('native B1/A4/K9 200k requires K9 mixture without other K/batch overrides')
     if native_mix_170k and not native_mix_trial:
         raise ValueError('native K9 170k extension requires the explicit mixture profile')
     if native_long and not native_k5:
@@ -179,7 +183,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             raise ValueError('native on-demand GT requires explicit continuation')
         if native_mix_trial:
             selected = int(config.get('selected_checkpoint_step', -1))
-            endpoint = 200000 if native_k3_200k or native_b2_200k else (170000 if native_mix_170k else selected + 2000)
+            endpoint = 200000 if native_k3_200k or native_b2_200k or native_b1_k9_200k else (170000 if native_mix_170k else selected + 2000)
             if (config.get('native_capacity_test_only') or selected < 150500
                     or selected >= endpoint or config.get('max_steps') != endpoint
                     or not (bool(gt_values.get('native_geometry_full_corpus')) ^ demand_gt)):
