@@ -8,7 +8,12 @@ h030_gpu23_recovery_20260908:
   recovery_run: R-20260908051017-18ab7d
   CPU_gate: R-20260908050937-7d949b
   CPU_tests: 81_passed
-  observed_status: K9_submitted_not_yet_verified_first_update
+  observed_status: K9_full_resume_and_ten_updates_verified
+  observed_step: 151510
+  observed_step_at: 2026-09-08T05:26:13.988Z
+  observed_peak_cuda_GiB: 40.41299057006836
+  observed_step_seconds: 4.92416156292893
+  continuation_decision: continue_under_existing_events_not_full_horizon_memory_or_quality_proof
   targets_per_source: 9
   pairs_per_update: 72
   scientific_caveat: user_changed_K_not_matched_K15_coefficient_only_trajectory
