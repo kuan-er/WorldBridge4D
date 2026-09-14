@@ -3798,6 +3798,11 @@ main_consolidation_20260914:
   originals: research/archive/main-consolidation-20260914
   backup: /data/WorldBridge4D-runs/pre-main-consolidation-20260914T032858Z
   cleanup_policy: only_terminal_unreferenced_worktrees_after_backup_preserve_other_sessions_and_all_outputs
+  cleanup_result: H030_worktree_and8_inspected_terminal_snapshots_removed_after_full_archive_verification_no_force
+  remaining_worktrees: 332
+  remaining_scope: H031_active_and_recovery_dependencies_other_sessions_and_unverified_history_retained_not_exhaustive_GC
+  note: research/notes/main-consolidation-20260914.md
+  verification: both_source_histories_and_all_tracked_paths_in_main_active_snapshot_code_and_current_config_SHA_unchanged
   remote: no_push
 
 # H030-only state retained during owner-requested consolidation.
