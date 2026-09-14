@@ -1,0 +1,1208 @@
+current_task: T-20260908032232-e95da1
+active_hypotheses:
+  - H031
+  - H030
+recent_results:
+  - run_id: R-20260808164859-ac2cfe
+    kind: h005_unit_tests
+    result: succeeded
+    passed: 25
+  - run_id: R-20260808164446-852e73
+    kind: h005_real_structured_smoke
+    result: succeeded
+    z_dense_shape:
+      - 1
+      - 128
+      - 21
+      - 16
+      - 16
+    z_motion_shape:
+      - 1
+      - 21
+      - 8
+      - 128
+    trainable_parameters: 4795846
+    peak_cuda_memory_gib: 2.804969310760498
+  - run_id: R-20260808164542-1a7038
+    kind: h005_frozen_wan_tiny_overfit
+    result: succeeded
+    steps: 256
+    evaluation_loss_ratio: 0.04047859560801072
+    initial_epe: 16.0607852935791
+    final_epe: 1.0107083320617676
+    diagonal_epe: 0.9598708748817444
+    off_diagonal_epe: 1.0324958562850952
+    peak_cuda_memory_gib: 3.125835418701172
+  - run_id: R-20260808164726-7f5732
+    kind: h005_full_wan_gradient_smoke
+    result: succeeded
+    wan_gradient: true
+    geometry_adapter_gradient: true
+    decoder_gradient: true
+    peak_cuda_memory_gib: 13.263145446777344
+  - run_id: R-20260807120649-ce3667
+    kind: h004_dataset_audit
+    result: succeeded
+  - run_id: R-20260807121556-0d3599
+    kind: h004_geometry_validation
+    result: succeeded
+    roundtrip_max_px: 1.0845964142784046e-13
+    diagonal_max: 0
+    dynamic_rigid_max_m: 5.016623623677104e-7
+    static_background_max_m: 0.0000020610834884352757
+    occluded_valid: true
+  - run_id: R-20260807121652-27b9ac
+    kind: h004_native_empty_condition
+    result: succeeded
+    shape:
+      - 1
+      - 512
+      - 4096
+    unpadded_tokens: 1
+  - run_id: R-20260807121940-5cafa5
+    kind: h004_wan_feedforward_audit
+    result: succeeded
+    clean_latent_shape:
+      - 1
+      - 16
+      - 6
+      - 16
+      - 16
+    timestep: 0
+    raw_velocity: epsilon_minus_clean
+    z4d_transform: negative_raw_velocity
+    dit_gradient: true
+  - run_id: R-20260807122056-d99561
+    kind: h004_decoder_smoke
+    result: succeeded
+    memory_shape:
+      - 1
+      - 1536
+      - 16
+    low_resolution_shape:
+      - 1
+      - 4
+      - 256
+      - 16
+      - 16
+    output_shape:
+      - 1
+      - 4
+      - 3
+      - 128
+      - 128
+  - run_id: R-20260807122126-c56ffb
+    kind: h004_unit_tests
+    result: succeeded
+    passed: 21
+  - run_id: R-20260807122258-659248
+    kind: h004_coordinate_stats
+    result: succeeded
+    train_clips: 5737
+    point_count: 1973886172
+    mean:
+      - -0.004755645448679449
+      - 1.9840435057254722
+      - -13.47452929937991
+    scale:
+      - 4.819900971027581
+      - 5.335500618483786
+      - 11.895373035302578
+  - run_id: R-20260807123135-3e0f39
+    kind: h004_fixed_tiny_overfit
+    result: succeeded
+    steps: 24
+    evaluation_loss_ratio: 0.7175770369377824
+    initial_epe: 15.44895076751709
+    final_epe: 10.82796859741211
+    checkpoint_load_ok: true
+  - run_id: R-20260807123252-527d39
+    kind: h004_arbitrary_tiny_overfit
+    result: succeeded
+    steps: 32
+    evaluation_loss_ratio: 0.5764622584549269
+    initial_epe: 15.915731430053711
+    final_epe: 8.022258758544922
+    source_zero_final_epe: 8.340014457702637
+    source_gt_zero_final_epe: 7.886078834533691
+  - run_id: R-20260807123356-35e147
+    kind: h004_bounded_train
+    result: succeeded
+    clips: 8
+    steps: 32
+    checkpoint_load_ok: true
+  - run_id: R-20260807123513-8d40a0
+    kind: h004_bounded_validation
+    result: succeeded
+    clips: 2
+    pointmap_epe: 11.45714984070891
+    tracking_epe: 11.41861476850158
+    visible_epe: 11.980271034668085
+    occluded_valid_epe: 8.670006995130036
+    source_zero_epe: 10.693531148907438
+    source_gt_zero_epe: 11.454867843091488
+    gap_1_epe: 11.435608632909686
+    gap_20_epe: 11.215997653925383
+  - run_id: R-20260804055700-fc6af7
+    kind: dataset_audit
+    result: succeeded
+  - run_id: R-20260804060621-1ebf71
+    kind: geometry_validation
+    result: succeeded
+    roundtrip_max_px: 1.0846e-13
+    diagonal_X_equals_P_max: 0
+  - run_id: R-20260804060902-744786
+    kind: model_shape_smoke
+    result: succeeded
+    compact_and_full_latent_shape:
+      - 1
+      - 16
+      - 6
+      - 16
+      - 16
+  - run_id: R-20260804061842-5f297c
+    kind: unit_tests
+    result: succeeded
+    passed: 6
+  - run_id: R-20260804062043-059151
+    kind: tiny_overfit_compact
+    result: succeeded
+    loss_ratio: 0.3454681
+  - run_id: R-20260804062439-810fb1
+    kind: tiny_overfit_full
+    result: succeeded
+    loss_ratio: 0.4314703
+  - run_id: R-20260804062809-41bf71
+    kind: bounded_train_compact
+    result: succeeded
+    final_loss: 2.4896023
+  - run_id: R-20260804063028-a4fe07
+    kind: bounded_train_full
+    result: succeeded
+    final_loss: 4.185029
+  - run_id: R-20260804063321-e1b7f8
+    kind: validation_compact
+    result: succeeded
+    reconstruction_endpoint_error: 7.03999
+    first_frame_endpoint_error: 6.36766
+  - run_id: R-20260804063717-1d3757
+    kind: validation_full
+    result: succeeded
+    reconstruction_endpoint_error: 11.29462
+    first_frame_endpoint_error: 10.17443
+    arbitrary_all_st_endpoint_error: 11.28567
+  - run_id: R-20260804064338-1f8b5d
+    kind: final_unit_tests
+    result: succeeded
+    passed: 6
+  - run_id: R-20260804064416-561437
+    kind: final_compileall
+    result: succeeded
+  - run_id: R-20260804162323-4cf2cc
+    kind: migration_verification
+    result: succeeded
+    prl_doctor: passed
+    prl_runner_smoke: passed
+    pi_packages:
+      - npm:pi-research-loop@0.1.1 (user)
+      - npm:pi-research-loop@0.1.1 (project)
+    python_imports:
+      - numpy==1.26.4
+      - torch==2.10.0+cu126
+    python_compileall: passed
+    environment_gaps:
+      - pytest is not installed
+      - tensorflow is not installed
+  - kind: tracking_configuration
+    result: configured
+    mlflow: disabled_no_server
+    wandb: enabled
+    wandb_entity: zhaigong2023-sjtu-hpc-center
+    wandb_project: worldbridge4d
+    secrets_committed: false
+  - run_id: R-20260805001025-f69797
+    kind: reliability_compact_aggregate
+    result: succeeded
+    seeds:
+      - 2026
+      - 2027
+      - 2028
+    epochs_per_seed: 3
+    validation_clips: 147
+    reconstruction_endpoint_error_mean_std:
+      - 1.204306
+      - 0.027303
+    first_frame_endpoint_error_mean_std:
+      - 1.011372
+      - 0.040499
+    first_frame_visible_endpoint_error_mean_std:
+      - 0.852038
+      - 0.036112
+    first_frame_occluded_endpoint_error_mean_std:
+      - 1.541508
+      - 0.057134
+  - run_id: R-20260805072305-ca927b
+    kind: reliability_full_aggregate
+    result: succeeded
+    seeds:
+      - 2026
+      - 2027
+      - 2028
+    epochs_per_seed: 3
+    validation_clips: 147
+    reconstruction_endpoint_error_mean_std:
+      - 1.160271
+      - 0.031295
+    first_frame_endpoint_error_mean_std:
+      - 1.077097
+      - 0.067967
+    first_frame_visible_endpoint_error_mean_std:
+      - 0.899438
+      - 0.063357
+    first_frame_occluded_endpoint_error_mean_std:
+      - 1.668204
+      - 0.084017
+    arbitrary_all_st_endpoint_error_mean_std:
+      - 1.234847
+      - 0.033491
+    arbitrary_all_st_visible_endpoint_error_mean_std:
+      - 1.057624
+      - 0.027443
+    arbitrary_all_st_occluded_endpoint_error_mean_std:
+      - 1.991241
+      - 0.060382
+    late_appearing_endpoint_error_mean_std:
+      - 3.107029
+      - 0.116804
+    late_appearing_visible_endpoint_error_mean_std:
+      - 2.562628
+      - 0.108425
+    late_appearing_occluded_endpoint_error_mean_std:
+      - 3.811266
+      - 0.127873
+  - run_id: R-20260804195945-61e4b5
+    kind: reliability_scheduler
+    result: succeeded
+    marker: RELIABILITY_MATRIX_OK
+    errors: []
+final_h005_layer_selection:
+  selected_layers:
+    - 13
+    - 14
+    - 15
+  selected_protocol: 32 train clips, 1536 steps, seeds 2026/2027,
+    geometry_adapter, final validation 147 clips, pixel_stride=16
+  selection_splits:
+    split_a: train indices 32-47, probe indices 48-55
+    split_b: train indices 56-71, probe indices 72-79
+    candidate_holdout: train-split indices 80-111
+    final_validation: validation indices 0-146, used only after selection
+  final_runs:
+    seed2026: R-20260809083901-11ac6b
+    seed2027: R-20260809083901-674f13
+  final_two_seed_mean_epe_m:
+    original_layers_5_11_17_23_29:
+      pointmap: 4.291868
+      first_frame: 4.426168
+      arbitrary_all_st: 4.333806
+      arbitrary_occluded: 5.223015
+      late_appearing: 4.153842
+    triad_13_14_15:
+      pointmap: 4.133832
+      first_frame: 4.243102
+      arbitrary_all_st: 4.179413
+      arbitrary_occluded: 5.050039
+      late_appearing: 3.88546
+  relative_improvement_percent:
+    pointmap: 3.68
+    first_frame: 4.14
+    arbitrary_all_st: 3.56
+    arbitrary_occluded: 3.31
+    late_appearing: 6.46
+  trainable_parameters: 4396228
+  decision: Triad is the final default; aggregate five-layer, single-layer 13,
+    uniform entropy gate, and seeded top-5 gate are rejected.
+  artifacts:
+    seed2026: /tmp/worldbridge_h005_layer_selection_triad_validation147_seed2026.json
+    seed2027: /tmp/worldbridge_h005_layer_selection_triad_validation147_seed2027.json
+final_h005_long_budget_check:
+  steps: 4096
+  runs:
+    seed2026: R-20260809084822-3fa51e
+    seed2027: R-20260809084822-19ce22
+  validation_runs:
+    seed2026: R-20260809091539-4c5f3e
+    seed2027: R-20260809091539-9520b6
+  two_seed_mean_epe_m:
+    pointmap: 3.6157
+    first_frame: 3.677105
+    arbitrary_all_st: 3.656755
+    arbitrary_occluded: 4.539515
+    late_appearing: 4.271214
+  decision: Long budget improves ordinary geometry but is not the default because
+    seed-2027 late-appearing EPE regresses; retain as supplementary evidence.
+  artifacts:
+    seed2026: /tmp/worldbridge_h005_layer_selection_triad_4096_validation147_seed2026.json
+    seed2027: /tmp/worldbridge_h005_layer_selection_triad_4096_validation147_seed2027.json
+final_h006_motion_slot_ablation:
+  protocol: triad [13,14,15], 32 train clips, 1536 steps, seeds 2026/2027, train
+    holdout indices 80-111, pixel_stride=16; final validation unused
+  aggregation_run: R-20260809104655-139b16
+  two_seed_mean_epe_m:
+    learned_slots8:
+      pointmap: 3.945311
+      first_frame: 4.168921
+      arbitrary_all_st: 3.990391
+      arbitrary_occluded: 4.91828
+      late_appearing: 3.892751
+    retrained_slots0:
+      pointmap: 4.306731
+      first_frame: 4.300665
+      arbitrary_all_st: 4.354077
+      arbitrary_occluded: 5.406879
+      late_appearing: 4.163443
+    zeroed_slots8:
+      arbitrary_all_st: 4.589829
+      arbitrary_occluded: 5.561162
+    dropped_slots8:
+      arbitrary_all_st: 4.643132
+      arbitrary_occluded: 5.603749
+    pair_motion:
+      pointmap: 3.575669
+      arbitrary_all_st: 3.616442
+      arbitrary_occluded: 4.51873
+      late_appearing: 5.731132
+    pair_motion_zero_init:
+      pointmap: 3.705219
+      arbitrary_all_st: 3.733894
+      arbitrary_occluded: 4.566937
+      late_appearing: 7.282869
+  relative_change_vs_learned_slots8_percent:
+    retrained_slots0_arbitrary: 9.11
+    zeroed_slots8_arbitrary: 15.02
+    dropped_slots8_arbitrary: 16.36
+    pair_motion_arbitrary: -9.37
+    pair_motion_late_appearing: 47.23
+    pair_motion_zero_init_arbitrary: -6.43
+    pair_motion_zero_init_late_appearing: 87.09
+  slot_diagnostics:
+    within_frame_off_diagonal_cosine:
+      - 0.999859
+      - 0.999914
+    temporal_identity_margin:
+      - 0.000136
+      - 0.000081
+    clip_signal_fraction:
+      - 0.1903
+      - 0.1741
+  trainable_parameters:
+    learned_slots8: 4396228
+    retrained_slots0: 4326212
+    pair_motion: 4561348
+  decision: Slots are necessary and causally used. Keep learned M=8 as default;
+    direct and zero-initialized pooled pair-motion shortcuts are rejected
+    because ordinary gains cause severe late-appearing regressions.
+  artifact: /tmp/worldbridge_h006_slots_aggregate.json
+h023_256_three_dataset_200m:
+  status: two_gpu_k6_minimal_gate_passed_extended_gate_pending
+  task: T-20260812203622-0b7bc8
+  resolution: 256
+  latent_shape:
+    - 16
+    - 6
+    - 32
+    - 32
+  readout_layers:
+    - 13
+    - 14
+    - 15
+    - 29
+  initial_layer_weights:
+    - 0.3
+    - 0.3
+    - 0.3
+    - 0.1
+  non_wan_parameters: 193586693
+  distributed: fsdp_full_shard
+  formal_world_size: 4
+  requested_gate_world_size: 2
+  tests_passed: 62
+  implementation_test_run: R-20260812210635-6c66cf
+  final_verification_run: R-20260812211237-c19717
+  final_verification:
+    compileall: passed
+    launcher_shell_syntax: passed
+    pytest: 56_passed
+    prompt_config_code_parity: passed
+    shared_task_instruction_once_per_prompt: passed
+  wandb:
+    status: online_verified_user_netrc
+    user: zhaigong2023
+    entity: zhaigong2023-sjtu-hpc-center
+    secret_committed: false
+  prompts:
+    status: updated_plan_script_yaml_exact_match
+    inference: dataset_condition_required_no_empty_fallback
+    text_condition_cache: complete_verified
+    generation_run: R-20260812212737-c0b152
+    condition_shape:
+      - 1
+      - 512
+      - 4096
+    unpadded_tokens:
+      kubric: 58
+      pointodyssey: 68
+      dynamic_replica: 60
+    cache_checksums_verified: true
+    concurrent_creation_serialized: true
+  lazy_vae_gate_cache:
+    status: implemented_real_vae_encode_verified
+    mode: pre_fsdp_deterministic_read_through
+    cache_format: per_clip_atomic_safetensors
+    identity: dataset_clip_id_index_vae_sha256_contract
+    vae_model_co_resident: false
+    formal_training_policy: complete_shards_still_required
+    verification_run: R-20260812220655-985f1e
+  two_gpu_gate:
+    first_run: R-20260812221743-23c5d0
+    first_run_result: failed_pre_fsdp_bf16_gate_audit
+    fix: compare_gate_probabilities_after_parameter_dtype_quantization
+    successful_run: R-20260812223248-4899fa
+    result: passed_two_real_optimizer_updates_and_full_checkpoint
+    world_size: 2
+    physical_gpus:
+      - 4
+      - 6
+    targets_per_source: 6
+    microbatch_per_gpu: 1
+    gradient_accumulation: 2
+    effective_clips_per_update: 4
+    pairs_per_update: 24
+    optimizer_updates_completed: 2
+    clips_seen:
+      kubric: 0
+      pointodyssey: 4
+      dynamic_replica: 4
+    losses:
+      - 1.0498198271
+      - 1.1565223932
+    raw_epe_m:
+      - 3.9179910009
+      - 3.2507678641
+    step_seconds:
+      - 7.090242588
+      - 4.322418378
+    peak_cuda_memory_gib_rank0: 14.1309847832
+    non_wan_parameters: 193586693
+    checkpoint: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_k6/latest.pt
+    checkpoint_bytes: 9676545791
+    checkpoint_contains_full_model_optimizer_rng: true
+    wandb: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/8qnz9067
+    limitation: minimal two-step gate used lazy cached latents and did not yet
+      exercise a Kubric update, exact resume, or the planned 100-200-update
+      throughput gate
+    resume_100_run: R-20260812223630-816837
+    resume_100_result: failed_pre_model_stale_kubric_path
+  k21_two_gpu_gate:
+    status: b1_a2_selected_10k_launching
+    formal_allowed: false
+    physical_gpus:
+      - 4
+      - 6
+    b1_a2_run: R-20260812224534-1bab51
+    b1_a2_peak_cuda_memory_gib_rank0: 30.910964488983154
+    b1_a2_second_step_seconds: 8.759
+    b2_a1_run: R-20260812225242-a82268
+    b2_a1_peak_cuda_memory_gib_rank0: 77.0455117225647
+    b2_a1_second_step_seconds: 17.66759
+    b2_a1_checkpoint: /data/WorldBridge4D-runs/worldbridge4d_256_two_gpu_gate_k21_b2/latest.pt
+    b2_a1_decision: rejected_near_oom_and_two_times_slower
+    selected_10k_mode: k21_b1_a2
+    pairs_per_update: 84
+    effective_clips_per_update: 4
+    registered_safe_memory_ceiling_gib: 74
+    unique_lazy_clips_for_10k: 17208
+    earlier_estimated_training_hours_10k: 24
+    blocked_resume_runs:
+      - R-20260812223450-2f1c98
+      - R-20260812223630-816837
+    resume_attempt_result: blocked_before_checkpoint_load_by_missing_raw_mounts_and_obsolete_gate_kubric_path
+    resume_checkpoint_preserved_at_step: 2
+    launcher_raw_mount_preflight_added: true
+  datasets:
+    kubric_raw: /dataset/nas0/yejun/MOVi-F/512x512
+    pointodyssey_raw: /dataset/nas0/PointOdyssey
+    dynamic_replica_raw: /dataset/data/Dynamic_dataset/dynamic_stereo
+  data_availability_at_final_verification:
+    kubric_512_visible: /dataset/MOVi-F/512x512
+    configured_nas0_roots_visible: false
+    pointodyssey_raw_visible: false
+    dynamic_replica_raw_visible: false
+    text_condition_cache_exists: true
+    three_dataset_256_latent_cache_exists: false
+  next_step: Restore all raw mounts and regenerate the gate YAML with current
+    canonical roots; then verify exact resume from step 2 through a Kubric
+    update and run the extended 100-200-update K=6 gate. Generate and audit
+    complete 256 latent shards before any four-card formal run.
+next_step: Keep the H005 triad with eight learned motion slots. Future slot work
+  should preserve late-appearing behavior and test source-valid/appearance-aware
+  gating or slot-specific residuals on a fresh development split; do not select
+  on final validation.
+h013_default_policy_change:
+  status: implemented_not_quality_validated
+  task: T-20260810022349-e4aabd
+  cleanup_task: T-20260810025024-fcdbbe
+  hardening_task: T-20260810095826-d8c8fb
+  hardening:
+    exact_resume: model_optimizer_python_numpy_torch_rng
+    resume_steps_semantics: configured_target_total
+    capacity_checkpoint_every_steps: 256
+    repeated_source_projection: project_once_expand_targets
+    xyz_training_visibility: disabled
+    real_smoke_run: R-20260810103851-cc2f62
+  defaults:
+    coordinate_frame: source
+    pair_sampling: source_all_targets
+    num_query_pairs: 21
+    trainable_mode: full
+  shipped_dense4d_configs:
+    - configs/dense4d_smoke.yaml
+    - configs/dense4d_tiny_overfit.yaml
+    - configs/dense4d_arbitrary_overfit.yaml
+    - configs/dense4d_train.yaml
+  decision: Apply to canonical profiles only. Historical experiment YAMLs are
+    recoverable from Git. Run fresh full-DiT quality validation before treating
+    the new route as scientifically superior.
+h020_pointodyssey_progressive:
+  task: T-20260810175843-11d0f4
+  target_updates: 100000
+  physical_batch_per_gpu: 1
+  target_gpus:
+    - 4
+    - 2
+    - 6
+  rejected_run: R-20260811055240-e3db36
+  rejection_reason: capacity helper violated the fixed batch-one protocol by
+    selecting batch eight
+  corrected_tests: R-20260811060229-3fe845
+  corrected_tests_passed: 41
+  earlier_blocked_gate: R-20260811060358-8a4d9f
+  earlier_gate_failure: raw scene annotations under /dataset/PointOdyssey were
+    absent in that environment
+  fail_fast_validation_added: true
+  rejected_ddp_run: R-20260811060831-674b14
+  rejected_ddp_reason: structured hidden-state readout leaves parameters unused;
+    DDP reduction check failed on second forward
+  ddp_unused_parameter_fix: find_unused_parameters_true
+  partial_run: R-20260811062558-1ca703
+  partial_checkpoint_global_step: 64
+  overlapping_capacity_probe: R-20260811063827-811e1e
+  overlapping_probe_result: batch12 OOM at 75.22 GiB allocated; no quality result
+  rejected_batch8_resume: R-20260811064034-c9416d
+  rejected_batch8_reason: changed registered batch after step64; terminated at step100
+  launcher_lock_added: true
+  fixed_batch_override_rejected: true
+  exact_resume_batch_guard_added: true
+  unexpected_stop_guard_added: true
+  status: resume_from_step64_pending
+h025_wan14b_lora_gpu01:
+  status: fsdp_parent_wrap_failure_fixed_retry_pending
+  task: T-20260816082914-16f812
+  physical_gpus:
+    - 0
+    - 1
+  world_size: 2
+  wan_model: Wan2.1-T2V-14B
+  executed_blocks:
+    - 0
+    - 29
+  lora_rank: 16
+  image_size: 256
+  targets_per_source: 16
+  microbatch_per_gpu: 2
+  gradient_accumulation: 2
+  effective_clips_per_update: 8
+  pairs_per_update: 128
+  target_steps: 100000
+  non_wan_parameters: 200955397
+  first_real_gate: R-20260816085033-478f67
+  first_real_gate_result: failed_first_forward_parent_wan_fsdp_wrap
+  fix: wrap_normally_invoked_wan_blocks_not_bypassed_parent_transformer
+  tests_passed: 87
+  next_step: Superseded by H026 full-depth final-block-39 correction.
+h026_wan14b_full40_lora_gpu01:
+  status: gpu01_b2_a2_50k_direct_launch_pending
+  task: T-20260816093127-f0bed5
+  physical_gpus:
+    - 0
+    - 1
+  world_size: 2
+  wan_model: Wan2.1-T2V-14B
+  executed_blocks:
+    - 0
+    - 39
+  readout_layers:
+    - 13
+    - 14
+    - 15
+    - 39
+  local_wan_root: /tmp/worldbridge4d-models/Wan2.1-T2V-14B
+  lora_rank: 16
+  image_size: 256
+  targets_per_source: 16
+  microbatch_per_gpu: 2
+  gradient_accumulation: 2
+  effective_clips_per_update: 8
+  pairs_per_update: 128
+  target_steps: 100000
+  staging_run: R-20260816093811-89eb3d
+  staged_bytes: 57661784391
+  staging_elapsed_seconds: 343.5
+  gpu0_b2_a2_gate: R-20260816094943-66e88a
+  gpu0_b2_a2_result: oom_decoder_upsampler_75_52_gib_allocated
+  gpu0_retry_mode:
+    microbatch_per_gpu: 1
+    gradient_accumulation: 4
+    effective_clips_per_update: 4
+    pairs_per_update: 64
+  gpu0_b1_a4_gate: R-20260816100104-b3adce
+  gpu0_b1_a4_result: passed_two_optimizer_updates
+  gpu0_b1_a4_peak_cuda_memory_gib: 75.18812799453735
+  gpu0_b1_a4_losses:
+    - 0.9152424335
+    - 0.9299689382
+  superseded_single_gpu_long_run:
+    physical_gpu: 0
+    optimizer_updates: 50000
+    microbatch_per_gpu: 1
+    gradient_accumulation: 4
+  selected_long_run:
+    physical_gpus:
+      - 0
+      - 1
+    optimizer_updates: 50000
+    microbatch_per_gpu: 2
+    gradient_accumulation: 2
+    effective_clips_per_update: 8
+    pairs_per_update: 128
+    targets_per_source: 16
+    schedule_horizon_steps: 50000
+  two_gpu_capacity_gate_waived_by_user: true
+  next_step: Directly launch the user-requested GPU0/1 50k run and inspect its
+    first updates.
+h023_gpu14_optimized_150k_handoff:
+  status: optimized_150k_training_stable
+  task: T-20260817160306-ca12e3
+  physical_gpus:
+    - 1
+    - 4
+  world_size: 2
+  protocol:
+    targets_per_source: 19
+    microbatch_per_gpu: 2
+    gradient_accumulation: 2
+  target_steps: 150000
+  prefetch:
+    workers: 4
+    depth: 2
+    kubric_sample_cache: 16
+    mmap_open_shards: 90
+  diagnostics: at_least_one_log_per_dataset_per_20_step_cycle
+  lr_extension: continuous_from_audited_handoff_factor_to_zero_at_150k
+  acquisition:
+    min_free_mib: 76000
+    max_util_percent: 5
+    stable_seconds: 1
+    compute_pids: none
+    user_requested_immediate_launch: true
+  safety: requires_immutable_metadata_handoff_marker_final_recheck_and_strict_restore_before_update
+  hard_reservation: unavailable_without_external_scheduler
+  verification:
+    run: R-20260818175409-12a560
+    tests_passed: 97
+    compileall: passed
+    shell_syntax: passed
+  superseded_watcher_run: R-20260818174532-3ceda7
+  watcher_run: R-20260818175501-5725ef
+  checksum_policy: metadata_and_strict_restore_before_updates_sha256_low_priority_after_restore
+  marker_at_watcher_start: absent
+  source_run: R-20260817165208-812f60
+  stop_signal:
+    signal: SIGUSR1
+    sent_at: 2026-08-18T17:58:01Z
+    ranks: 2
+  source_stop_step: 56503
+  superseded_metadata_prepare_run: R-20260818175829-a64cf2
+  failed_launch_run: R-20260818180139-a1797e
+  failed_launch_reason: build_real_model_signature_missing_load_wan_pretrained_keyword
+  signature_fix_verification:
+    run: R-20260818180541-1e9c65
+    tests_passed: 97
+    compileall: passed
+    shell_syntax: passed
+  optimized_run: R-20260818180553-c5f105
+  strict_restore:
+    step: 56503
+    world_size: 2
+    optimizer: restored
+    rng_states: 2
+    completed_at: 2026-08-18T18:08:28Z
+  post_resume_checksum:
+    state: complete
+    sha256: 4fa0dac9c430ea4fa8096d6684b33c9e3b82f0f1907926e892f3fa7a75249541
+  first_update:
+    global_step: 56504
+    dataset: pointodyssey
+    loss: 0.013353999704122543
+    raw_epe_m: 0.15952254766892612
+    lr_factor: 0.40532763843756303
+    step_seconds: 251.2366376556456
+    geometry_wait_seconds: 17.965477074030787
+    finite: true
+  second_update:
+    global_step: 56505
+    dataset: kubric
+    loss: 0.17363791540265083
+    raw_epe_m: 0.7572442481392309
+    lr_factor: 0.40532763809434363
+    step_seconds: 65.5942565491423
+    geometry_wait_seconds: 0.00014229211956262589
+    finite: true
+  warm_steps:
+    step_56515_seconds: 4.669776598922908
+    step_56520_seconds: 30.613145125098526
+    step_56521_seconds: 4.628897916059941
+    step_56522_seconds: 4.654843296855688
+    step_56525_seconds: 69.08653756184503
+  remaining_bottleneck: occasional_rank_asymmetric_mmap_page_fault_tails_cause_other_rank_gpu_wait
+  sustained_hot_window:
+    start_step: 56550
+    end_step: 56575
+    updates: 25
+    elapsed_seconds: 120.49118614988402
+    average_seconds_per_update: 4.819647445995361
+    recent_geometry_wait_seconds_max: 0.0000734
+    both_gpu_utilization_percent: 97_to_100
+    geometry_page_cache_resident_gib: 59.562
+    geometry_page_cache_resident_percent: 26.69
+  resource_intrusion_event: false_positive_nvml_pid_namespace_ghost_contexts
+  current_training_modified: source_stopped_new_run_strict_restore_complete
+h023_current_route_cleanup:
+  task: T-20260819161226-510cf8
+  status: merged_to_main
+  scope: gpu1_gpu4_k19_b2_a2_150k_three_dataset_route
+  exact_config: configs/worldbridge4d_gpu14_k19_150k.yaml
+  retained_counts:
+    scripts: 26
+    configs: 1
+    src_worldbridge: 10
+    tests: 5
+  removed: historical_128px_baselines_ablations_single_dataset_ddp_rejected_capacity_and_wan14b_tools
+  validation_run: R-20260819162110-8646ac
+  tests_passed: 51
+  compileall: passed
+  shell_syntax: passed
+  diff_check: passed
+  live_training_modified: false
+h023_source_rgb_step100k_promotion:
+  status: selected_final_endpoint_resumable
+  task: T-20260823053649-d2c68c
+  source_run: R-20260822143915-eec343
+  architecture: source_rgb_pyramid_fusions_32_64_128_256
+  protocol:
+    world_size: 2
+    microbatch_per_gpu: 2
+    accumulation: 2
+    targets_per_source: 19
+  optimization:
+    trainable_mode: source_rgb_plus_wan_decoder
+    geometry_adapter: frozen
+    source_rgb_lr_multiplier: 10
+    wan_and_mature_decoder_lr_scale: 0.1
+  checkpoint:
+    global_step: 100000
+    clips_seen:
+      kubric: 280000
+      pointodyssey: 240000
+      dynamic_replica: 280000
+    bytes: 9607899341
+    sha256: 3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2
+    artifact: artifact://H023/R-20260822143915-eec343/checkpoint/3181a255d48687f1
+  causal_epe_improvement_percent:
+    versus_alpha_zero:
+      kubric: 4.31
+      pointodyssey: 1.52
+      dynamic_replica: 1.03
+    versus_wrong_rgb:
+      kubric: 7.27
+      pointodyssey: 2.15
+      dynamic_replica: 3.1
+  exact_config: configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml
+  final_endpoint: 100000
+  default_continuation: disabled
+  resume_policy:
+    optimizer: full_adamw_restored
+    counters: restored
+    rng_states: two_rank_restored
+    schedule_extension_horizon_steps: 150000
+    schedule_horizon_reason: preserve_exact_lr_curve_for_optional_explicit_continuation
+    constraints: same_model_optimizer_groups_and_world_size_two
+  excluded_experiments:
+    - target_rgb_cross_attention
+    - boundary_weighted_loss
+    - pointwise_xyz_residual
+    - rgb_guided_final_upsample
+  integration_validation:
+    run: R-20260823054032-9eca51
+    tests_passed: 65
+    compileall: passed
+    shell_syntax: passed
+    diff_check: passed
+h023_package_refactor:
+  status: implementation_and_checkpoint_compatibility_passed
+  task: T-20260823064208-540496
+  baseline_run: R-20260823064217-9e6e24
+  canonical_packages:
+    - models
+    - data
+    - trainer
+    - evaluation
+    - utils
+  trainer_class: worldbridge.trainer.WorldBridgeTrainer
+  thin_clis:
+    - scripts/train.py
+    - scripts/infer.py
+    - scripts/evaluate.py
+    - scripts/prepare_data.py
+    - scripts/run_fsdp.sh
+  compatibility_modules:
+    - dense4d
+    - dense4d_runtime
+    - training256
+    - wan
+    - geometry
+    - pointodyssey
+    - dynamic_replica
+  invariants:
+    - state_dict_attribute_paths
+    - checkpoint_format
+    - optimizer_groups
+    - exact_resume
+    - sampling
+    - schedule
+    - objective
+  validation:
+    package_run: R-20260823065821-11ebe9
+    final_validation_run: R-20260823070140-04d672
+    tests_passed: 70
+    compileall: passed
+    shell_syntax: passed
+    cli_smoke: passed
+    diff_check: passed
+    checkpoint_run: R-20260823070018-21183f
+    checkpoint_global_step: 100000
+    checkpoint_state_entries: 1055
+    model_parameters: 1613397325
+    trainable_parameters: 1594887819
+    strict_model_load: passed
+  two_step_gpu01_replay:
+    status: complete_numerically_equivalent_within_existing_cuda_fsdp_run_variability
+    replay_task: T-20260823071021-5cdbec
+    stable_baseline_task: T-20260823071157-9eecf3
+    start_checkpoint_step: 100000
+    end_checkpoint_step: 100002
+    physical_gpus:
+      - 0
+      - 1
+    world_size: 2
+    pairs_per_step: 152
+    pre_refactor_run: R-20260823072302-09a18d
+    refactored_run: R-20260823072315-fc1407
+    pre_refactor_repeat_run: R-20260823072608-1a9abe
+    step_100001_loss_all_runs: 0.013928089989349246
+    step_100001_epe_m_all_runs: 0.12306794599078553
+    step_100002_loss:
+      pre_refactor: 0.06044484628364444
+      refactored: 0.06047195615246892
+      pre_refactor_repeat: 0.06042315997183323
+    step_100002_epe_m:
+      pre_refactor: 0.4320237571214193
+      refactored: 0.43194110870892105
+      pre_refactor_repeat: 0.4318575048970798
+    sampling_lr_counters_rgb_alpha: exact_match
+    peak_memory_gib_all_runs: 75.29922
+    first_weight_max_abs_difference:
+      pre_refactor_vs_refactored: 4.76837158203125e-7
+      pre_refactor_vs_pre_refactor_repeat: 4.76837158203125e-7
+    conclusion: refactor adds no detectable numerical drift beyond the original
+      training stack's non-bitwise CUDA/FSDP replay variability
+h023_script_consolidation:
+  status: complete_validation_passed
+  task: T-20260823073939-687ee7
+  entrypoint_count: 5
+  entrypoints:
+    - train.py
+    - infer.py
+    - evaluate.py
+    - prepare_data.py
+    - run_fsdp.sh
+  preparation_subcommands: 19
+  historical_gpu14_watcher: removed
+  implementation_ownership:
+    - worldbridge.data.commands
+    - worldbridge.trainer.commands
+    - worldbridge.utils.commands
+  validation_run: R-20260823075231-63d7e1
+  tests_passed: 70
+  all_entrypoint_and_subcommand_help: passed
+  compileall: passed
+  shell_syntax: passed
+  diff_check: passed
+h023_persistent_runtime_caches:
+  status: complete_validation_passed
+  task: T-20260823081332-bcf490
+  validation_run: R-20260823082111-e03f13
+  tests_passed: 71
+  compileall: passed
+  shell_syntax: passed
+  diff_check: passed
+  cache_root_audit: passed
+  runtime_inventory_audit: passed
+  root: /data/WorldBridge4D-persistent/worldbridge4d-cache
+  source_rgb_root: /data/WorldBridge4D-persistent/worldbridge4d-rgb-uint8-256
+  configured_caches:
+    - source_rgb
+    - kubric_geometry
+    - pointodyssey_annotations
+    - pointodyssey_depth
+    - dynamic_replica_depth
+    - dynamic_replica_trajectories
+  tmp_symlink_dependency: removed
+  observed_inventory:
+    kubric_geometry_clips: 5737
+    pointodyssey_annotation_scenes: 109
+    pointodyssey_depth_scenes: 109
+    dynamic_replica_depth_streams: 435
+    dynamic_replica_trajectory_streams: 435
+h023_legacy_facade_removal:
+  status: complete_validation_passed
+  task: T-20260823081332-bcf490
+  removed_modules:
+    - dense4d
+    - dense4d_runtime
+    - training256
+    - wan
+    - geometry
+    - pointodyssey
+    - dynamic_replica
+  canonical_root_modules:
+    - __init__
+  text_conditions_module: worldbridge.data.text_conditions
+  load_empty_condition_alias: removed
+  tests_passed: 70
+  compileall: passed
+  shell_syntax: passed
+  canonical_import_audit: passed
+  diff_check: passed
+h023_default_sim3_inference:
+  status: complete_validation_passed
+  task: T-20260823081332-bcf490
+  alignment: one_joint_proper_umeyama_sim3_per_requested_clip_source_targets
+  alignment_direction: prediction_to_dataset_ground_truth
+  default_enabled: true
+  disable_flag: --no-sim3
+  preserves_raw_prediction: xyz_meters_raw
+  aligned_prediction: xyz_meters
+  persistent_output_root: /data/WorldBridge4D-runs/inference-step100000
+  outside_persistent_root: rejected
+  tests_passed: 73
+  compileall: passed
+  cli_help: passed
+  diff_check: passed
+h023_step100000_three_dataset_inference:
+  status: complete_artifacts_verified
+  task: T-20260823090727-b81517
+  checkpoint_step: 100000
+  checkpoint_sha256: 3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2
+  protocol:
+    clip_index: 0
+    source: 0
+    targets: all_21
+    target_chunk: 2
+    sim3: joint_dataset_gt_default
+  devices:
+    - 0
+    - 1
+  output_root: /data/WorldBridge4D-runs/inference-step100000
+  initial_kubric_run: R-20260823090812-5b2890
+  initial_kubric_result: failed_lazy_only_cache_rejected_before_model_load
+  fix: inference_allows_lazy_only_latent_tier_and_fails_on_requested_cache_miss
+  fix_tests_passed: 73
+  successful_runs:
+    kubric: R-20260823090947-f41fee
+    pointodyssey: R-20260823090956-0cdbc8
+    dynamic_replica: R-20260823091007-a50d23
+  results:
+    kubric:
+      scale: 0.9973505088341077
+      rmse_before_m: 1.8403765692041187
+      rmse_after_m: 1.8379107176178069
+      sha256: 0f0ba96ea58f859c483c4b43d820affcf10f9f07afe8587d1c08905d0d8da6b1
+    pointodyssey:
+      scale: 0.9088529441090288
+      rmse_before_m: 0.9558807842972527
+      rmse_after_m: 0.9353527499584039
+      sha256: c6ca2ab5c499336071e3ff73362153df886f51e0673f63015a272bdb2679149f
+    dynamic_replica:
+      scale: 1.0207717754615304
+      rmse_before_m: 0.2218493382696255
+      rmse_after_m: 0.21816117704398316
+      sha256: 61283f1c6625f209bcf6354ba10eda2aee4617d3410753239137bebfaed11294
+  artifact_shape:
+    - 21
+    - 3
+    - 256
+    - 256
+  finite_raw_and_aligned: true
+h023_exhaustive_validation_evaluation:
+  status: implementation_complete_validation_latents_pending
+  task: T-20260823091808-48c86a
+  split: validation
+  clips:
+    kubric: 147
+    pointodyssey: 1620
+    dynamic_replica: 672
+  sources_per_clip: 21
+  targets_per_source: 21
+  source_target_pairs: 1075599
+  pair_metric: mean_valid_point_epe_m
+  sim3_scope: one_joint_transform_per_clip_source_over_all_targets
+  outputs:
+    - per_clip_resumable_json
+    - dataset_summary
+    - source_target_21x21_matrix
+  persistent_output_root: /data/WorldBridge4D-runs/evaluation-step100000
+  tests_passed: 77
+  pointodyssey_resume:
+    completed_clips_before_fix: 21
+    failure: source_with_zero_valid_points_cannot_fit_sim3
+    resolution: retain_null_pair_metrics_and_mark_source_sim3_insufficient
+  kubric_complete:
+    run: R-20260823102833-3d727b
+    clips: 147
+    valid_source_target_pairs: 64827
+    raw_macro_epe_m: 0.7238735040576187
+    sim3_macro_epe_m: 0.48028830139482104
+    valid_points: 4248502272
+    summary: /data/WorldBridge4D-runs/evaluation-step100000/kubric/summary.json
+  kubric_worst_render:
+    status: cancelled_before_start_by_user
+    reason: historical_step95000_checkpoint_no_longer_exists
+    selection: top_raw_epe_sources_with_unique_validation_clips
+    count: 4
+    output_root: /tmp/worldbridge4d-worst-trajectory-renders-step95000
+    tests_passed: 79
+  cancellation:
+    requested_by_user: true
+    reason: GPUs unresponsive
+    pointodyssey_clips_persisted: 720
+    dynamic_replica_clips_persisted: 406
+    kubric_clips_complete: 147
+    terminated_runs:
+      - R-20260823104419-797a1f
+      - R-20260823104456-10aba5
+      - R-20260823144244-b704f2
+h027_pre_attention_rgb_query_to130k:
+  status: complete_step130000_checkpoint_registered_wandb_finished
+  task: T-20260825130839-23281e
+  runs:
+    status_incompatible_dependency_failed_before_start: R-20260825131101-94c111
+    exact_resume_to130000: R-20260825131155-846989
+  source_checkpoint:
+    global_step: 105000
+    path: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step110000/checkpoint-0105000.pt
+    bytes: 3932667607
+    sha256: 2185b6dd31a672c90be3746e09092a16bab6cecc4e0b5bed469e7a9c98e97f41
+    artifact: artifact://H027/R-20260824224329-9c91cc/checkpoint/2185b6dd31a672c9
+  architecture: ungated_additive_pre_attention_rgb_query
+  protocol:
+    target_step: 130000
+    trainable_mode: decoder_only
+    wan_frozen: true
+    geometry_frozen: true
+    physical_gpus:
+      - 1
+      - 5
+    world_size: 2
+    microbatch_per_gpu: 2
+    accumulation: 2
+    targets_per_source: 19
+    seed: 20260812
+    schedule_horizon_steps: 150000
+    checkpoint_steps:
+      - 110000
+      - 115000
+      - 120000
+      - 125000
+      - 130000
+    wandb_log_after_step: 105016
+    pointodyssey_auto_stop: false
+  tracking:
+    wandb_run_id: od2wlwrq
+    wandb_url: https://wandb.ai/zhaigong2023-sjtu-hpc-center/worldbridge4d/runs/od2wlwrq
+  output: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step130000
+  final_checkpoint:
+    global_step: 130000
+    path: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step130000/checkpoint-0130000.pt
+    bytes: 3932667735
+    sha256: 9fadf33559bfd2402b2d3330c97d620f8d16d6d90820a223c07601ba504ba7b7
+    artifact: artifact://H027/R-20260825131155-846989/checkpoint/9fadf33559bfd240
+  final_training_window_evidence:
+    final400_vs_step105k_first400:
+      aggregate_loss_pct: -4.14
+      aggregate_epe_pct: -8.93
+      pointodyssey_loss_pct: -30.45
+      pointodyssey_epe_pct: -29.92
+    final1000_vs_step105k_first1000:
+      aggregate_loss_pct: -1.63
+      aggregate_epe_pct: -3.66
+      pointodyssey_loss_pct: -8.37
+      pointodyssey_epe_pct: -10.91
+    final5000_vs_step105k_first5000:
+      aggregate_loss_pct: -3.32
+      aggregate_epe_pct: -3.03
+      all_three_datasets_improved: true
+    final400_vs_h027_step100k_initial400:
+      aggregate_loss_pct: -11.76
+      aggregate_epe_pct: -10.52
+      pointodyssey_loss_pct: -21.02
+      pointodyssey_epe_pct: -14.57
+      all_three_datasets_improved: true
+    finite: true
+    peak_cuda_memory_gib: 70.564
+    projection_weight_rms: 0.02196
+    analysis: /tmp/h027_step130000_analysis.json
+    projection_analysis: /tmp/h027_step130000_projection.json
+  completion:
+    exit_code: 0
+    trainer_marker: THREE_DATASET_256_FSDP_OK
+    tracking_status: finished
+    wandb_uploaded: true
+h030_h027_130k_cycle_kubric_gpu57_k13:
+  status: queued_waiting_for_gpu_lease
+  task: T-20260901153324-39dd05
+  run: R-20260901154303-91eed3
+  start_checkpoint: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step130000/checkpoint-0130000.pt
+  start_checkpoint_sha256: 9fadf33559bfd2402b2d3330c97d620f8d16d6d90820a223c07601ba504ba7b7
+  physical_gpus:
+    - 5
+    - 7
+  world_size: 2
+  microbatch_per_gpu: 1
+  gradient_accumulation: 4
+  targets_per_source: 13
+  start_step: 130000
+  target_step: 140000
+  cycle: kubric_only_max_gap_visible_visible_pixel_stride4_weight0.02
+  tests_passed: 77
+updated_at: 2026-09-08T03:22:34.853Z

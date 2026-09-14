@@ -1,0 +1,18 @@
+{
+  "source_refs": {
+    "H030": "archive/h030-pre-main-20260914",
+    "H031": "archive/h031-pre-main-20260914",
+    "main": "main"
+  },
+  "H030_added_top_level_keys": [
+    "h030_gpu23_recovery_20260908"
+  ],
+  "differing_top_level_keys_H031_current_values_preferred": [
+    "current_task",
+    "active_hypotheses",
+    "next_step",
+    "updated_at"
+  ],
+  "historical_variants": "All three exact pre-merge STATE files preserved alongside this report; all branch histories retained.",
+  "main_scope": "local only; no training process/config/checkpoint changes"
+}
