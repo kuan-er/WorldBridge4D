@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WorldBridge4D exhaustive validation evaluation entrypoint."""
+"""WorldBridge4D fixed-budget 122-query validation evaluation entrypoint."""
 from pathlib import Path
 import sys
 

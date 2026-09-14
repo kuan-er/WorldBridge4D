@@ -82,7 +82,7 @@ point-weighted EPE 和 21×21 EPE 矩阵；默认每个 source 联合拟合一�
 - `src/worldbridge/data/`：数据集、geometry、cache、sampling 与 factory。
 - `src/worldbridge/trainer/`：训练循环、objective、optimizer、FSDP 与 checkpoint。
 - `src/worldbridge/evaluation/`：推理、counterfactual evaluator 与 metrics。
-- `scripts/`：仅五个薄入口；数据/cache/checkpoint 子命令统一由 `prepare_data.py` 调度。
+- `scripts/`：五个生产薄入口；数据/cache/checkpoint 子命令统一由 `prepare_data.py` 调度，VDPM/4RC official-native wrappers 收纳在 `scripts/external_inference/`。
 - `tests/`：当前三数据集、几何、训练和 exact-resume 回归测试。
 - `docs/`：当前数据协议、环境和 K19 cache/prefetch 经验。
 - `research/`：历史研究证据；其中提到的旧文件应从对应 Git commit 恢复。
