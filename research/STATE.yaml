@@ -1,5 +1,6 @@
-current_task: T-20260901153324-39dd05
+current_task: T-20260908032232-e95da1
 active_hypotheses:
+  - H031
   - H030
 recent_results:
   - run_id: R-20260808164859-ac2cfe
@@ -1129,14 +1130,21 @@ h027_pre_attention_rgb_query_to130k:
     trainable_mode: decoder_only
     wan_frozen: true
     geometry_frozen: true
-    physical_gpus: [1, 5]
+    physical_gpus:
+      - 1
+      - 5
     world_size: 2
     microbatch_per_gpu: 2
     accumulation: 2
     targets_per_source: 19
     seed: 20260812
     schedule_horizon_steps: 150000
-    checkpoint_steps: [110000, 115000, 120000, 125000, 130000]
+    checkpoint_steps:
+      - 110000
+      - 115000
+      - 120000
+      - 125000
+      - 130000
     wandb_log_after_step: 105016
     pointodyssey_auto_stop: false
   tracking:
@@ -1172,7 +1180,7 @@ h027_pre_attention_rgb_query_to130k:
       all_three_datasets_improved: true
     finite: true
     peak_cuda_memory_gib: 70.564
-    projection_weight_rms: 0.021960
+    projection_weight_rms: 0.02196
     analysis: /tmp/h027_step130000_analysis.json
     projection_analysis: /tmp/h027_step130000_projection.json
   completion:
@@ -1186,7 +1194,9 @@ h030_h027_130k_cycle_kubric_gpu57_k13:
   run: R-20260901154303-91eed3
   start_checkpoint: /data/WorldBridge4D-runs/h027-pre-attention-rgb-query-step130000/checkpoint-0130000.pt
   start_checkpoint_sha256: 9fadf33559bfd2402b2d3330c97d620f8d16d6d90820a223c07601ba504ba7b7
-  physical_gpus: [5, 7]
+  physical_gpus:
+    - 5
+    - 7
   world_size: 2
   microbatch_per_gpu: 1
   gradient_accumulation: 4
@@ -1195,4 +1205,4 @@ h030_h027_130k_cycle_kubric_gpu57_k13:
   target_step: 140000
   cycle: kubric_only_max_gap_visible_visible_pixel_stride4_weight0.02
   tests_passed: 77
-updated_at: 2026-09-04T05:47:17Z
+updated_at: 2026-09-08T03:22:34.853Z

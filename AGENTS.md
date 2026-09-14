@@ -8,6 +8,6 @@
 - Physical GPUs 0 and 1 are the default GPU set.                                                                                            
 - Other physical GPU IDs may be used only when the user explicitly authorizes the exact IDs in the current conversation. Never infer        
  authorization from GPU availability and never silently fall back to or substitute another GPU.                                                
-- Every GPU PRL launch, enqueue, or fork must declare `resources.gpu_ids` with the exact selected physical GPU IDs. Two-rank training must  
+ - Every GPU PRL launch, enqueue, or fork must declare `resources.gpu_ids` with the exact selected physical GPU IDs. Two-rank training must  
  request exactly two explicitly selected GPUs. 
 - After an event, decide whether to inspect, modify, retry, or stop.
