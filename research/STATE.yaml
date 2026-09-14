@@ -1,4 +1,19 @@
 current_task: T-20260908032232-e95da1
+h031_epe_audit_20260914:
+  user_question: old256_EPE0p37_vs_current_about0p58_convergence
+  run: R-20260914020544-ae32d0
+  status: succeeded020801957Z_N-5d82970b3be72122dbb2_acknowledged
+  report: /data/WorldBridge4D-runs/h031-epe-trend180k-audit-20260914-v2/summary.json
+  history: 4627_API_rows_4617_unique_logged_steps_10_exact_duplicates_no_conflicts_through180000_not_full_update_coverage
+  Kubric_1k_means_176001_to180000: [0.560859218293168, 0.5576148775496416, 0.5604701036764673, 0.5552696484953995]
+  Kubric_first1000_last1000: [0.564340192549236, 0.5552696484953995]
+  old256_Kubric_final1k_BF16_FP32: [0.37325756743219163, 0.3786990229288737]
+  current_PO_DR_final1k: [0.1980349148218652, 0.11001404826736759]
+  interpretation: descriptive_near_plateau_about0p56_with1p61percent_improvement_not_proven_convergence_or_causal_resolution_regression
+  metric: valid_point_mean_3D_L2_error_in_meters_not_pixels_no_automatic_scale_with_resolution
+  caveat: old_new_samples_K_mixture_and_diagnostic_coverage_differ_batch_macro_not_fixed_validation
+  recommendation: fixed_clip_source_target_masks_old_and_current_checkpoints_crossed256_512_before_training_changes
+  action: training_unchanged_GPU6_7_B1A4K11_no_stop_or_LR_change
 h031_B1_K11_gpu67_20260913:
   authority: user_explicit_K11_same_B1A4_GPU6_7_and200k_after_K9_firstupdate_capacity_passed
   CPU_gate: R-20260913031306-99fcd6
