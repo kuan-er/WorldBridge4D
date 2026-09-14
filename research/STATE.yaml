@@ -1148,7 +1148,7 @@ h031_parallel_gpu6_20260908:
   admission_MiB: 45056
   caveat: K8GiB_budget_above_observed_process6p2_DR32_plus4_safety_no_allocator_cap
   throughput: baseline_K918_at3214seconds_restart_revalidates_old_RGB_before_new_K_writes_IO_bottleneck_unproven
-active_hypotheses: [H030, H031]
+active_hypotheses: [H031]
 recent_results:
   - run_id: R-20260808164859-ac2cfe
     kind: h005_unit_tests
@@ -3787,7 +3787,18 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-13T23:49:46Z
+updated_at: 2026-09-14T04:33:09Z
+main_consolidation_20260914:
+  authority: repository_owner_explicit_local_main_merge_and_unused_worktree_cleanup_keep_current_training
+  H030_task: finished_by_PRL_20260914T043309Z
+  H031_task: remains_active_training_and_endpoint_review_unchanged
+  CPU_validation: R-20260914043257-a7e72d_519_passed_in41p99s
+  validation_commit: 4ccee6687dc32c99943d2461d517d0faffa4c361
+  resolution: retain_H030_256_B2K9_plus_all_H031_native_profiles_reject_mixed_flags
+  originals: research/archive/main-consolidation-20260914
+  backup: /data/WorldBridge4D-runs/pre-main-consolidation-20260914T032858Z
+  cleanup_policy: only_terminal_unreferenced_worktrees_after_backup_preserve_other_sessions_and_all_outputs
+  remote: no_push
 
 # H030-only state retained during owner-requested consolidation.
 h030_gpu23_recovery_20260908:
