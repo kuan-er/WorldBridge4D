@@ -1,11 +1,22 @@
-updated_at: '2026-09-24T09:51:30Z'
+updated_at: '2026-09-24T09:59:00Z'
 active_hypothesis: H032
 active_task: T-20260924090829-46789c
-next_step: Capacity20 succeeded through196020; queued CPU checkpoint validation/review must succeed before existing GPU1/6 continuation to210k. No configuration change or retry.
+next_step: User changed K9 to K10; K10 CPU gate571tests and6real probes passed. Await K10 full-resume first update and20-update capacity, then queued full-state review and continuation to210k.
 latest:
-  status: GPU1_6_capacity20_succeeded_checkpoint_review_pending
-  authority: user_approves_perframe_intrinsics_and_explicit_physical_GPU1_6_now_free
-  execution_commit: 0af97bd7099f1c23198af6c52da05155d440d482
+  status: K10_GPU1_6_process_started_initializing
+  authority: user_changes_K_to10_retains_perframe_intrinsics_and_explicit_physical_GPU1_6
+  execution_commit: 16c01a1b3d83b4fcc831a2cfb27c4a5702d008a3
+  K10_resume:
+    step: 196020
+    checkpoint: /data/WorldBridge4D-runs/h032-camera-ray-k10-handoff-20260924/resume.pt
+    sha256: ea7eb9b4e770888ac73c656f2a89419ff0445b4b19da0ef53bac02bfaf92430a
+    fullstate_review: R-20260924093945-b0a7bf_succeeded095205066Z
+    optimizer: all1104_retained_zero_fresh_including51_camera
+    K9_continuation_retired: R-20260924094002-93cb58_SIGTERM095304551Z_noSIGKILL_no_newer_checkpoint
+    capacity_target: 196040
+    pairs_per_update: 80
+    diagonal_pairs_per_update: 8
+    caveat: K_change_alters_target_sampling_not_exact_K9_trajectory_replay
   code_baseline: ef5fc4634c7518cf295e70a3e56942bf98cdc016
   baseline_note: H031 code restored into new H032 PRL worktree; shared main and H031 untouched.
   implementation:
@@ -13,7 +24,7 @@ latest:
     transform: T_source_from_target
     intrinsics: source_independent21_perframe_FOV_queries_no_clip_averaging_center_principal
     losses: balanced_diagonal_offdiagonal_XYZ_GT_ray_front_pose_rotation_pose_translation_FOV
-    sampling: exactly_one_valid_diagonal_plus8_non_diagonal
+    sampling: exactly_one_valid_diagonal_plus9_non_diagonal
     camera_parameters: 1414409
     camera_parameter_tensors: 51
     migration: strict_old_model_plus_all1053_old_Adam_RNG2_counters_retained_only_camera_fresh
@@ -31,11 +42,10 @@ latest:
     clips_seen: {kubric: 600664, pointodyssey: 453120, dynamic_replica: 514216}
     preservation: all_original_checkpoints_untouched_new_independent_experiment
   validation:
-    run: R-20260924093917-a5361c
-    tests: 565_passed_in33p97s_at094030839Z
-    gate: accepted094115929Z_model_schema1053old_51new_and6_actual_GT_probes_passed
-    GT_ray_max_m: 0.000008635888661956415
-    config_sha256: 487e6f913c494b3c7736be1414c73abbf48f4988e28bbdf4324af1074266d95f
+    run: R-20260924095719-d981d8
+    tests: 571_passed_in37p85s_at095813514Z
+    gate: accepted095837287Z_196020SHA_all1104Adam_and6_actual_K10_GT_probes
+    config_sha256: 11b81435c8b2590c81f5a9e3db0fc872fb21b6c046421af6eebfc6abe993e85a
     scope: full_CPU_suite_perframe_zoom_labels_FP32_BF16_gradients_source_independence_ray_masks_pose_direction_invalid_pose_mask_structural_Adam_migration_legacy_tests
     not_proven: real_FSDP_migration_native_memory_fit_new_checkpoint_or_quality
     environment: python3p11p10_torch2p5p1cu121
@@ -58,7 +68,8 @@ latest:
     decision: no_focal_averaging_no_clip_drop_no_GT_mutation_no_threshold_relaxation
   training:
     submitted: true
-    actual_first_update:
+    K10_actual_first_update: not_yet_observed
+    historical_K9_first_update:
       notification: N-c224da8bc4c0d145c473_acknowledged
       step: 196001
       at: '2026-09-24T09:45:44.472Z'
@@ -71,10 +82,11 @@ latest:
       camera_head_lr: 2.0e-7
       interpretation: first_full_forward_backward_optimizer_success_not_long_run_capacity_or_quality_proof
     structural_restore: 1053_old_Adam_retained_51_camera_fresh_RNG2_at094428996Z
-    process_started_at: '2026-09-24T09:41:58.911Z'
-    torchrun_begin_at: '2026-09-24T09:42:26.236Z'
-    rank_workers: [911538, 911539]
-    observed_phase: capacity20_terminal_success_checkpoint_review_waiting_for_validation
+    historical_K9_process_started_at: '2026-09-24T09:41:58.911Z'
+    historical_K9_torchrun_begin_at: '2026-09-24T09:42:26.236Z'
+    historical_K9_rank_workers: [911538, 911539]
+    K10_process_started_at: '2026-09-24T09:59:14.545Z'
+    observed_phase: K10_initializing_no_full_restore_or_first_update_observed
     capacity_result:
       notification: N-ac90cf116c7e75e31d6a_acknowledged
       completed_step: 196020
@@ -84,22 +96,22 @@ latest:
       complete_updates: 20
       clips_increment: {kubric: 80, pointodyssey: 40, dynamic_replica: 40}
       final_camera_head_lr: 4.0e-6
-      checkpoint_fullstate_SHA_review: pending
+      checkpoint_fullstate_SHA_review: accepted_R-20260924093945-b0a7bf_1104Adam_all_increment20_RNG2
     wandb_id: thlx6gtz
     physical_gpus: [1, 6]
-    CPU_gate: R-20260924093917-a5361c
-    capacity20: R-20260924093936-06b1b3
-    capacity_review: R-20260924093945-b0a7bf
-    continuation_to210k: R-20260924094002-93cb58
-    endpoint_review: R-20260924094012-3cab27
+    CPU_gate: R-20260924095719-d981d8
+    capacity20: R-20260924095738-dce157
+    capacity_review: R-20260924095748-aa1413
+    continuation_to210k: R-20260924095832-a6900f
+    endpoint_review: R-20260924095842-8398e6
     dependencies: all_success_only_worker_relay_no_LLM_handoff
-    config: configs/h032_camera_ray_196000_to210000.yaml
-    launcher: research/analysis/h032_camera_train.py
-    output: /data/WorldBridge4D-runs/h032-source-camera-ray-196000-to210000-20260924
-    retain: B1_A4_K9_K512_DR512_PO256_mix50_25_25_existing183000_warmup_hold_Wan5e-7_otherold3e-6_seed20260812_decoder424242
+    config: configs/h032_camera_ray_k10_to210000.yaml
+    launcher: research/analysis/h032_camera_k10.py
+    output: /data/WorldBridge4D-runs/h032-source-camera-ray-k10-to210000-20260924
+    retain: B1_A4_K512_DR512_PO256_mix50_25_25_existing183000_warmup_hold_Wan5e-7_otherold3e-6_seed20260812_decoder424242
     new_camera: seed424243_LR1e-4_500update_warmup_anchored196000
     saves: every1000_keep3_plus_pinned_source_and_capacity_checkpoint
-    tracking: new_WandB_experiment_preserve_old_zypk1th1_history
+    tracking: resume_same_H032_thlx6gtz_update_dashboard_K10_preserve_original_zypk1th1_and_K9_output
     resources: exact_GPU1_6_exclusive77824MiB_each_no_foreign_admission_48h_wait_64GiB_disk_reserve
     termination: checkpoint_first_SIGTERM_grace1800s_no_SIGKILL_no_auto_retry
     events: first_update_structural_restore_fatal_exit_3600s_no_progress_plus197000_update
@@ -107,4 +119,5 @@ latest:
 recent_results:
   - User confirmed per-frame intrinsics and physical1/6;0/6 proposal retired.
   - Per-frame calibration audit passed with explicit invalid-pose masking, no clip removal.
-  - All20 capacity updates across K512/PO256/DR512 completed through196020; both ranks exited0. Full-state checkpoint review and resumed first update remain pending.
+  - K9 full196020 checkpoint independently accepted; user requests K10, old continuation stopped bySIGTERM.
+  - K10 CPU571tests and6actual GT probes accepted; exact GPU1/6 success-only K10 capacity/review/210k relay queued.
