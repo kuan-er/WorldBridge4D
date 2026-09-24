@@ -334,6 +334,11 @@ class DynamicReplicaDataset:
         depth, valid = _depth(path, self.image_size, getattr(self, 'depth_cache_root', DEPTH_CACHE_ROOT))
         return depth, valid, None  # Sparse track IDs are not dense segmentation.
 
+    def supervision_camera(self, index: int) -> dict[str, np.ndarray | float]:
+        K = np.stack([_pixel_intrinsics(frame['viewpoint'], self.image_size)
+                      for frame in self.rows[int(index)]['frames']])
+        return {**self.cycle_camera(index), 'intrinsics': K.astype(np.float32)}
+
     def cycle_camera(self, index: int) -> dict[str, np.ndarray | float]:
         """Return the camera contract used by differentiable pixel cycles."""
         row = self.rows[int(index)]

@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .camera import CameraOutput
 
 import torch
 
@@ -90,3 +93,4 @@ class DenseQueryOutput:
     normalized_xyz: torch.Tensor
     low_resolution_feature: torch.Tensor
     coarse_normalized_xyz: torch.Tensor | None = None
+    camera: CameraOutput | None = None

@@ -63,6 +63,11 @@ def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[
         if grouped_rgb != rgb_ids:
             missing = [names_by_id[value] for value in rgb_ids - grouped_rgb]
             raise RuntimeError(f"source RGB optimizer grouping lost parameters: {missing[:8]}")
+    if getattr(model, 'camera_head', None) is not None:
+        camera = [p for p in model.camera_head.parameters() if p.requires_grad]
+        if camera:
+            groups.append({'params': camera, 'lr': float(config['camera_supervision']['learning_rate']),
+                           'name': 'camera_head'})
     if not groups:
         raise ValueError("model has no trainable parameters")
     return groups

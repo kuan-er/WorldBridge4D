@@ -148,6 +148,18 @@ def build_real_model(
         pre_attention_rgb_query=bool(config.get("pre_attention_rgb_query", False)),
         native_512=bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False)),
     ).to(device=device, dtype=dtype)
-    model = DenseQueryWanModel(backbone, decoder)
+    camera_head = None
+    camera_cfg = config.get('camera_supervision')
+    if camera_cfg is not None:
+        if not structured:
+            raise ValueError('camera queries require structured physical-frame features')
+        from .camera import SourceConditionedCameraHead
+        torch.manual_seed(int(camera_cfg['seed']))
+        camera_head = SourceConditionedCameraHead(
+            input_dim=int(config['geometry_dim']), dim=int(camera_cfg['dim']),
+            num_heads=int(camera_cfg['num_heads']), num_frames=int(config['clip_length']),
+            memory_grid=int(camera_cfg['memory_grid']),
+        ).to(device=device, dtype=dtype)
+    model = DenseQueryWanModel(backbone, decoder, camera_head)
     model.configure_trainable(str(config.get("trainable_mode", "full")))
     return model

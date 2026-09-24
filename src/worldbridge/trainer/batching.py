@@ -47,6 +47,7 @@ def load_geometry(
     use_cycle: bool = False,
     boundary_supervision: Mapping[str, Any] | None = None,
     edge_contrast_enabled: bool = False,
+    camera_supervision: bool = False,
 ) -> TimedGeometryValue:
     """Load one eligible clip/source pair and report worker execution time."""
     task_started = time.perf_counter()
@@ -78,7 +79,7 @@ def load_geometry(
                         candidate, int(source_candidate)
                     )
                     eligible = np.asarray(valid_candidate, dtype=bool).reshape(21, -1).any(axis=1)
-                    if int(eligible.sum()) >= int(required_targets):
+                    if int(eligible.sum()) >= int(required_targets) and (not camera_supervision or eligible[int(source_candidate)]):
                         source = int(source_candidate)
                         xyz, valid, visible = xyz_candidate, valid_candidate, visible_candidate
                         break
@@ -89,7 +90,7 @@ def load_geometry(
             else:
                 source, xyz, valid = source_with_eligible_targets(
                     dataset, candidate, candidate_sources,
-                    min_targets=required_targets,
+                    min_targets=required_targets, require_diagonal=camera_supervision,
                 )
         except ValueError as error:
             last_error = error
@@ -98,6 +99,10 @@ def load_geometry(
         # deterministic geometry fallback clip/source.
         source_rgb = dataset.source_rgb(candidate, source) if use_source_rgb else None
         camera = camera_loader(candidate) if use_cycle else None
+        if camera_supervision:
+            from .camera_objective import validate_supervision_camera
+            camera = dataset.supervision_camera(candidate)
+            validate_supervision_camera(camera, *valid.shape[-2:])
         boundary = contrast_edges = None
         if boundary_supervision is not None:
             loader = getattr(dataset, 'source_boundary_context', None)
@@ -144,6 +149,7 @@ class GeometryPrefetcher:
         cycle_dataset_names: tuple[str, ...] = ("kubric",),
         boundary_supervision: Mapping[str, Any] | None = None,
         edge_contrast_enabled: bool = False,
+        camera_supervision: bool = False,
         start_step: int,
         target_steps: int,
         depth: int,
@@ -163,6 +169,9 @@ class GeometryPrefetcher:
         self.cycle_dataset_names = frozenset(str(name) for name in cycle_dataset_names)
         self.boundary_supervision = None if boundary_supervision is None else dict(boundary_supervision)
         self.edge_contrast_enabled = bool(edge_contrast_enabled)
+        self.camera_supervision = bool(camera_supervision)
+        if self.camera_supervision and geometry_replay is not None:
+            raise ValueError('legacy geometry replay lacks camera-supervised sampling contract')
         self.target_steps = int(target_steps)
         self.depth = int(depth)
         self.next_step = int(start_step)
@@ -204,6 +213,7 @@ class GeometryPrefetcher:
                 self.cycle_enabled and dataset_name in self.cycle_dataset_names,
                 self.boundary_supervision,
                 self.edge_contrast_enabled,
+                self.camera_supervision,
             )
             for slot, (index, _source, _rng) in enumerate(sample_plans)
         ]
