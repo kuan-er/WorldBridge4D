@@ -10,7 +10,7 @@ sys.path.insert(0,str(ROOT/'src'))
 from worldbridge.data.factory import load_training_datasets
 from worldbridge.trainer.camera_objective import validate_supervision_camera
 from worldbridge.utils.io import atomic_json
-OUT=Path('/data/WorldBridge4D-runs/h032-camera-calibration-audit-20260924')
+OUT=Path('/data/WorldBridge4D-runs/h032-camera-calibration-audit-r2-20260924')
 
 def main():
     assert os.environ.get('CUDA_VISIBLE_DEVICES') == ''

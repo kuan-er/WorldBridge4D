@@ -80,6 +80,27 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError("fsdp_master_precision must be model or fp32")
     if master_precision == "fp32" and config.get("precision") != "bf16":
         raise ValueError("FP32 master requires BF16 compute")
+    camera = config.get('camera_supervision')
+    if camera is not None:
+        keys = {'dim','num_heads','memory_grid','seed','learning_rate','warmup_steps',
+                'phase_start_step','loss_weights','skip_zero_weight_cycle'}
+        if not isinstance(camera, dict) or set(camera) != keys:
+            raise ValueError('camera supervision requires the explicit source-conditioned contract')
+        if (mode != 'full' or config.get('coordinate_frame') != 'source'
+                or not config.get('native_kubric512_full') or config.get('targets_per_source') != 9
+                or config.get('backbone_readout') != 'wan_hidden_structured'
+                or config.get('full_mode_unfreeze_resume') or config.get('boundary_supervision') is not None):
+            raise ValueError('camera extension requires full/source/nativeK9 without other structural profiles')
+        if (camera['dim'] != 256 or camera['num_heads'] != 8 or camera['memory_grid'] != 16
+                or int(camera['warmup_steps']) < 1 or int(camera['phase_start_step']) < 0
+                or not np.isfinite(camera['learning_rate']) or camera['learning_rate'] <= 0):
+            raise ValueError('invalid camera head architecture or learning rate')
+        weights = camera['loss_weights']
+        if (set(weights) != {'diagonal_xyz','offdiagonal_xyz','ray','front','pose_rotation','pose_translation','fov'}
+                or any(not np.isfinite(v) or v <= 0 for v in weights.values())):
+            raise ValueError('camera loss weights must be explicit finite positive values')
+        if camera['skip_zero_weight_cycle'] and float(config.get('cycle_reprojection_weight', 0)) != 0:
+            raise ValueError('cannot skip a nonzero cycle objective')
     cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
     cycle_names = tuple(str(name) for name in config.get(
         "cycle_reprojection_datasets", ["kubric"],
@@ -304,6 +325,10 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             if mode == "decoder_only" else
             {"wan_backbone", "geometry_adapter", "dense_decoder", "source_rgb_decay", "source_rgb_no_decay"}
         )
+        if camera is not None:
+            expected_groups.add('camera_head')
+            if rates.get('camera_head') != camera['learning_rate']:
+                raise ValueError('camera group schedule must match its learning rate')
         if set(rates) != expected_groups:
             raise ValueError(f"LR restart requires explicit rates for all {mode} groups")
         if any(not np.isfinite(float(rate)) or float(rate) <= 0 for rate in rates.values()):

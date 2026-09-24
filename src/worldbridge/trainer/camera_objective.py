@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from ..models.camera import CameraOutput
-from .objective import masked_pair_smooth_l1
 
 
 def validate_supervision_camera(camera, height: int, width: int) -> dict[str, float]:
@@ -15,8 +14,13 @@ def validate_supervision_camera(camera, height: int, width: int) -> dict[str, fl
         raise ValueError('camera metadata requires21 K/R/position entries')
     if not all(np.isfinite(x).all() for x in (K,R,p)):
         raise ValueError('nonfinite GT camera')
-    if not np.allclose(R.transpose(0,2,1) @ R, np.eye(3), atol=2e-5) or not np.allclose(np.linalg.det(R),1,atol=2e-5):
-        raise ValueError('GT camera rotations are not SO(3)')
+    orth_error = float(np.max(np.abs(R.transpose(0,2,1) @ R - np.eye(3))))
+    det_error = float(np.max(np.abs(np.linalg.det(R)-1)))
+    # PO annotation matrices are rounded (observed ~6e-4 orthogonality error).
+    # Permit only bounded near-rigid metadata; project relative rotation for
+    # pose supervision below, never mutate source annotation or XYZ targets.
+    if orth_error > 0.003 or det_error > 0.003:
+        raise ValueError(f'GT camera is not near SO(3): {orth_error=}, {det_error=}')
     if (K[:,0,0] <= 0).any() or (K[:,1,1] <= 0).any():
         raise ValueError('GT focal must be positive')
     if not np.allclose(K[:,2], [0,0,1]) or not np.allclose(K[:,0,1],0) or not np.allclose(K[:,1,0],0):
@@ -30,7 +34,8 @@ def validate_supervision_camera(camera, height: int, width: int) -> dict[str, fl
     if principal_offset > 1.0:
         raise ValueError(f'centered-camera assumption violated: {principal_offset=}')
     return dict(focal_relative_drift=focal_drift, principal_drift_px=principal_drift,
-                principal_center_offset_px=principal_offset)
+                principal_center_offset_px=principal_offset, rotation_orthogonality_error=orth_error,
+                rotation_determinant_error=det_error)
 
 
 def supervision_camera_batch(cameras, device):
@@ -41,8 +46,14 @@ def supervision_camera_batch(cameras, device):
 def relative_pose_gt(rotations: torch.Tensor, positions: torch.Tensor, source: torch.Tensor):
     batch = torch.arange(len(source), device=source.device)
     Rs, ps = rotations[batch,source], positions[batch,source]
-    R = Rs.transpose(-1,-2)[:,None] @ rotations
-    p = torch.einsum('bij,btj->bti', Rs.transpose(-1,-2), positions-ps[:,None])
+    # Invert the actual annotation basis, not its transpose (PO is rounded).
+    R = torch.linalg.solve(Rs[:,None], rotations)
+    p = torch.linalg.solve(Rs[:,None], (positions-ps[:,None])[...,None])[...,0]
+    u, _, vh = torch.linalg.svd(R)
+    sign = torch.linalg.det(u @ vh)
+    correction = torch.ones_like(sign)[...,None].expand(*sign.shape,3).clone()
+    correction[...,2] = sign
+    R = (u * correction[...,None,:]) @ vh
     return R, p
 
 
@@ -106,8 +117,15 @@ def camera_ray_objective(prediction, target_xyz, valid, source, target, output,
         raise RuntimeError('camera-enabled training did not return camera output')
     K, R, p = cameras
     diag = source == target
-    diag_xyz = masked_pair_smooth_l1(prediction.float(),target_xyz.float(),valid & diag[...,None,None],beta=beta)
-    off_xyz = masked_pair_smooth_l1(prediction.float(),target_xyz.float(),valid & ~diag[...,None,None],beta=beta)
+    safe_pred = torch.where(valid[:,:,None], prediction.float(), torch.zeros_like(prediction, dtype=torch.float32))
+    safe_gt = torch.where(valid[:,:,None], target_xyz.float(), torch.zeros_like(target_xyz, dtype=torch.float32))
+    errors = F.smooth_l1_loss(safe_pred,safe_gt,beta=beta,reduction='none').sum(2)
+    counts = valid.sum((-2,-1))
+    per_pair = errors.sum((-2,-1))/counts.clamp_min(1)
+    if not (diag & (counts>0)).any() or not (~diag & (counts>0)).any():
+        raise ValueError('balanced XYZ requires valid diagonal and non-diagonal pairs')
+    diag_xyz = per_pair[diag & (counts>0)].mean()
+    off_xyz = per_pair[~diag & (counts>0)].mean()
     ray, front, deviation = diagonal_ray_loss(prediction,valid,source,target,K,mean,scale,beta)
     losses = camera_supervision_losses(output,source[:,0],K,R,p,scale,*prediction.shape[-2:])
     losses.update(diagonal_xyz=diag_xyz, offdiagonal_xyz=off_xyz, ray=ray, front=front, ray_deviation_m=deviation)
