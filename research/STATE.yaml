@@ -1,9 +1,20 @@
-updated_at: '2026-09-24T09:59:00Z'
+updated_at: '2026-09-24T10:13:47Z'
 active_hypothesis: H032
 active_task: T-20260924090829-46789c
-next_step: User changed K9 to K10; K10 CPU gate571tests and6real probes passed. Await K10 full-resume first update and20-update capacity, then queued full-state review and continuation to210k.
+next_step: Continue the same K10 GPU1/6 Run uninterrupted to210000 under existing fatal/progress/197k events. Full196040 restore and first196041 update verified; no further planned capacity stop.
 latest:
-  status: K10_GPU1_6_process_started_initializing
+  status: K10_210k_continuation_full_restore_and_first_update_verified
+  latest_verified_checkpoint:
+    step: 196040
+    path: /data/WorldBridge4D-runs/h032-camera-ray-k10-handoff-20260924/capacity.pt
+    sha256: 3c137613dc7f89bbc6b8733637a6612d0883dc7a87621b3b51022e38cb2200e0
+    review_run: R-20260924095748-aa1413
+    accepted_at: '2026-09-24T10:09:19.740Z'
+    notifications: N-7d1250e2e44a35281aae_N-8a59ecba04b26f2a5c27_acknowledged
+    optimizer_states: 1104
+    camera_states: 51
+    RNG_ranks: 2
+    clips_seen: {kubric: 600824, pointodyssey: 453200, dynamic_replica: 514296}
   authority: user_changes_K_to10_retains_perframe_intrinsics_and_explicit_physical_GPU1_6
   execution_commit: 16c01a1b3d83b4fcc831a2cfb27c4a5702d008a3
   K10_resume:
@@ -68,7 +79,20 @@ latest:
     decision: no_focal_averaging_no_clip_drop_no_GT_mutation_no_threshold_relaxation
   training:
     submitted: true
-    K10_actual_first_update: not_yet_observed
+    K10_actual_first_update:
+      notification: N-5286eac78b2b6046badb_acknowledged
+      step: 196021
+      at: '2026-09-24T10:02:46.752Z'
+      dataset: kubric512
+      loss: 0.07059301668778062
+      peak_cuda_GiB_logged: 63.49941921234131
+      gradient_norm: 5.975056171417236
+      seconds: 60.691941377706826
+      total_pairs: 80
+      diagonal_pairs: 8
+      camera_head_lr: 4.2e-6
+      full_restore: 196020_optimizer_and_RNG2_restored100143607Z
+      decision: continue_existing20update_capacity_and_review_relay_no_change_not_long_run_stability_proof
     historical_K9_first_update:
       notification: N-c224da8bc4c0d145c473_acknowledged
       step: 196001
@@ -86,7 +110,45 @@ latest:
     historical_K9_torchrun_begin_at: '2026-09-24T09:42:26.236Z'
     historical_K9_rank_workers: [911538, 911539]
     K10_process_started_at: '2026-09-24T09:59:14.545Z'
-    observed_phase: K10_initializing_no_full_restore_or_first_update_observed
+    observed_phase: K10_210k_continuation_training
+    continuation_first_update:
+      notification: N-3e2cea4573d7187e9b6e_acknowledged
+      step: 196041
+      at: '2026-09-24T10:13:47.413Z'
+      restored_step: 196040
+      restored_at: '2026-09-24T10:12:59.596Z'
+      optimizer: restored
+      RNG_ranks: 2
+      dataset: kubric512
+      loss: 0.0597605905495584
+      gradient_norm: 8.543525695800781
+      peak_cuda_GiB_logged: 63.50692081451416
+      pairs: 80
+      diagonal_pairs: 8
+      camera_head_lr: 8.2e-6
+      decision: continue_unchanged_to210k_no_more_capacity_stops_no_quality_or_long_run_OOM_claim
+    continuation_startup_alert:
+      notification: N-d6df02cc0f8ca643c2f2_acknowledged
+      torchrun_begin_at: '2026-09-24T10:10:29.681Z'
+      own_container_rank_PIDs: [1108515, 1108516]
+      own_parent_PID: 1108234
+      NVML_PIDs: [3700535, 3700536]
+      NVML_PID_visibility: absent_from_container_proc
+      GPU1_6_process_count: [1, 1]
+      per_process_MiB: [706, 706]
+      GPU1_6_free_MiB: [80322, 80322]
+      interpretation: consistent_with_host_container_PID_namespace_mismatch_not_proven_mapping_or_confirmed_foreign_contention
+      decision: continue_same_Run_wait_fullrestore_firstupdate_no_foreign_signals_or_resource_relaxation
+    K10_capacity_result:
+      notification: N-3f52e1b8cb88a6909ee2_acknowledged
+      completed_step: 196040
+      complete_updates: 20
+      rank_exit_codes: [0, 0]
+      last_rank_exit_at: '2026-09-24T10:08:29.333Z'
+      peak_cuda_GiB_logged: 63.49941921234131
+      checkpoint_review: R-20260924095748-aa1413_succeeded
+      fullstate_SHA_accepted: true
+      decision: continue_existing_review_to210k_relay_no_change_no_retry
     capacity_result:
       notification: N-ac90cf116c7e75e31d6a_acknowledged
       completed_step: 196020
