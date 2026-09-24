@@ -6,7 +6,8 @@ import torch.nn.functional as F
 from ..models.camera import CameraOutput
 
 
-def validate_supervision_camera(camera, height: int, width: int) -> dict[str, float]:
+def validate_supervision_camera(camera, height: int, width: int, *,
+                                require_shared_intrinsics: bool = False) -> dict[str, float]:
     K = np.asarray(camera['intrinsics'], dtype=np.float64)
     R = np.asarray(camera['rotations'], dtype=np.float64)
     p = np.asarray(camera['positions'], dtype=np.float64)
@@ -28,7 +29,7 @@ def validate_supervision_camera(camera, height: int, width: int) -> dict[str, fl
     focal_drift = float(np.max(np.abs(K[:,:2,:2]-K[0,:2,:2]) / np.maximum(np.abs(K[0,:2,:2]),1)))
     principal_drift = float(np.max(np.abs(K[:,:2,2]-K[0,:2,2])))
     principal_offset = float(np.max(np.abs(K[:,:2,2]-[(width-1)/2,(height-1)/2])))
-    if focal_drift > 1e-5 or principal_drift > 1e-4:
+    if require_shared_intrinsics and (focal_drift > 1e-5 or principal_drift > 1e-4):
         raise ValueError(f'clip-shared intrinsics violated: {focal_drift=}, {principal_drift=}')
     # Allow <=1px convention differences, never replace actual GT principal points.
     if principal_offset > 1.0:
@@ -99,7 +100,9 @@ def camera_supervision_losses(output: CameraOutput, source, K, rotations, positi
     rot = (output.rotation.float()-gt_R).square().sum((-2,-1))[mask].mean()/8
     sigma = torch.as_tensor(scale,device=source.device,dtype=torch.float32).square().mean().sqrt()
     trans = F.smooth_l1_loss(output.translation.float()[mask]/sigma, gt_p[mask]/sigma, beta=0.05)
-    gt_fov = 2*torch.atan(torch.stack((width/(2*K[:,0,0,0]),height/(2*K[:,0,1,1])),dim=-1))
+    gt_fov = 2*torch.atan(torch.stack((width/(2*K[...,0,0]),height/(2*K[...,1,1])),dim=-1))
+    if output.fov.shape != gt_fov.shape:
+        raise ValueError('intrinsics supervision requires per-frame [B,21,2] FOV, never clip averaging')
     focal = F.smooth_l1_loss(output.fov.float(),gt_fov,beta=0.05)
     with torch.no_grad():
         rel = output.rotation.float().transpose(-1,-2) @ gt_R

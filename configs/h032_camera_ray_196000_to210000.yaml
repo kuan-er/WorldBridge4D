@@ -190,7 +190,7 @@ tracking:
   - h032
   - source-conditioned-camera
   - gt-ray
-  - shared-fov
+  - per-frame-fov
   - b1-a4-k9
   - native512-full
   - new-branch
@@ -203,6 +203,7 @@ camera_supervision:
   warmup_steps: 500
   phase_start_step: 196000
   skip_zero_weight_cycle: true
+  intrinsics_mode: per_frame_source_independent
   loss_weights:
     diagonal_xyz: 0.5
     offdiagonal_xyz: 0.5

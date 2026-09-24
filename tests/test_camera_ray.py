@@ -65,7 +65,7 @@ def test_head_shapes_source_conditioning_intrinsics_independence_and_gradients(d
     z=StructuredZ4D(torch.randn(2,12,21,8,6,dtype=dtype,requires_grad=True),torch.zeros(2,21,2,12,dtype=dtype))
     s=torch.tensor([0,10])
     out=head(z,s)
-    assert out.rotation.shape==(2,21,3,3) and out.translation.shape==(2,21,3) and out.fov.shape==(2,2)
+    assert out.rotation.shape==(2,21,3,3) and out.translation.shape==(2,21,3) and out.fov.shape==(2,21,2)
     assert torch.allclose(out.rotation.transpose(-1,-2)@out.rotation,torch.eye(3),atol=1e-5)
     assert torch.allclose(torch.linalg.det(out.rotation),torch.ones(2,21),atol=1e-5)
     assert torch.equal(out.rotation[torch.arange(2),s],torch.eye(3).repeat(2,1,1))
@@ -141,7 +141,7 @@ def test_invalid_pixels_masked_and_balanced_objective():
     prediction=xyz.clone(); prediction[:,:,0,1,1]+=0.2
     prediction[:,:, :,0,0]=float('nan'); prediction.requires_grad_()
     rr,pp=relative_pose_gt(R,p,source[:,0])
-    fov=torch.full((1,2),2*np.arctan(.5))
+    fov=torch.full((1,21,2),2*np.arctan(.5))
     output=CameraOutput(rr,pp,fov)
     total,losses=camera_ray_objective(prediction,xyz,valid,source,target,output,(K,R,p),[0,0,0],[1,1,1],config()['camera_supervision'])
     assert torch.isfinite(total) and total>0
@@ -150,12 +150,30 @@ def test_invalid_pixels_masked_and_balanced_objective():
     torch.testing.assert_close(losses['diagonal_xyz'],losses['offdiagonal_xyz'])
 
 
+def test_zoom_supervises_each_frame_not_mean_focal():
+    K,R,p=camera_gt(1)
+    K[:,:,0,0] *= torch.linspace(0.7,1.4,21)[None]
+    K[:,:,1,1] *= torch.linspace(0.8,1.3,21)[None]
+    source=torch.tensor([3]); rr,pp=relative_pose_gt(R,p,source)
+    fov=2*torch.atan(torch.stack((8/(2*K[...,0,0]),8/(2*K[...,1,1])),dim=-1))
+    exact=CameraOutput(rr,pp,fov)
+    losses=camera_supervision_losses(exact,source,K,R,p,[1,1,1],8,8)
+    assert losses['fov']==0 and losses['focal_relative_error']<1e-6
+    torch.testing.assert_close(exact.intrinsics(8,8),K)
+    shared=CameraOutput(rr,pp,fov.mean(1,keepdim=True).expand_as(fov))
+    assert camera_supervision_losses(shared,source,K,R,p,[1,1,1],8,8)['fov']>0.01
+    with pytest.raises(ValueError,match='per-frame'):
+        camera_supervision_losses(CameraOutput(rr,pp,fov.mean(1)),source,K,R,p,[1,1,1],8,8)
+
+
 def test_calibration_guards():
     K,R,p=camera_gt(1)
     c=dict(intrinsics=K[0].numpy(),rotations=R[0].numpy(),positions=p[0].numpy())
     validate_supervision_camera(c,8,8)
     c2=deepcopy(c); c2['intrinsics'][5,0,0]*=1.01
-    with pytest.raises(ValueError,match='clip-shared'): validate_supervision_camera(c2,8,8)
+    assert validate_supervision_camera(c2,8,8)['focal_relative_drift'] > 0
+    with pytest.raises(ValueError,match='clip-shared'):
+        validate_supervision_camera(c2,8,8,require_shared_intrinsics=True)
     c2=deepcopy(c); c2['intrinsics'][:,0,2]+=3
     with pytest.raises(ValueError,match='centered'): validate_supervision_camera(c2,8,8)
     c2=deepcopy(c); c2['rotations'][:,0,0]+=0.0003

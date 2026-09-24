@@ -28,7 +28,7 @@ def quaternion_to_matrix(q: torch.Tensor) -> torch.Tensor:
 class CameraOutput:
     rotation: torch.Tensor     # [B,T,3,3], T_source<-target
     translation: torch.Tensor  # [B,T,3], physical pointmap units
-    fov: torch.Tensor          # [B,2], horizontal/vertical, source-independent
+    fov: torch.Tensor          # [B,T,2], horizontal/vertical, source-independent
 
     def intrinsics(self, height: int, width: int) -> torch.Tensor:
         # Use the existing integer-pixel-center protocol, not 4RC's half-pixel
@@ -89,8 +89,10 @@ class SourceConditionedCameraHead(nn.Module):
         memory = memory.flatten(1,2)
         q = (self.camera_query + self.source_time(source)[:,None]
              + self.target_time(times)[None] + self.relative_time(times[None]-source[:,None]+t-1))
-        # Cross attention does not mix queries: the last query cannot see s.
-        q = torch.cat((q, self.intrinsic_query.expand(b,-1,-1)), dim=1)
+        # Cross attention does not mix queries. Intrinsic queries contain t,
+        # never s: changing reference camera cannot change any predicted K_t.
+        iq = (self.intrinsic_query + self.target_time(times)[None]).expand(b,-1,-1)
+        q = torch.cat((q, iq), dim=1)
         nq = self.query_norm(q)
         q = q + self.cross_attention(nq, memory, memory, need_weights=False)[0]
         q = q + self.cross_mlp(self.cross_norm(q))
@@ -101,5 +103,5 @@ class SourceConditionedCameraHead(nn.Module):
         diagonal = times[None] == source[:,None]
         rotation = torch.where(diagonal[...,None,None], torch.eye(3,device=dense.device), rotation)
         translation = torch.where(diagonal[...,None], torch.zeros_like(translation), translation)
-        fov = 0.01 + (math.pi-0.02)*torch.sigmoid(self.fov_mlp(q[:,t]).float())
+        fov = 0.01 + (math.pi-0.02)*torch.sigmoid(self.fov_mlp(q[:,t:]).float())
         return CameraOutput(rotation, translation, fov)

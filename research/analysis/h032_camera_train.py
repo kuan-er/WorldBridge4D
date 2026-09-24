@@ -2,7 +2,7 @@
 
 Submit each stage through PRL with success-only dependencies and exact GPU IDs.
 No unmanaged training, automatic retries, device substitutions, or SIGKILL.
-The shared-intrinsics prototype intentionally refuses training on failed audit.
+Per-frame intrinsics follow user authorization after the shared-K audit failed.
 """
 import argparse
 import gc
@@ -28,7 +28,7 @@ from worldbridge.trainer.schedulers import dataset_for_step
 from worldbridge.utils.io import atomic_json
 CONFIG=ROOT/'configs/h032_camera_ray_196000_to210000.yaml'
 SOURCE_ROOT=Path('/data/WorldBridge4D-runs/h032-camera-ray-source196000-20260924')
-CALIBRATION=Path('/data/WorldBridge4D-runs/h032-camera-calibration-audit-r2-20260924/complete.json')
+CALIBRATION=Path('/data/WorldBridge4D-runs/h032-camera-calibration-audit-perframe-20260924/complete.json')
 HANDOFF=Path('/data/WorldBridge4D-runs/h032-camera-ray-handoff-20260924')
 OUTPUT=Path('/data/WorldBridge4D-runs/h032-source-camera-ray-196000-to210000-20260924')
 ALLOCATOR_KEYS=('PYTORCH_CUDA_ALLOC_CONF','PYTORCH_ALLOC_CONF','PYTORCH_NO_CUDA_MEMORY_CACHING')
@@ -64,6 +64,7 @@ def gate(gpu_ids):
     # A missing audit marker is a hard blocker, not permission to average GT K.
     calibration=json.loads(CALIBRATION.read_text())
     assert calibration['event']=='H032_CAMERA_AUDIT_OK'
+    assert calibration['intrinsics_mode']==cfg['camera_supervision']['intrinsics_mode']
     source_report=json.loads((SOURCE_ROOT/'complete.json').read_text())
     assert source_report['event']=='H032_SOURCE_OK' and source_report['review']['global_step']==196000
     assert source_report['review']['clips_seen']==cfg['finetune_expected_clips_seen']

@@ -83,7 +83,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     camera = config.get('camera_supervision')
     if camera is not None:
         keys = {'dim','num_heads','memory_grid','seed','learning_rate','warmup_steps',
-                'phase_start_step','loss_weights','skip_zero_weight_cycle'}
+                'phase_start_step','loss_weights','skip_zero_weight_cycle','intrinsics_mode'}
         if not isinstance(camera, dict) or set(camera) != keys:
             raise ValueError('camera supervision requires the explicit source-conditioned contract')
         if (mode != 'full' or config.get('coordinate_frame') != 'source'
@@ -91,7 +91,8 @@ def validate_config(config: dict[str, Any], world: int) -> None:
                 or config.get('backbone_readout') != 'wan_hidden_structured'
                 or config.get('full_mode_unfreeze_resume') or config.get('boundary_supervision') is not None):
             raise ValueError('camera extension requires full/source/nativeK9 without other structural profiles')
-        if (camera['dim'] != 256 or camera['num_heads'] != 8 or camera['memory_grid'] != 16
+        if (camera['intrinsics_mode'] != 'per_frame_source_independent'
+                or camera['dim'] != 256 or camera['num_heads'] != 8 or camera['memory_grid'] != 16
                 or int(camera['warmup_steps']) < 1 or int(camera['phase_start_step']) < 0
                 or not np.isfinite(camera['learning_rate']) or camera['learning_rate'] <= 0):
             raise ValueError('invalid camera head architecture or learning rate')
