@@ -154,8 +154,8 @@ class DynamicReplicaDataset:
         self.image_size = int(image_size)
         self.trajectory_cache_root = Path(trajectory_cache_root)
         self.depth_cache_root = Path(depth_cache_root)
-        if self.image_size not in (128, 256):
-            raise ValueError("Dynamic Replica adapter supports only audited 128 or 256 grids")
+        if self.image_size not in (128, 256, 512):
+            raise ValueError("Dynamic Replica adapter supports only audited 128/256/512 grids")
         index = self.root / "splits" / f"{split}.jsonl"
         if not index.exists():
             raise FileNotFoundError(f"Dynamic Replica cache index is missing: {index}")

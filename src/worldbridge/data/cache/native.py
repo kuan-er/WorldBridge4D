@@ -11,6 +11,7 @@ import re
 import numpy as np
 
 CONTRACT = "wan2.1_native_rgb_posterior_mean_fp32_no_resize_no_tile_v1"
+CONTRACT_DR512 = "wan2.1_dr_center_crop_lanczos_512_fp32_v1"
 
 
 def json_hash(value: object) -> str:
@@ -46,7 +47,7 @@ class NativeLatentCache:
     re-decoded input at write/replay. Training must never use a mismatched manifest.
     """
     def __init__(self, root: str | Path, dataset: str, manifest_sha256: str,
-                 shape: tuple[int, ...], vae_sha256: str) -> None:
+                 shape: tuple[int, ...], vae_sha256: str, contract: str = CONTRACT) -> None:
         if dataset not in {"kubric", "pointodyssey", "dynamic_replica"}:
             raise ValueError("unknown native dataset")
         if any(not re.fullmatch(r"[a-f0-9]{64}", v) for v in (manifest_sha256, vae_sha256)):
@@ -57,7 +58,7 @@ class NativeLatentCache:
         latent_shape(int(shape[2]) * 8, int(shape[3]) * 8)
         self.root = Path(root) / dataset / manifest_sha256
         self.shape = tuple(shape)
-        self.fixed = {"contract": CONTRACT, "dataset": dataset,
+        self.fixed = {"contract": str(contract), "dataset": dataset,
                       "manifest_sha256": manifest_sha256, "vae_sha256": vae_sha256}
 
     def path(self, index: int) -> Path:

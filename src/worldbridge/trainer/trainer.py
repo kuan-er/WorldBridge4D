@@ -151,7 +151,7 @@ def main() -> None:
     geometry_replay = None
     input_ready_group = None
     if args.geometry_replay or args.input_readiness:
-        if not (config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False)):
+        if not (config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False)):
             raise ValueError('input readiness/replay is restricted to bounded native512 admission')
         if not 0 < args.input_readiness_timeout_seconds <= 900:
             raise ValueError('CPU input readiness timeout must be in (0,900] seconds')
@@ -441,16 +441,24 @@ def main() -> None:
                 "rng_states": len(finetune_rng_states),
             }), flush=True)
     if resume_state is not None:
-        load_optimizer_checkpoint(
-            resume_payload, fsdp, optimizer, resume_rng_states, rank,
-        )
+        if config.get('full_mode_unfreeze_resume'):
+            load_filtered_optimizer_checkpoint(
+                resume_payload, fsdp, optimizer, resume_rng_states,
+                current_group_names, rank, allowed_fresh_prefixes=("backbone.",),
+            )
+            optimizer_label = "filtered_restored"
+        else:
+            load_optimizer_checkpoint(
+                resume_payload, fsdp, optimizer, resume_rng_states, rank,
+            )
+            optimizer_label = "restored"
         start_step = int(resume_state["global_step"])
         clips_seen.update({key: int(value) for key, value in resume_state["clips_seen"].items()})
         del resume_payload
         if rank == 0:
             print(json.dumps({
                 "event": "resume_state_loaded", "step": start_step,
-                "world_size": world, "optimizer": "restored", "rng_states": len(resume_rng_states),
+                "world_size": world, "optimizer": optimizer_label, "rng_states": len(resume_rng_states),
             }), flush=True)
     if args.stop_after_updates is not None and start_step != planned_start:
         raise ValueError('diagnostic checkpoint planning sidecar does not match restored step')
@@ -719,7 +727,7 @@ def main() -> None:
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
                     trace_phase("forward_enqueued", step, micro)
-                    if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False):
+                    if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False):
                         if prediction.shape != xyz.shape or tuple(prediction.shape[-2:]) != (image_size, image_size):
                             raise RuntimeError('native prediction/GT alignment mismatch')
                         if micro == 0:
