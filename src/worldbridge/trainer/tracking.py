@@ -47,6 +47,10 @@ def init_wandb(config: dict[str, Any], output: Path, rank: int, disabled: bool):
     if resume_policy == "must" and (run.id != run_id or not run.resumed):
         run.finish(exit_code=1)
         raise RuntimeError("W&B did not resume the requested existing run")
+    if config.get('camera_k10'):
+        # Same user-facing run after explicit K9->K10 change; keep its dashboard
+        # configuration truthful instead of silently retaining the old K9 value.
+        run.config.update({'targets_per_source': 10, 'camera_k10': True}, allow_val_change=True)
     run.define_metric("global_step")
     run.define_metric("train/*", step_metric="global_step")
     run.define_metric("train/loss_by_dataset/*", step_metric="global_step")

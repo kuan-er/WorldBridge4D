@@ -1043,6 +1043,7 @@ def main() -> None:
                         payload[f'train/camera_by_dataset/{name}/{key}'] = value/world
                     payload['train/camera_head_lr'] = next(g['lr'] for g in optimizer.param_groups if g['name']=='camera_head')
                     payload['train/diagonal_pairs'] = world*accumulation*microbatch_per_gpu
+                    payload['train/targets_per_source'] = k
                 print(json.dumps(payload), flush=True)
                 if run is not None and completed > args.wandb_log_after_step:
                     run.log(payload, step=completed)

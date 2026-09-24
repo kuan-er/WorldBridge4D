@@ -1,9 +1,9 @@
-updated_at: '2026-09-24T09:43:00Z'
+updated_at: '2026-09-24T09:51:30Z'
 active_hypothesis: H032
 active_task: T-20260924090829-46789c
-next_step: CPU gate accepted; GPU1/6 capacity process and two ranks started, initializing. Await structural restore and first complete update; success-only DAG already queued through210k.
+next_step: Capacity20 succeeded through196020; queued CPU checkpoint validation/review must succeed before existing GPU1/6 continuation to210k. No configuration change or retry.
 latest:
-  status: CPU_gate_passed_GPU1_6_capacity_initializing
+  status: GPU1_6_capacity20_succeeded_checkpoint_review_pending
   authority: user_approves_perframe_intrinsics_and_explicit_physical_GPU1_6_now_free
   execution_commit: 0af97bd7099f1c23198af6c52da05155d440d482
   code_baseline: ef5fc4634c7518cf295e70a3e56942bf98cdc016
@@ -58,11 +58,34 @@ latest:
     decision: no_focal_averaging_no_clip_drop_no_GT_mutation_no_threshold_relaxation
   training:
     submitted: true
-    actual_first_update: not_yet_observed
+    actual_first_update:
+      notification: N-c224da8bc4c0d145c473_acknowledged
+      step: 196001
+      at: '2026-09-24T09:45:44.472Z'
+      dataset: kubric512
+      loss: 0.07085104240104556
+      peak_cuda_GiB: 58.96105909347534
+      seconds: 70.02102488512173
+      gradient_norm: 5.684551239013672
+      diagonal_pairs: 8
+      camera_head_lr: 2.0e-7
+      interpretation: first_full_forward_backward_optimizer_success_not_long_run_capacity_or_quality_proof
+    structural_restore: 1053_old_Adam_retained_51_camera_fresh_RNG2_at094428996Z
     process_started_at: '2026-09-24T09:41:58.911Z'
     torchrun_begin_at: '2026-09-24T09:42:26.236Z'
     rank_workers: [911538, 911539]
-    observed_phase: distributed_initialization_not_yet_full_restore
+    observed_phase: capacity20_terminal_success_checkpoint_review_waiting_for_validation
+    capacity_result:
+      notification: N-ac90cf116c7e75e31d6a_acknowledged
+      completed_step: 196020
+      final_update_at: '2026-09-24T09:50:21.042Z'
+      rank_exit_codes: [0, 0]
+      peak_cuda_GiB_logged: 58.96105909347534
+      complete_updates: 20
+      clips_increment: {kubric: 80, pointodyssey: 40, dynamic_replica: 40}
+      final_camera_head_lr: 4.0e-6
+      checkpoint_fullstate_SHA_review: pending
+    wandb_id: thlx6gtz
     physical_gpus: [1, 6]
     CPU_gate: R-20260924093917-a5361c
     capacity20: R-20260924093936-06b1b3
@@ -84,4 +107,4 @@ latest:
 recent_results:
   - User confirmed per-frame intrinsics and physical1/6;0/6 proposal retired.
   - Per-frame calibration audit passed with explicit invalid-pose masking, no clip removal.
-  - Full CPU suite565 tests and6 actual GT probes passed; GPU process/two ranks started but no first completed update yet.
+  - All20 capacity updates across K512/PO256/DR512 completed through196020; both ranks exited0. Full-state checkpoint review and resumed first update remain pending.

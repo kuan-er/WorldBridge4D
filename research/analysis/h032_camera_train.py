@@ -126,7 +126,7 @@ def gate(gpu_ids):
     print(json.dumps(report),flush=True)
 
 
-def review(step):
+def review(step, *, capacity_step=196020):
     cfg=configuration(); path=OUTPUT/f'checkpoint-{step:07d}.pt'
     p=torch.load(path,map_location='cpu',mmap=True,weights_only=True)
     assert p['config']==cfg
@@ -152,7 +152,7 @@ def review(step):
     report=dict(event='H032_CHECKPOINT_VERIFIED',step=step,checkpoint=str(path),
                 checkpoint_sha256=file_sha256(path),optimizer_states=len(new),old_retained=len(old),
                 camera_states=51,world_size=2,rng_ranks=2,clips_seen=expected)
-    if step==196020:
+    if step==capacity_step:
         os.link(path,HANDOFF/'capacity.pt')
         atomic_json(HANDOFF/'train_status.json',dict(completed_steps=step,world_size=2))
         atomic_json(HANDOFF/'capacity_complete.json',report)

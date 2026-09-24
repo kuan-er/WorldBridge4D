@@ -81,13 +81,16 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     if master_precision == "fp32" and config.get("precision") != "bf16":
         raise ValueError("FP32 master requires BF16 compute")
     camera = config.get('camera_supervision')
+    camera_k10 = bool(config.get('camera_k10', False))
+    if camera_k10 and (camera is None or config.get('targets_per_source') != 10):
+        raise ValueError('camera K10 requires the explicit camera extension and exactly10 targets')
     if camera is not None:
         keys = {'dim','num_heads','memory_grid','seed','learning_rate','warmup_steps',
                 'phase_start_step','loss_weights','skip_zero_weight_cycle','intrinsics_mode'}
         if not isinstance(camera, dict) or set(camera) != keys:
             raise ValueError('camera supervision requires the explicit source-conditioned contract')
         if (mode != 'full' or config.get('coordinate_frame') != 'source'
-                or not config.get('native_kubric512_full') or config.get('targets_per_source') != 9
+                or not config.get('native_kubric512_full') or config.get('targets_per_source') != (10 if camera_k10 else 9)
                 or config.get('backbone_readout') != 'wan_hidden_structured'
                 or config.get('full_mode_unfreeze_resume') or config.get('boundary_supervision') is not None):
             raise ValueError('camera extension requires full/source/nativeK9 without other structural profiles')
@@ -273,8 +276,9 @@ def validate_config(config: dict[str, Any], world: int) -> None:
             raise ValueError('native512 full requires cycle0 over all datasets with weight0')
         if mix != {'kubric': 10, 'pointodyssey': 5, 'dynamic_replica': 5}:
             raise ValueError('native512 full requires exact50/25/25 mixture')
-        if int(config.get('targets_per_source')) not in (3, 5, 9):
-            raise ValueError('native512 full supports targets_per_source in (3,5,9)')
+        allowed_native_targets = (10,) if camera_k10 else (3, 5, 9)
+        if int(config.get('targets_per_source')) not in allowed_native_targets:
+            raise ValueError(f'native512 full supports targets_per_source in {allowed_native_targets}')
         gt_values = config.get('datasets', {}).get('kubric', {})
         if gt_values.get('native_geometry_mode', 'staged') != 'verified_cache_or_raw':
             raise ValueError('native512 full requires verified native GT demand reader')
