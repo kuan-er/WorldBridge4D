@@ -147,6 +147,7 @@ def load_filtered_optimizer_checkpoint(
     current_group_names: dict[str, list[str]],
     rank: int,
     allowed_fresh_prefixes: tuple[str, ...],
+    require_all_source_state: bool = False,
 ) -> None:
     """Restore retained moments while allowing only audited new parameters."""
     full_optimizer_state = None
@@ -165,6 +166,8 @@ def load_filtered_optimizer_checkpoint(
         if len(names) != len(set(names)):
             raise RuntimeError("fine-tune optimizer contains duplicate parameters")
         source_state = payload["optimizer"]["state"]
+        if require_all_source_state and set(source_state) - set(names):
+            raise RuntimeError('structural extension would discard existing Adam state')
         fresh_names = [name for name in names if name not in source_state]
         invalid_fresh = [
             name for name in fresh_names

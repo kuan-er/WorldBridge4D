@@ -433,6 +433,7 @@ def main() -> None:
             finetune_payload, fsdp, optimizer, finetune_rng_states,
             current_group_names, rank,
             allowed_fresh_prefixes=(("camera_head.",) if camera_cfg else ("decoder.query_rgb_projection.",)),
+            require_all_source_state=camera_cfg is not None,
         )
         start_step = int(finetune_state["global_step"])
         clips_seen.update({
