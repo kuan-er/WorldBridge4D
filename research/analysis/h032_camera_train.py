@@ -28,7 +28,7 @@ from worldbridge.trainer.schedulers import dataset_for_step
 from worldbridge.utils.io import atomic_json
 CONFIG=ROOT/'configs/h032_camera_ray_196000_to210000.yaml'
 SOURCE_ROOT=Path('/data/WorldBridge4D-runs/h032-camera-ray-source196000-20260924')
-CALIBRATION=Path('/data/WorldBridge4D-runs/h032-camera-calibration-audit-perframe-20260924/complete.json')
+CALIBRATION=Path('/data/WorldBridge4D-runs/h032-camera-calibration-audit-perframe-r2-20260924/complete.json')
 HANDOFF=Path('/data/WorldBridge4D-runs/h032-camera-ray-handoff-20260924')
 OUTPUT=Path('/data/WorldBridge4D-runs/h032-source-camera-ray-196000-to210000-20260924')
 ALLOCATOR_KEYS=('PYTORCH_CUDA_ALLOC_CONF','PYTORCH_ALLOC_CONF','PYTORCH_NO_CUDA_MEMORY_CACHING')

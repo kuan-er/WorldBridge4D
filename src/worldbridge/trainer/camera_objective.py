@@ -15,13 +15,13 @@ def validate_supervision_camera(camera, height: int, width: int, *,
         raise ValueError('camera metadata requires21 K/R/position entries')
     if not all(np.isfinite(x).all() for x in (K,R,p)):
         raise ValueError('nonfinite GT camera')
-    orth_error = float(np.max(np.abs(R.transpose(0,2,1) @ R - np.eye(3))))
-    det_error = float(np.max(np.abs(np.linalg.det(R)-1)))
-    # PO annotation matrices are rounded (observed ~6e-4 orthogonality error).
-    # Permit only bounded near-rigid metadata; project relative rotation for
-    # pose supervision below, never mutate source annotation or XYZ targets.
-    if orth_error > 0.003 or det_error > 0.003:
-        raise ValueError(f'GT camera is not near SO(3): {orth_error=}, {det_error=}')
+    orth_errors = np.max(np.abs(R.transpose(0,2,1) @ R - np.eye(3)), axis=(1,2))
+    det_errors = np.abs(np.linalg.det(R)-1)
+    orth_error, det_error = float(orth_errors.max()), float(det_errors.max())
+    # Preserve the .003 near-SO3 threshold. Some PO zoom clips have genuinely
+    # nonrigid annotation bases (~5% shear), not rounding noise. Mark only
+    # their pose labels invalid; keep clip, XYZ, true K and ray supervision.
+    invalid_pose_frames = int(np.count_nonzero((orth_errors > 0.003) | (det_errors > 0.003)))
     if (K[:,0,0] <= 0).any() or (K[:,1,1] <= 0).any():
         raise ValueError('GT focal must be positive')
     if not np.allclose(K[:,2], [0,0,1]) or not np.allclose(K[:,0,1],0) or not np.allclose(K[:,1,0],0):
@@ -36,7 +36,7 @@ def validate_supervision_camera(camera, height: int, width: int, *,
         raise ValueError(f'centered-camera assumption violated: {principal_offset=}')
     return dict(focal_relative_drift=focal_drift, principal_drift_px=principal_drift,
                 principal_center_offset_px=principal_offset, rotation_orthogonality_error=orth_error,
-                rotation_determinant_error=det_error)
+                rotation_determinant_error=det_error, invalid_pose_frames=invalid_pose_frames)
 
 
 def supervision_camera_batch(cameras, device):
@@ -94,12 +94,23 @@ def diagonal_ray_loss(prediction, valid, source, target, K, mean, scale, beta=0.
 
 
 def camera_supervision_losses(output: CameraOutput, source, K, rotations, positions, scale, height, width):
-    gt_R, gt_p = relative_pose_gt(rotations, positions, source)
-    mask = torch.arange(rotations.shape[1],device=source.device)[None] != source[:,None]
-    # Smooth, sign-invariant chordal rotation loss; report geodesic angle separately.
-    rot = (output.rotation.float()-gt_R).square().sum((-2,-1))[mask].mean()/8
+    orth = (rotations.transpose(-1,-2) @ rotations - torch.eye(3,device=rotations.device)).abs().amax((-2,-1))
+    det_error = (torch.linalg.det(rotations)-1).abs()
+    valid_pose = (orth <= 0.003) & (det_error <= 0.003)
+    batch = torch.arange(len(source),device=source.device)
+    mask = ((torch.arange(rotations.shape[1],device=source.device)[None] != source[:,None])
+            & valid_pose & valid_pose[batch,source,None])
+    # Never invert an invalid source matrix (possibly singular); placeholders
+    # below are used ONLY for masked pose labels, not for geometry or rays.
+    safe_R = torch.where(valid_pose[...,None,None],rotations,torch.eye(3,device=rotations.device))
+    safe_p = torch.where(valid_pose[...,None],positions,torch.zeros_like(positions))
+    gt_R, gt_p = relative_pose_gt(safe_R, safe_p, source)
+    count = mask.sum().clamp_min(1)
+    # Masked reductions remain differentiable finite zero with no valid poses.
+    rot = ((output.rotation.float()-gt_R).square().sum((-2,-1))*mask).sum()/count/8
     sigma = torch.as_tensor(scale,device=source.device,dtype=torch.float32).square().mean().sqrt()
-    trans = F.smooth_l1_loss(output.translation.float()[mask]/sigma, gt_p[mask]/sigma, beta=0.05)
+    trans_map = F.smooth_l1_loss(output.translation.float()/sigma, gt_p/sigma, beta=0.05,reduction='none').mean(-1)
+    trans = (trans_map*mask).sum()/count
     gt_fov = 2*torch.atan(torch.stack((width/(2*K[...,0,0]),height/(2*K[...,1,1])),dim=-1))
     if output.fov.shape != gt_fov.shape:
         raise ValueError('intrinsics supervision requires per-frame [B,21,2] FOV, never clip averaging')
@@ -107,11 +118,12 @@ def camera_supervision_losses(output: CameraOutput, source, K, rotations, positi
     with torch.no_grad():
         rel = output.rotation.float().transpose(-1,-2) @ gt_R
         cosine = ((rel.diagonal(dim1=-2,dim2=-1).sum(-1)-1)/2).clamp(-1,1)
-        angle = torch.rad2deg(torch.acos(cosine))[mask].mean()
-        terr = (output.translation.float()-gt_p).norm(dim=-1)[mask].mean()
+        angle = (torch.rad2deg(torch.acos(cosine))*mask).sum()/count
+        terr = ((output.translation.float()-gt_p).norm(dim=-1)*mask).sum()/count
         ferr = ((torch.tan(gt_fov/2)/torch.tan(output.fov.float()/2))-1).abs().mean()
     return dict(pose_rotation=rot, pose_translation=trans, fov=focal,
-                rotation_deg=angle, translation_m=terr, focal_relative_error=ferr)
+                rotation_deg=angle, translation_m=terr, focal_relative_error=ferr,
+                pose_valid_pairs=mask.sum().float(), pose_valid_fraction=mask.sum().float()/(len(source)*(rotations.shape[1]-1)))
 
 
 def camera_ray_objective(prediction, target_xyz, valid, source, target, output,

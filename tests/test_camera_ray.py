@@ -179,7 +179,25 @@ def test_calibration_guards():
     c2=deepcopy(c); c2['rotations'][:,0,0]+=0.0003
     validate_supervision_camera(c2,8,8)
     c2['rotations'][:,0,0]+=0.1
-    with pytest.raises(ValueError,match='near SO'): validate_supervision_camera(c2,8,8)
+    assert validate_supervision_camera(c2,8,8)['invalid_pose_frames']==21
+
+
+def test_nonrigid_pose_labels_masked_without_losing_fov_or_nan():
+    K,R,p=camera_gt(1)
+    R[:,5,0,1]=0.1  # determinant1 but nonorthogonal; do not relax .003 threshold
+    rotation=torch.eye(3).repeat(1,21,1,1).requires_grad_()
+    translation=torch.zeros(1,21,3,requires_grad=True)
+    fov=torch.ones(1,21,2,requires_grad=True)
+    out=CameraOutput(rotation,translation,fov)
+    losses=camera_supervision_losses(out,torch.tensor([0]),K,R,p,[1,1,1],8,8)
+    assert losses['pose_valid_pairs']==19
+    (losses['pose_rotation']+losses['pose_translation']+losses['fov']).backward()
+    assert rotation.grad[:,5].abs().sum()==translation.grad[:,5].abs().sum()==0
+    assert fov.grad[:,5].abs().sum()>0
+    # Invalid source means no valid relative pose labels, but all K_t still train.
+    losses=camera_supervision_losses(out,torch.tensor([5]),K,R,p,[1,1,1],8,8)
+    assert losses['pose_valid_pairs']==0 and losses['pose_rotation']==losses['pose_translation']==0
+    assert all(torch.isfinite(v).all() for v in losses.values())
 
 
 def test_fresh_camera_warmup_anchored_to_phase_not_resume():
