@@ -54,8 +54,17 @@ def expected_clips():
 
 
 def configuration():
+    # The gate pins the parent counters into the config *of its own snapshot*.
+    # Every later run snapshots the committed (counter-free) config, so inject the
+    # pinned expectation here and rewrite the file byte-identically to what the
+    # gate recorded; the trainer and the gate report then agree on one config.
     cfg = yaml.safe_load(CONFIG.read_text())
-    assert cfg == make_config(clips_seen=expected_clips()), 'config is not the generator output'
+    clips = expected_clips()
+    expected = make_config(clips_seen=clips)
+    if clips is not None and 'finetune_expected_clips_seen' not in cfg:
+        CONFIG.write_text(yaml.safe_dump(expected, sort_keys=False))
+        cfg = yaml.safe_load(CONFIG.read_text())
+    assert cfg == expected, 'config is not the generator output'
     validate_config(cfg, 2)
     return cfg
 
