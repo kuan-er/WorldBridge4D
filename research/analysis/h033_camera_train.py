@@ -113,8 +113,12 @@ def gate(gpu_ids):
     assert all(current[n].shape == v.shape for n, v in old.items() if n in current)
     trainable = {n for n, p in model.named_parameters() if p.requires_grad}
     old_state = set(payload['optimizer']['state'])
-    assert old_state <= trainable and trainable - old_state == fresh
-    assert all(n.startswith('camera_head.') for n in old_state - trainable)
+    # The parent necessarily still carries the deleted head's Adam states; the
+    # only acceptable difference in either direction is the camera readout.
+    dropped_state = old_state - trainable
+    assert dropped_state and all(name.startswith('camera_head.') for name in dropped_state)
+    assert len(dropped_state) == len(parent_camera)
+    assert trainable - old_state == fresh
     del model, payload, current, old
     import gc
     gc.collect()
@@ -160,7 +164,9 @@ def ray_probes(cfg):
         ys, xs = pixel_grid_coordinates(grid, size, size, torch.device('cpu'), torch.float32)
         rays = unit_rays_at(K[:, frame], ys, xs)
         assert torch.allclose(rays.norm(dim=1), torch.ones(1, grid, grid), atol=1e-5)
-        output = CameraOutput(torch.eye(3)[None, None, None].expand(1, 1, 3, 3),
+        # pose fields are unused by the ray probe; shapes follow the per-pair
+        # camera contract [B,K,3,3] / [B,K,3].
+        output = CameraOutput(torch.eye(3).expand(1, 1, 3, 3),
                               torch.zeros(1, 1, 3), rays, torch.tensor([frame]))
         decoded = output.decode_pinhole(size, size)
         assert bool(decoded['valid']), f'{name}: GT rays must decode'
@@ -169,7 +175,7 @@ def ray_probes(cfg):
         principal_offset = float((decoded['principal_x'] - float(K[0, frame, 0, 2])).abs())
         principal_offset_y = float((decoded['principal_y'] - float(K[0, frame, 1, 2])).abs())
         assert focal_error < 1e-3 and focal_error_y < 1e-3, (name, focal_error, focal_error_y)
-        dense = unit_source_rays(K, size, size)
+        dense = unit_source_rays(K[:, frame], size, size)   # same frame as the probe rays
         assert torch.allclose(dense[0, :, int(round(float(ys[0]))), int(round(float(xs[0])))],
                               rays[0, :, 0, 0], atol=5e-2)
         probe = dict(dataset=name, index=int(index), frame=frame, image_size=size, grid=grid,
