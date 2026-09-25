@@ -43,11 +43,14 @@ h033:
       - result keys quiesce_geometry_before_forward/lazy_vae_cache/lazy_vae_pipeline/lazy_vae_rank0
     slice1_sizes: [trainer.py_1160_to_1040_lines, geometry_replay.py_deleted_143, batching_load_geometry_simplified]
     slice1_tests: 576_to_554_passing_deleted_tests_covered_only_removed_features
-    slice2_removed: cycle route
+    slice2_removed:
+      name: cycle_route
       details: [cycle.py_deleted, visibility_loading_replaced_by_dataset.source_all_targets_through_source_with_eligible_targets, reverse_forward_and_11_cycle_metric_keys_removed, batching_tuple_9_to_6_fields, evaluation/diagnostics_cycle_diagnostic_removed, cycle_config_keys_rejected]
-    slice3_removed: boundary supervision, source edge contrast, schedule extension, staged inputs
+    slice3_removed:
+      name: boundary_edge_contrast_schedule_extension_staged_inputs
       details: [data/boundaries.py_deleted, objective.py_trimmed_to_masked_pair_smooth_l1_106_to_21_lines, source_boundary_context_removed_from_4_dataset_adapters, staged_inputs_command_and_prepare_data_entry_removed, 20_boundary_and_contrast_metric_keys_removed]
-    slice4_removed: config.py collapsed to the single supported profile
+    slice4_removed:
+      name: config_collapsed_to_one_profile
       details: [370_to_219_lines, 19_legacy_profile_flags_rejected_explicitly, cycle/boundary/contrast/extension_keys_fail_closed, tracking_cycle_metric_definitions_removed, lazy_vae_LazyVAEPipeline_class_removed_245_to_112_lines]
     verification: [234_tests_pass, build_real_model_on_CPU_with_the_H033_config, non_wan_parameter_count_matches_195523351, camera_tensor_prefix_audit]
     net_diff: 54_files_+269/-3583_lines
