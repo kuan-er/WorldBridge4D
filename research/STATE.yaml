@@ -22,6 +22,34 @@ latest:
     checkpoint197000_complete_observed: false
     decision: continue_same_GPU1_6_K10_to210k_no_change
     caveat: single_training_batch_not_fixed_clip_quality_trend_or_checkpoint_completion
+  camera_baseline_check:
+    run: R-20260925054024-7c2cb0
+    script: research/analysis/h032_camera_baseline.py
+    scope: read_only_CPU_GT_trivial_baselines_no_model_no_GPU
+    status: succeeded_H032_CAMERA_BASELINE_OK
+    clips_per_dataset: 512
+    verified: numpy_relative_pose_matches_trainer_relative_pose_gt_within_1e-9
+    identity_pose_baseline_predict_R_I_t_0:
+      kubric: {rotation_deg_mean: 3.0743, rotation_deg_median: 1.6198, translation_m_mean: 0.47222, translation_m_median: 0.30315}
+      pointodyssey: {rotation_deg_mean: 2.6853, rotation_deg_median: 0.92439, translation_m_mean: 0.05444, translation_m_median: 0.031474}
+      dynamic_replica: {rotation_deg_mean: 0.61511, rotation_deg_median: 0.42441, translation_m_mean: 0.028886, translation_m_median: 0.020395}
+    intrinsics_baseline_focal_relative_error:
+      kubric: {clip_constant: 0.0, dataset_constant: 0.0, note: GT_intrinsics_constant_within_clip}
+      pointodyssey: {clip_constant: 0.000317, dataset_constant: 0.16272, across_clip_spread_relative: 0.21518}
+      dynamic_replica: {clip_constant: 0.0, dataset_constant: 0.0, note: GT_intrinsics_constant_within_clip}
+    model_warmup_steps_ge_196500_from_run_console_log:
+      kubric: {n: 1910, rotation_deg_mean: 3.1781, translation_m_mean: 0.49589, focal_relative_error_mean: 0.01538, focal_relative_error_median: 0.01284}
+      pointodyssey: {n: 954, rotation_deg_mean: 2.2616, rotation_deg_median: 0.98409, translation_m_mean: 0.0606, translation_m_median: 0.05037, focal_relative_error_mean: 0.03718, focal_relative_error_median: 0.01745}
+      dynamic_replica: {n: 953, rotation_deg_mean: 0.62376, translation_m_mean: 0.0288, focal_relative_error_mean: 0.00805, focal_relative_error_median: 0.00529}
+    verdict: pose_at_or_below_trivial_identity_baseline_all_three_datasets
+      kubric: rotation_+3pct_worse_3sigma_translation_+5pct_worse_9sigma
+      pointodyssey: rotation_mean_16pct_better_but_median_6pct_worse_and_translation_worse_mean+11pct_median+60pct
+      dynamic_replica: rotation_and_translation_statistically_equal_to_identity
+    intrinsics_verdict: modelled_focal_is_mostly_a_per_clip_constant
+      kubric_dynamic_replica: GT_constant_within_clip_so_no_per_frame_signal_residual_1.5pct_and_0.8pct
+      pointodyssey: beats_global_constant_16.3pct_to_3.7pct_but_far_from_per_clip_constant_0.03pct_and_zoom_subset_not_isolated
+    in_sample_caveat: all_values_are_training_clip_metrics_not_heldout_fixed_clip_evaluation
+    decision: continue_training_to210k_then_run_fixed_clip_camera_evaluation_before_any_method_change
   camera_training_trend:
     analysis_run: R-20260924113923-c64d22
     notification: N-380239071acb58316480_acknowledged
