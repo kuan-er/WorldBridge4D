@@ -197,6 +197,10 @@ camera_supervision:
     pose_rotation: 0.1
     pose_translation: 0.1
 finetune_expected_global_step: 202000
+finetune_expected_clips_seen:
+  kubric: 624664
+  pointodyssey: 465120
+  dynamic_replica: 526216
 camera_k10: true
 finetune_drop_prefixes:
 - camera_head.

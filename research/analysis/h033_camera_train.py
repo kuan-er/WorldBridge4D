@@ -255,10 +255,16 @@ def train(gpu_ids, capacity=False):
     if capacity:
         source = HANDOFF/'resume.pt'
         sha = gate_report['checkpoint_sha256']
-        assert not OUTPUT.exists()
-        OUTPUT.mkdir()
-        # No wandb_run_id file: H033 must not append a different architecture to
-        # the H032/K10 W&B run. The group/tags below give it its own run.
+        if OUTPUT.exists():
+            # The interrupted attempt created the directory and its own W&B id;
+            # refuse only if it already holds checkpoints, so the id is reused.
+            leftovers = sorted(path.name for path in OUTPUT.glob('checkpoint-*.pt'))
+            leftovers += sorted(path.name for path in OUTPUT.glob('latest.pt'))
+            if leftovers:
+                raise RuntimeError(f'{OUTPUT} already holds checkpoints: {leftovers}')
+        OUTPUT.mkdir(exist_ok=True)
+        # No wandb_run_id file is written here: H033 must not append a different
+        # architecture to the H032/K10 W&B run. The group/tags give it its own run.
         resume_args = ['--finetune-from', str(source), '--stop-after-updates', '50']
     else:
         review_report = json.loads((HANDOFF/'capacity_complete.json').read_text())
