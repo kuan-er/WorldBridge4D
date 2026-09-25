@@ -92,5 +92,4 @@ def flatten_structured_z4d(z4d: StructuredZ4D) -> tuple[torch.Tensor, torch.Tens
 class DenseQueryOutput:
     normalized_xyz: torch.Tensor
     low_resolution_feature: torch.Tensor
-    coarse_normalized_xyz: torch.Tensor | None = None
     camera: CameraOutput | None = None

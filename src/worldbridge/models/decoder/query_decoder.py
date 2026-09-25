@@ -27,11 +27,8 @@ class DenseQueryDecoder(nn.Module):
     def __init__(self, num_frames: int = 21, latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE,
                  query_dim: int = 256, embedding_dim: int = 128, num_layers: int = 2,
                  num_heads: int = 8, upsample_channels: Sequence[int] = (256, 128, 64, 32),
-                 output_size: tuple[int, int] = (128, 128), coarse_diagnostic: bool = False,
-                 fullres_coordinates: bool = False, query_grid_size: int | None = None,
+                 output_size: tuple[int, int] = (128, 128), query_grid_size: int | None = None,
                  structured_motion_slots: int = 0, structured_local_queries: bool = False,
-                 structured_pair_motion_queries: bool = False,
-                 structured_pair_motion_zero_init: bool = False,
                  source_rgb_pyramid: bool = False,
                  source_rgb_channels: Sequence[int] = (32, 64, 128),
                  source_rgb_fusion_32: bool = False,
@@ -56,12 +53,8 @@ class DenseQueryDecoder(nn.Module):
         ])
         self.structured_motion_slots = int(structured_motion_slots)
         self.structured_local_queries = bool(structured_local_queries)
-        self.structured_pair_motion_queries = bool(structured_pair_motion_queries)
-        self.structured_pair_motion_zero_init = bool(structured_pair_motion_zero_init)
         if self.structured_motion_slots < 0:
             raise ValueError("structured motion slot count cannot be negative")
-        if self.structured_pair_motion_queries and self.structured_motion_slots == 0:
-            raise ValueError("pair-conditioned motion queries require motion slots")
         self.source_local_projection = nn.Conv2d(channels, query_dim, 1) \
             if self.structured_local_queries else None
         query_grid_size = int(query_grid_size or latent_height)
@@ -76,21 +69,12 @@ class DenseQueryDecoder(nn.Module):
         self.register_buffer("query_coordinates", torch.stack((u.reshape(-1), v.reshape(-1)), dim=-1), persistent=False)
         self.upsampler = DenseUpsampler2D(
             query_dim, upsample_channels, self.query_grid_shape, output_size,
-            fullres_coordinates=fullres_coordinates,
             source_rgb_pyramid=source_rgb_pyramid,
             source_rgb_channels=source_rgb_channels,
             source_rgb_fusion_32=source_rgb_fusion_32, native_512=self.native_512,
         )
-        self.coarse_head = nn.Conv2d(query_dim, 3, 1) if coarse_diagnostic else None
         # Constructed after all baseline modules so enabling this ablation does
         # not shift the seeded initialization of any shared decoder parameter.
-        self.motion_pair_projection = nn.Sequential(
-            nn.LayerNorm(3 * channels), nn.Linear(3 * channels, query_dim),
-            nn.SiLU(), nn.Linear(query_dim, query_dim),
-        ) if self.structured_pair_motion_queries else None
-        if self.motion_pair_projection is not None and self.structured_pair_motion_zero_init:
-            nn.init.zeros_(self.motion_pair_projection[-1].weight)
-            nn.init.zeros_(self.motion_pair_projection[-1].bias)
         self.pre_attention_rgb_query = bool(pre_attention_rgb_query)
         if self.pre_attention_rgb_query:
             if not source_rgb_pyramid:
@@ -183,30 +167,6 @@ class DenseQueryDecoder(nn.Module):
             local = F.interpolate(local, size=query_grid_shape, mode="bilinear", align_corners=False)
         return local.flatten(2).transpose(1, 2).reshape(batch, pairs, -1, self.query_dim)
 
-    def _structured_pair_motion_query(
-        self, z4d: StructuredZ4D, source: torch.Tensor, target: torch.Tensor, pairs: int,
-    ) -> torch.Tensor:
-        if self.motion_pair_projection is None:
-            raise RuntimeError("pair-conditioned motion projection was not constructed")
-        batch, frames, slots, channels = z4d.motion.shape
-        if slots == 0:
-            raise ValueError("pair-conditioned motion query received no slots")
-        source = torch.as_tensor(source, device=z4d.motion.device, dtype=torch.long)
-        target = torch.as_tensor(target, device=z4d.motion.device, dtype=torch.long)
-        if source.ndim == 1:
-            source, target = source[None], target[None]
-        if source.shape[0] == 1:
-            source, target = source.expand(batch, -1), target.expand(batch, -1)
-        if source.shape != (batch, pairs) or target.shape != (batch, pairs):
-            raise ValueError("structured pair indices do not match motion Z4D")
-        batch_indices = torch.arange(batch, device=z4d.motion.device)[:, None]
-        source_motion = z4d.motion[batch_indices, source].mean(dim=2)
-        target_motion = z4d.motion[batch_indices, target].mean(dim=2)
-        pair_motion = torch.cat(
-            (source_motion, target_motion, target_motion - source_motion), dim=-1
-        )
-        return self.motion_pair_projection(pair_motion)
-
     def encode_source_rgb(self, source_rgb: torch.Tensor) -> dict[int, torch.Tensor]:
         return self.upsampler.encode_source_rgb(source_rgb)
 
@@ -253,11 +213,6 @@ class DenseQueryDecoder(nn.Module):
         query = content[:, :, None, :].expand(-1, -1, num_query, -1)
         if structured and self.structured_local_queries:
             query = query + self._structured_source_query(z4d, source, content.shape[1], query_grid_shape)
-        if structured and self.structured_pair_motion_queries:
-            pair_motion = self._structured_pair_motion_query(
-                z4d, source, target, content.shape[1]
-            )
-            query = query + pair_motion[:, :, None, :]
         if self.query_rgb_projection is not None:
             rgb_query = self.query_rgb_projection(source_pyramid[32])
             if rgb_query.shape != (
@@ -293,15 +248,13 @@ class DenseQueryDecoder(nn.Module):
         feature = pixel_tokens.reshape(
             batch * pairs, query_height, query_width, self.query_dim,
         ).permute(0, 3, 1, 2)
-        coarse = self.coarse_head(feature).reshape(batch, pairs, 3, query_height, query_width) \
-            if self.coarse_head is not None else None
         xyz = self.upsampler(
             feature, source_rgb=source_rgb, source_pyramid=source_pyramid,
             batch=batch, pairs=pairs,
         )
         xyz = xyz.reshape(batch, pairs, 3, *xyz.shape[-2:])
         feature = feature.reshape(batch, pairs, self.query_dim, query_height, query_width)
-        return DenseQueryOutput(xyz, feature, coarse, camera)
+        return DenseQueryOutput(xyz, feature, camera)
 
     def _camera_readout(self, pixel_tokens: torch.Tensor, translation: torch.Tensor,
                         rotation: torch.Tensor, source, target,

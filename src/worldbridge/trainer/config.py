@@ -25,7 +25,11 @@ REMOVED_FEATURES = (
     "cycle_reprojection_", "boundary_supervision", "source_edge_contrast_weight",
     "schedule_extension_start_step", "schedule_extension_horizon_steps",
     "staged_inputs", "pipeline_wait_timeout_seconds", "geometry_replay",
-    "lazy_vae_cache", "lazy_vae_pipeline",
+    "lazy_vae_cache", "lazy_vae_pipeline", "coarse_diagnostic", "fullres_coordinates",
+    "structured_pair_motion_queries", "structured_pair_motion_zero_init",
+    "layer_gate_init_std", "layer_gate_seed", "wan_truncate_after_block",
+    "wan_dit_root", "wan_checkpoint", "empty_text_condition",
+    "validation_source_rgb_cache_root",
 )
 LEGACY_PROFILES = (
     "native_capacity_test_only", "native_kubric512_b1_a4_k15",

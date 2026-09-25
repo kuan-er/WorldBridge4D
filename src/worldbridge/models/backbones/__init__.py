@@ -1,4 +1,4 @@
 """WorldBridge4D backbone components."""
-from .geometry import CleanLatentBackbone, FeedForwardWanBackbone, WanHiddenGeometryBackbone
+from .geometry import WanHiddenGeometryBackbone
 
-__all__ = ["CleanLatentBackbone", "FeedForwardWanBackbone", "WanHiddenGeometryBackbone"]
+__all__ = ["WanHiddenGeometryBackbone"]

@@ -118,13 +118,12 @@ class WanVAEEncoder(nn.Module):
 
 
 class WanDiTMapping(nn.Module):
-    """Native Wan DiT used as F_theta(Y, tau), optionally prefix-truncated."""
+    """Native Wan DiT used as F_theta(Y, tau)."""
 
     def __init__(self, checkpoint: str | Path, condition: torch.Tensor | None = None,
                  device: torch.device | str = "cpu", dtype: torch.dtype = torch.float32,
                  timestep_scale: float = WAN_TIMESTEP_SCALE,
                  expected_latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE,
-                 truncate_after_block: int | None = None,
                  load_pretrained_weights: bool = True, native_512: bool = False):
         super().__init__()
         self.checkpoint = str(checkpoint)
@@ -135,11 +134,8 @@ class WanDiTMapping(nn.Module):
             raise ValueError('native512 mapping retains the original256 base contract')
         if len(self.expected_latent_shape) != 4 or self.expected_latent_shape[:2] != (16, 6):
             raise ValueError(f"unsupported Wan latent contract: {self.expected_latent_shape}")
-        self.truncate_after_block = (
-            None if truncate_after_block is None else int(truncate_after_block)
-        )
         self.dit = self._load(
-            self.checkpoint, torch.device(device), dtype, self.truncate_after_block,
+            self.checkpoint, torch.device(device), dtype,
             load_pretrained_weights=bool(load_pretrained_weights),
         )
         self.register_buffer("empty_condition", torch.empty(0), persistent=False)
@@ -198,7 +194,7 @@ class WanDiTMapping(nn.Module):
 
     @classmethod
     def _load_sharded(cls, model: nn.Module, index_path: Path) -> None:
-        """Load only tensors retained by the possibly truncated model."""
+        """Load only tensors retained by the instantiated model."""
         try:
             from safetensors import safe_open
         except ImportError as exc:
@@ -246,22 +242,12 @@ class WanDiTMapping(nn.Module):
 
     @classmethod
     def _load(cls, checkpoint: str, device: torch.device, dtype: torch.dtype,
-              truncate_after_block: int | None = None,
               load_pretrained_weights: bool = True) -> nn.Module:
         path = Path(checkpoint)
         if load_pretrained_weights and not path.exists():
             raise FileNotFoundError(f"WAN DiT checkpoint not found: {path}")
         config = cls._architecture(path)
-        if truncate_after_block is not None and not (
-            0 <= truncate_after_block < int(config["num_layers"])
-        ):
-            raise ValueError(
-                f"truncate_after_block={truncate_after_block} outside "
-                f"[0,{int(config['num_layers']) - 1}]"
-            )
         model = cls._new_model(config)
-        if truncate_after_block is not None:
-            model.blocks = nn.ModuleList(list(model.blocks[:truncate_after_block + 1]))
         if load_pretrained_weights:
             if path.name.endswith(".safetensors.index.json"):
                 cls._load_sharded(model, path)
