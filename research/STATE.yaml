@@ -8,6 +8,7 @@ worktree_split:
   h032_task: T-20260924090829-46789c
   h032_worktree: /data/WorldBridge4D/.pi-research/worktrees/T-20260924090829-46789c
   method: new_task_then_no_ff_merge_of_the_H032_branch_tip_69a09119_into_the_new_branch
+  yaml_repair: fixed two invalid nested-scalar blocks inherited from the H032 STATE.yaml (verdict/evidence)
   note: further H033 edits and runs belong to the new task; the H032 branch tip keeps the initial H033 implementation as history and the H032 running experiment stays snapshot-pinned and unaffected
 h033:
   status: implementation_landed_cpu_suite_passed_gate_waiting_on_parent_210000
@@ -76,7 +77,8 @@ latest:
       mean_relative_weight_drift: {198000: 17.92, 199000: 22.96, 200000: 27.30}
       largest_movers: [quaternion.bias, temporal.norm2.bias, temporal.norm1.bias, temporal.self_attn.in_proj_bias, camera_query]
       mean_implied_adam_step: {196020: 0.000214, 198000: 1.323e-05, 199000: 1.165e-05, 200000: 5.412e-06}
-    verdict: not_capacity_not_gradient_starvation_weights_move_but_pose_stays_at_prior
+    verdict:
+      name: not_capacity_not_gradient_starvation_weights_move_but_pose_stays_at_prior
       evidence: weights_drift_far_from_init_and_zero_init_biases_learn_nonzero_while_pose_metrics_remain_at_trivial_baseline
       suspected_causes: [pooled_features_may_not_identify_per_pair_camera_motion, translation_normalized_by_pointcloud_sigma_5.62m_puts_PO_DR_in_quadratic_region_with_weight0.1, pose_loss_nearly_flat_in_best_constant_predictor]
     unverified: features_do_carry_pose_information
@@ -101,11 +103,13 @@ latest:
       kubric: {n: 1910, rotation_deg_mean: 3.1781, translation_m_mean: 0.49589, focal_relative_error_mean: 0.01538, focal_relative_error_median: 0.01284}
       pointodyssey: {n: 954, rotation_deg_mean: 2.2616, rotation_deg_median: 0.98409, translation_m_mean: 0.0606, translation_m_median: 0.05037, focal_relative_error_mean: 0.03718, focal_relative_error_median: 0.01745}
       dynamic_replica: {n: 953, rotation_deg_mean: 0.62376, translation_m_mean: 0.0288, focal_relative_error_mean: 0.00805, focal_relative_error_median: 0.00529}
-    verdict: pose_at_or_below_trivial_identity_baseline_all_three_datasets
+    verdict:
+      name: pose_at_or_below_trivial_identity_baseline_all_three_datasets
       kubric: rotation_+3pct_worse_3sigma_translation_+5pct_worse_9sigma
       pointodyssey: rotation_mean_16pct_better_but_median_6pct_worse_and_translation_worse_mean+11pct_median+60pct
       dynamic_replica: rotation_and_translation_statistically_equal_to_identity
-    intrinsics_verdict: modelled_focal_is_mostly_a_per_clip_constant
+    intrinsics_verdict:
+      name: modelled_focal_is_mostly_a_per_clip_constant
       kubric_dynamic_replica: GT_constant_within_clip_so_no_per_frame_signal_residual_1.5pct_and_0.8pct
       pointodyssey: beats_global_constant_16.3pct_to_3.7pct_but_far_from_per_clip_constant_0.03pct_and_zoom_subset_not_isolated
     in_sample_caveat: all_values_are_training_clip_metrics_not_heldout_fixed_clip_evaluation
