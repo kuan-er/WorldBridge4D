@@ -22,6 +22,30 @@ latest:
     checkpoint197000_complete_observed: false
     decision: continue_same_GPU1_6_K10_to210k_no_change
     caveat: single_training_batch_not_fixed_clip_quality_trend_or_checkpoint_completion
+  camera_mechanism_diagnostic:
+    run: R-20260925054703-5c394a
+    script: research/analysis/h032_camera_diagnose.py
+    notification: N-9b5e0d12485d0f42edf2_acknowledged
+    sigma_from_mixture_pointcloud_stats: 5.619326591491699
+    beta: 0.05
+    clips_per_dataset: 256
+    loss_space_identity_vs_dataset_mean_pose_predictor:
+      kubric: {identity_rotation_loss: 0.00397498, identity_translation_loss: 0.02898012, mean_pose_translation_loss: 0.02897891, mean_relative_translation_norm_m: 0.023082, identity_rotation_deg: 3.43661, identity_translation_m: 0.49809}
+      pointodyssey: {identity_rotation_loss: 0.00250372, identity_translation_loss: 0.00095795, mean_pose_translation_loss: 0.00095794, mean_relative_translation_norm_m: 0.000631, identity_rotation_deg: 2.62701, identity_translation_m: 0.058467}
+      dynamic_replica: {identity_rotation_loss: 6.2756e-05, identity_translation_loss: 0.00017020, mean_pose_translation_loss: 0.00017020, mean_relative_translation_norm_m: 0.000207, identity_rotation_deg: 0.63587, identity_translation_m: 0.028553}
+    finding_best_constant_pose_predictor_does_not_reduce_translation_loss: true
+    parameter_drift_vs196020:
+      camera_tensors: 51
+      adam_step_196020_198000_199000_200000: [40, 2000, 3000, 4000]
+      mean_relative_weight_drift: {198000: 17.92, 199000: 22.96, 200000: 27.30}
+      largest_movers: [quaternion.bias, temporal.norm2.bias, temporal.norm1.bias, temporal.self_attn.in_proj_bias, camera_query]
+      mean_implied_adam_step: {196020: 0.000214, 198000: 1.323e-05, 199000: 1.165e-05, 200000: 5.412e-06}
+    verdict: not_capacity_not_gradient_starvation_weights_move_but_pose_stays_at_prior
+      evidence: weights_drift_far_from_init_and_zero_init_biases_learn_nonzero_while_pose_metrics_remain_at_trivial_baseline
+      suspected_causes: [pooled_features_may_not_identify_per_pair_camera_motion, translation_normalized_by_pointcloud_sigma_5.62m_puts_PO_DR_in_quadratic_region_with_weight0.1, pose_loss_nearly_flat_in_best_constant_predictor]
+    unverified: features_do_carry_pose_information
+    decisive_next_tests: [linear_probe_from_head_input_features_to_GT_pose, overfit_test_on_a_few_clips]
+    requirement: both_need_GPU_after_210k_on_explicit_physical1_6
   camera_baseline_check:
     run: R-20260925054024-7c2cb0
     script: research/analysis/h032_camera_baseline.py
