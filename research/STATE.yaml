@@ -120,7 +120,9 @@ h033:
     parent: checkpoint-0202000.pt (sha beebc817d37039eb95b4d23d368b37828acb3b1d51d8df182bbfbfecc4a89b05)
     gate: R-20260925172558-822a16 succeeded (fresh17, dropped51, 1104->1070, 238 tests, real GT ray probes ~1e-7)
     capacity50: R-20260925173728-f5ba18 succeeded exit0 (202001..202050)
-    review_capacity: R-20260925173733-657ec0 H033_CHECKPOINT_VERIFIED
+    review_capacity:
+      run: R-20260925173733-657ec0
+      event: H033_CHECKPOINT_VERIFIED
       checkpoint_sha256: 80e8080856a2f2498349d83c9cb605f87ac7d18399d6ee82cd5eb3270c055777
       optimizer_states: 1070
       camera_tensors: 17
