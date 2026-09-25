@@ -134,13 +134,66 @@ def smoke(gpu_ids, allow_degraded=False):
     raise SystemExit(code if code >= 0 else 128 - code)
 
 
+def review():
+    """Independent CPU review of the smoke checkpoint (no GPU, read-only)."""
+    import torch
+    from worldbridge.trainer.schedulers import dataset_for_step
+    # The launcher writes the runtime config, which lives in the run snapshot;
+    # regenerate it deterministically from the recorded parent counters instead.
+    parent = json.loads(EXPECTATION.read_text())
+    config = yaml.safe_load(CONFIG.read_text()) if CONFIG.is_file() else configuration(parent)
+    path = OUTPUT/f'checkpoint-{END:07d}.pt'
+    payload = torch.load(path, map_location='cpu', mmap=True, weights_only=True)
+    assert payload['config'] == config, 'checkpoint config differs from the smoke config'
+    state = payload['training_state']
+    assert int(state['global_step']) == END and int(state['world_size']) == 2
+    assert len(state['rng_states']) == 2
+    assert not any(key.startswith('camera_head.') for key in payload['model']), 'old camera head survived'
+    camera = sorted(key for key in payload['model']
+                    if key.startswith(('decoder.camera_pose.', 'decoder.camera_rays.')))
+    assert len(camera) == 17, camera
+    expected = {key: int(value) for key, value in parent['clips_seen'].items()}
+    for update in range(PARENT_STEP, END):
+        expected[dataset_for_step(update, config['seed'], config['dataset_mix_counts'])] += 8
+    assert state['clips_seen'] == expected, (state['clips_seen'], expected)
+    optimizer = payload['optimizer']['state']
+    assert len(optimizer) == 1070, len(optimizer)
+    retained = [key for key in optimizer if key not in set(camera)]
+    assert len(retained) == 1053 and set(camera) <= set(optimizer)
+    for name, tensor in payload['model'].items():
+        assert torch.isfinite(tensor.float()).all(), name
+    source = torch.load(PARENT_CHECKPOINT, map_location='cpu', mmap=True, weights_only=True)
+    old_state = source['optimizer']['state']
+    assert set(old_state) - set(optimizer) == {key for key in old_state if key.startswith('camera_head.')}
+    updates = END - PARENT_STEP
+    for name, entry in optimizer.items():
+        previous = int(old_state[name]['step']) if name in old_state else 0
+        assert int(entry['step']) == previous + updates, (name, entry['step'], previous)
+        for key in ('exp_avg', 'exp_avg_sq'):
+            assert entry[key].dtype == torch.float32 and torch.isfinite(entry[key]).all(), (name, key)
+            assert entry[key].shape == payload['model'][name].shape, (name, key)
+    del source, old_state
+    report = dict(event='H033_SMOKE_REVIEW_OK', checkpoint=str(path), step=END,
+                  checkpoint_sha256=file_sha256(path), optimizer_states=len(optimizer),
+                  retained_states=len(retained), camera_tensors=len(camera),
+                  camera_parameters=sum(payload['model'][key].numel() for key in camera),
+                  adam_increment=updates, clips_seen=expected, world_size=2, rng_ranks=2)
+    atomic_json(OUTPUT/'review.json', report)
+    print(json.dumps(report), flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', required=True, choices=['smoke'])
-    parser.add_argument('--gpus', required=True, help='exact authorized physical ids, e.g. 3,5')
+    parser.add_argument('--mode', required=True, choices=['smoke', 'review'])
+    parser.add_argument('--gpus', help='exact authorized physical ids, e.g. 3,5')
     parser.add_argument('--allow-degraded-gpus', action='store_true',
                         help='explicit operator opt-in for GPUs the ECC gate rejects; logged loudly')
     args = parser.parse_args()
+    if args.mode == 'review':
+        assert os.environ.get('CUDA_VISIBLE_DEVICES') == '', 'review is CPU-only'
+        review()
+        return
+    assert args.gpus is not None
     ids = args.gpus.split(',')
     assert len(ids) == len(set(ids)) == 2 and all(value.isdigit() for value in ids), args.gpus
     smoke(ids, allow_degraded=args.allow_degraded_gpus)

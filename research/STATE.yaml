@@ -34,6 +34,71 @@ h033:
     full_suite: 576_passed
     camera_tests: 27_passed
     caught_bug: bare_reshape_interleaved_token_and_channel_axes_in_the_ray_head
+  gpu_smoke_200000_to_200020:
+    status: passed_on_physical_gpu3_5_with_degraded_gpu_override
+    run: R-20260925154410-9df9c3
+    task: T-20260925081716-d5e7ad
+    parent: /data/WorldBridge4D-runs/h032-source-camera-ray-k10-to210000-20260924/checkpoint-0200000.pt
+    parent_sha256: 0e583e4d41c2f21ac3f522606312796d28093d80376aca5caadc41942f3a6619
+    config: configs/h033_smoke_200000_to_200020.yaml
+    output: /data/WorldBridge4D-runs/h033-smoke-gpu35-200000-20260925
+    checkpoint_sha256: 24e38b20c18e934aa5b920411772148c2e99577b1097f02d000a0ab045695f28
+    migration:
+      dropped_old_camera_tensors: 51
+      fresh_camera_tensors: 17
+      optimizer_states: 1070
+      retained_states: 1053
+      groups: [wan_backbone, geometry_adapter, dense_decoder, source_rgb_decay, source_rgb_no_decay, camera_head]
+      rng_ranks: 2
+    first_update_200001:
+      xyz_loss: 0.04195
+      diagonal_xyz: 0.02644
+      offdiagonal_xyz: 0.04367
+      diagonal_ray: 0.00044
+      ray_field: 1.20148
+      ray_angle_deg: 103.31
+      pose_rotation: 0.02009
+      pose_translation: 0.90289
+      translation_m: 0.58621
+      gradient_norm: 5.83
+      peak_cuda_GiB: 63.519
+      step_seconds: 64.3
+    last_update_200020:
+      xyz_loss: 0.06339
+      raw_epe_m: 0.37825
+      ray_field: 0.01688
+      ray_angle_deg: 9.33
+      decoded_valid_fraction: 1.0
+      focal_relative_error: 0.1424
+      principal_offset_px: 34.13
+      pose_rotation: 0.00789
+      rotation_deg: 9.14
+      translation_m: 0.53026
+      gradient_norm: 14.94
+      peak_cuda_GiB: 63.519
+      step_seconds: 20.0
+    mixture_coverage:
+      clips_seen: {kubric: 616744, pointodyssey: 461160, dynamic_replica: 522256}
+      delta_from_parent: {kubric: 80, pointodyssey: 40, dynamic_replica: 40}
+      conclusion: one full 20-update mixture cycle over all three datasets with the cycle-free loader
+    review: H033_SMOKE_REVIEW_OK_1070_states_17_camera_tensors_adam_step+20_all_finite
+    proves:
+      - strict structural migration works end to end (drop51_add17, 1053 retained Adam states)
+      - the cycle-free data path covers Kubric512, DR512 and PO256 with the exact 10/5/5 mixture
+      - the decoder-native camera token plus ray field trains: ray loss fell1.20->0.017 and ray angle103->9.3deg in20 updates
+      - camera-scale translation normalisation puts the first-step translation error in the linear regime
+      - checkpoint save and independent review succeed with the new parameter set
+      - peak memory63.5GiB matches H032, so the new design adds no memory
+    does_not_prove:
+      - any quality or performance claim:20 updates, one batch per step, and GPU3 is ECC-degraded (900 volatile uncorrectable DRAM errors,66 bad rows), so numeric results are indicative only
+      - long-run stability or the real H033 trajectory
+    watch_items:
+      - xyz_loss0.0419->0.0634 and raw_epe_m0.280->0.378 over20 steps is within per-batch noise but the strengthened camera gradient now flows into the trunk; monitor train/xyz_loss in the real run
+      - decoded_valid_fraction started at0.125 (7/8 ray maps unidentifiable at random init) and reached1.0 by step20
+    blockers_encountered:
+      - GPU3_is_hardware_degraded_so_the_health_gate_refused_it_first_the_operator_then_authorized_an_explicit_override
+      - non_wan_parameter_double_count_of_camera_parameters_926218_introduced_by_moving_the_camera_into_the_decoder_fixed_with_a_unit_test
+      - smoke_launcher_output_dir_assertion_on_retry_fixed
   dead_code_removal:
     status: slices1_to4_done_verified
     slice1_removed:
