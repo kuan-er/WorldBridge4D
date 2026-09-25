@@ -5,6 +5,8 @@ from typing import Any
 
 import numpy as np
 
+from ..data.constants import DATASET_NAMES
+
 def validate_config(config: dict[str, Any], world: int) -> None:
     expected = {
         "image_size": 256, "clip_length": 21, "latent_spatial_size": 32,
@@ -85,22 +87,29 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     if camera_k10 and (camera is None or config.get('targets_per_source') != 10):
         raise ValueError('camera K10 requires the explicit camera extension and exactly10 targets')
     if camera is not None:
-        keys = {'dim','num_heads','memory_grid','seed','learning_rate','warmup_steps',
-                'phase_start_step','loss_weights','skip_zero_weight_cycle','intrinsics_mode'}
+        keys = {'pose_hidden','ray_hidden','seed','learning_rate','warmup_steps',
+                'phase_start_step','loss_weights','skip_zero_weight_cycle','intrinsics_mode',
+                'pose_translation_scale'}
         if not isinstance(camera, dict) or set(camera) != keys:
-            raise ValueError('camera supervision requires the explicit source-conditioned contract')
+            raise ValueError('camera supervision requires the explicit decoder-native contract')
         if (mode != 'full' or config.get('coordinate_frame') != 'source'
                 or not config.get('native_kubric512_full') or config.get('targets_per_source') != (10 if camera_k10 else 9)
                 or config.get('backbone_readout') != 'wan_hidden_structured'
                 or config.get('full_mode_unfreeze_resume') or config.get('boundary_supervision') is not None):
             raise ValueError('camera extension requires full/source/nativeK9 without other structural profiles')
         if (camera['intrinsics_mode'] != 'per_frame_source_independent'
-                or camera['dim'] != 256 or camera['num_heads'] != 8 or camera['memory_grid'] != 16
+                or int(camera['pose_hidden']) < 8 or int(camera['ray_hidden']) < 8
                 or int(camera['warmup_steps']) < 1 or int(camera['phase_start_step']) < 0
                 or not np.isfinite(camera['learning_rate']) or camera['learning_rate'] <= 0):
-            raise ValueError('invalid camera head architecture or learning rate')
+            raise ValueError('invalid camera readout architecture or learning rate')
+        scales = camera['pose_translation_scale']
+        scale_values = list(scales.values()) if isinstance(scales, dict) else [scales]
+        if (isinstance(scales, dict) and set(scales) != set(DATASET_NAMES)) \
+                or any(not np.isfinite(float(v)) or float(v) <= 0 for v in scale_values):
+            raise ValueError('camera pose translation scale must be positive for every dataset')
         weights = camera['loss_weights']
-        if (set(weights) != {'diagonal_xyz','offdiagonal_xyz','ray','front','pose_rotation','pose_translation','fov'}
+        if (set(weights) != {'diagonal_xyz','offdiagonal_xyz','diagonal_ray','ray_field','front',
+                             'pose_rotation','pose_translation'}
                 or any(not np.isfinite(v) or v <= 0 for v in weights.values())):
             raise ValueError('camera loss weights must be explicit finite positive values')
         if camera['skip_zero_weight_cycle'] and float(config.get('cycle_reprojection_weight', 0)) != 0:

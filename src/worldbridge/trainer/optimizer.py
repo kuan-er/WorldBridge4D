@@ -27,9 +27,14 @@ def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[
                if parameter.requires_grad]
     adapter_ids = {id(parameter) for parameter in adapter}
     wan = [parameter for parameter in backbone if id(parameter) not in adapter_ids]
+    camera_ids = {id(parameter) for parameter in model.camera_head_parameters()}
+    decoder_ids = {id(parameter) for parameter in model.decoder.parameters()}
+    lost_camera = camera_ids - decoder_ids
+    if lost_camera:
+        raise RuntimeError(f"camera parameters outside the decoder: {len(lost_camera)}")
     decoder = [
         parameter for parameter in model.decoder.parameters()
-        if parameter.requires_grad and id(parameter) not in rgb_ids
+        if parameter.requires_grad and id(parameter) not in rgb_ids and id(parameter) not in camera_ids
     ]
     groups = []
     if wan:
@@ -63,11 +68,13 @@ def parameter_groups(model: DenseQueryWanModel, config: dict[str, Any]) -> list[
         if grouped_rgb != rgb_ids:
             missing = [names_by_id[value] for value in rgb_ids - grouped_rgb]
             raise RuntimeError(f"source RGB optimizer grouping lost parameters: {missing[:8]}")
-    if getattr(model, 'camera_head', None) is not None:
-        camera = [p for p in model.camera_head.parameters() if p.requires_grad]
-        if camera:
-            groups.append({'params': camera, 'lr': float(config['camera_supervision']['learning_rate']),
-                           'name': 'camera_head'})
+    camera = [parameter for parameter in model.camera_head_parameters() if parameter.requires_grad]
+    if camera:
+        grouped = {id(parameter) for group in groups for parameter in group['params']}
+        if grouped & camera_ids:
+            raise RuntimeError("camera parameters leaked into another optimizer group")
+        groups.append({'params': camera, 'lr': float(config['camera_supervision']['learning_rate']),
+                       'name': 'camera_head'})
     if not groups:
         raise ValueError("model has no trainable parameters")
     return groups

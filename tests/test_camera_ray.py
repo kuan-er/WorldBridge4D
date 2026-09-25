@@ -1,3 +1,4 @@
+"""H033 camera contract: decoder-native pose token plus per-frame ray field."""
 from copy import deepcopy
 from pathlib import Path
 import numpy as np
@@ -5,233 +6,387 @@ import pytest
 import torch
 from torch import nn
 import yaml
-from worldbridge.models.camera import SourceConditionedCameraHead, CameraOutput, quaternion_to_matrix
-from worldbridge.models.outputs import StructuredZ4D, DenseQueryOutput
+
+from worldbridge.models.camera import (
+    CameraOutput, normalised_grid_coordinates, quaternion_to_matrix,
+)
+from worldbridge.models.decoder import DenseQueryDecoder
+from worldbridge.models.outputs import DenseQueryOutput, StructuredZ4D
 from worldbridge.models.worldbridge import DenseQueryWanModel
-from worldbridge.data.sampling import sample_eligible_targets, source_with_eligible_targets
-from worldbridge.trainer.camera_objective import (unit_source_rays, diagonal_ray_loss, relative_pose_gt,
-    camera_supervision_losses, camera_ray_objective, validate_supervision_camera)
+from worldbridge.data.sampling import sample_eligible_targets
+from worldbridge.trainer.camera_objective import (
+    camera_ray_objective, camera_supervision_losses, diagonal_ray_loss, ray_field_loss,
+    relative_pose_gt, unit_rays_at, unit_source_rays, validate_supervision_camera,
+)
 from worldbridge.trainer.config import validate_config
-from worldbridge.trainer.optimizer import parameter_groups, apply_fresh_group_warmup
-from worldbridge.trainer.schedulers import apply_lr_restart_schedule
+from worldbridge.trainer.optimizer import apply_fresh_group_warmup, parameter_groups
+from worldbridge.models.decoder.query_decoder import CAMERA_MODULE_PREFIXES
+from worldbridge.trainer.trainer import CAMERA_PARAMETER_PREFIXES
+
+CONFIG = Path('configs/h033_camera_query_ray_to210000.yaml')
+PARENT = Path('configs/h032_camera_ray_k10_to210000.yaml')
+TRUNK_NON_WAN = 194597133
+GRID = 8
 
 
 def config():
-    return yaml.safe_load(Path('configs/h032_camera_ray_196000_to210000.yaml').read_text())
+    return yaml.safe_load(CONFIG.read_text())
 
 
-def camera_gt(b=2,h=8,w=8):
-    K=torch.eye(3).repeat(b,21,1,1)
-    K[:,:,0,0]=w; K[:,:,1,1]=h
-    K[:,:,0,2]=(w-1)/2; K[:,:,1,2]=(h-1)/2
-    R=torch.eye(3).repeat(b,21,1,1)
-    p=torch.zeros(b,21,3)
-    p[:,:,0]=torch.arange(21)*0.1
-    return K,R,p
+def parent_config():
+    return yaml.safe_load(PARENT.read_text())
 
 
-def test_config_exact_generator_and_guard():
-    import importlib.util
-    spec=importlib.util.spec_from_file_location('generator','research/analysis/h032_make_config.py')
-    module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-    cfg=config(); assert cfg==module.make_config(); validate_config(cfg,2)
-    for key,value in [('targets_per_source',8),('coordinate_frame','anchor'),('full_mode_unfreeze_resume',True)]:
-        bad=deepcopy(cfg); bad[key]=value
-        with pytest.raises(ValueError): validate_config(bad,2)
-    bad=deepcopy(cfg); bad['camera_supervision']['loss_weights']['ray']=float('nan')
-    with pytest.raises(ValueError): validate_config(bad,2)
-    bad=deepcopy(cfg); del bad['lr_restart']['group_learning_rates']['camera_head']
-    with pytest.raises(ValueError): validate_config(bad,2)
+class TinyBackbone(nn.Module):
+    def __init__(self, channels: int = 16):
+        super().__init__()
+        self.channels = channels
+        self.gain = nn.Parameter(torch.ones(1))
+
+    def forward(self, latent):
+        batch = latent.shape[0]
+        dense = torch.randn(batch, self.channels, 21, GRID, GRID) * self.gain
+        motion = torch.randn(batch, 21, 2, self.channels)
+        return StructuredZ4D(dense=dense, motion=motion)
 
 
-def test_sampling_forces_one_diagonal_legacy_unchanged():
-    valid=np.ones((21,3,4),bool)
-    for source in range(21):
-        out=sample_eligible_targets(valid,9,np.random.default_rng(7),diagonal_source=source)
-        assert len(set(out))==9 and out[0]==source and (out==source).sum()==1
-    expected=np.random.default_rng(7).choice(np.arange(21),9,replace=False)
-    assert np.array_equal(expected,sample_eligible_targets(valid,9,np.random.default_rng(7)))
-    valid[3]=False
-    with pytest.raises(ValueError): sample_eligible_targets(valid,9,np.random.default_rng(7),diagonal_source=3)
-    class Dataset:
-        def source_all_targets(self,index,source): return np.zeros((21,3,3,4)),valid
-    assert source_with_eligible_targets(Dataset(),0,np.array([3,4]),9,True)[0]==4
+def tiny_decoder(camera: bool = True) -> DenseQueryDecoder:
+    torch.manual_seed(0)
+    return DenseQueryDecoder(
+        num_frames=21, latent_shape=(16, 21, GRID, GRID), query_dim=64, embedding_dim=16,
+        num_layers=2, num_heads=4, upsample_channels=(64, 32, 16),
+        output_size=(32, 32), query_grid_size=GRID, structured_motion_slots=2,
+        structured_local_queries=True, source_rgb_pyramid=False, native_512=False,
+        camera_supervision=dict(seed=424243, pose_hidden=32, ray_hidden=32) if camera else None,
+    )
 
 
-@pytest.mark.parametrize('dtype',[torch.float32,torch.bfloat16])
-def test_head_shapes_source_conditioning_intrinsics_independence_and_gradients(dtype):
+def batch(batch_size: int = 2, pairs: int = 4, source: int = 3, height: int = 32, width: int = 32,
+          focal: float = 20.0, principal: tuple[float, float] | None = None):
+    """Synthetic batch shaped like the K10 sampling contract (one diagonal pair)."""
+    source_t = torch.full((batch_size, pairs), source, dtype=torch.long)
+    target_t = torch.tensor([[source, source+1, source+2, source+3]], dtype=torch.long).expand(
+        batch_size, -1).contiguous()
+    K = torch.eye(3).repeat(batch_size, 21, 1, 1)
+    K[:, :, 0, 0] = focal
+    K[:, :, 1, 1] = focal
+    cx, cy = principal if principal is not None else ((width - 1) / 2, (height - 1) / 2)
+    K[:, :, 0, 2] = cx
+    K[:, :, 1, 2] = cy
+    R = torch.eye(3).repeat(batch_size, 21, 1, 1)
+    p = torch.zeros(batch_size, 21, 3)
+    p[:, :, 0] = torch.arange(21) * 0.2
+    return source_t, target_t, (K, R, p)
+
+
+def structured(batch_size: int = 2) -> StructuredZ4D:
     torch.manual_seed(7)
-    head=SourceConditionedCameraHead(12,dim=32,num_heads=4,memory_grid=4).to(dtype=dtype)
-    z=StructuredZ4D(torch.randn(2,12,21,8,6,dtype=dtype,requires_grad=True),torch.zeros(2,21,2,12,dtype=dtype))
-    s=torch.tensor([0,10])
-    out=head(z,s)
-    assert out.rotation.shape==(2,21,3,3) and out.translation.shape==(2,21,3) and out.fov.shape==(2,21,2)
-    assert torch.allclose(out.rotation.transpose(-1,-2)@out.rotation,torch.eye(3),atol=1e-5)
-    assert torch.allclose(torch.linalg.det(out.rotation),torch.ones(2,21),atol=1e-5)
-    assert torch.equal(out.rotation[torch.arange(2),s],torch.eye(3).repeat(2,1,1))
-    assert torch.count_nonzero(out.translation[torch.arange(2),s])==0
-    other=head(z,torch.tensor([5,3]))
-    assert torch.equal(out.fov,other.fov)
-    assert not torch.equal(out.translation[:,1],other.translation[:,1])
-    K,R,p=camera_gt()
-    losses=camera_supervision_losses(out,s,K,R,p,[1,1,1],8,8)
-    sum(losses[k] for k in ('pose_rotation','pose_translation','fov')).backward()
-    assert torch.isfinite(z.dense.grad).all() and z.dense.grad.abs().sum()>0
-    for name,parameter in head.named_parameters():
-        assert parameter.grad is not None,name
-        assert torch.isfinite(parameter.grad).all(),name
-    assert (out.fov>0).all() and (out.fov<torch.pi).all()
+    return StructuredZ4D(dense=torch.randn(batch_size, 16, 21, GRID, GRID),
+                         motion=torch.randn(batch_size, 21, 2, 16))
 
 
-def test_production_camera_parameter_count():
-    head=SourceConditionedCameraHead(512)
-    assert sum(p.numel() for p in head.parameters())==1414409
-    assert len(list(head.parameters()))==51
+def forward(decoder: DenseQueryDecoder, source_t, target_t, z4d: StructuredZ4D | None = None):
+    return decoder(z4d if z4d is not None else structured(source_t.shape[0]), source_t, target_t)
 
 
-def test_relative_pose_direction_nonidentity_rotation_and_rounding():
-    K,R,p=camera_gt(1)
-    R[:,3]=quaternion_to_matrix(torch.tensor([0.,0.,2**-0.5,2**-0.5]))
-    p[:,3]=torch.tensor([2.,3.,1.])
-    source=torch.tensor([3])
-    gtR,gtp=relative_pose_gt(R,p,source)
-    world_point=torch.tensor([4.,5.,6.])
-    target_point=R[0,7].T@(world_point-p[0,7])
-    expected=R[0,3].T@(world_point-p[0,3])
-    torch.testing.assert_close(gtR[0,7]@target_point+gtp[0,7],expected)
-    # Small annotation nonorthogonality: use actual inverse for translation,
-    # closest proper rotation for the quaternion target.
-    R[:,3,0,0]+=0.0003
-    rr,pp=relative_pose_gt(R,p,source)
-    torch.testing.assert_close(pp[:,7],torch.linalg.solve(R[:,3],(p[:,7]-p[:,3])[...,None])[...,0])
-    torch.testing.assert_close(rr.transpose(-1,-2)@rr,torch.eye(3).repeat(1,21,1,1),atol=1e-6,rtol=1e-6)
+# --------------------------------------------------------------------------- protocol
+
+def test_h033_is_a_minimal_documented_diff_of_the_k10_protocol():
+    new, old = config(), parent_config()
+    assert {k for k in old.keys() | new.keys() if old.get(k) != new.get(k)} == {
+        'camera_supervision', 'expected_non_wan_parameters', 'finetune_expected_global_step',
+        'finetune_expected_clips_seen', 'finetune_drop_prefixes', 'tracking',
+    }
+    for field in ('targets_per_source', 'camera_k10', 'dataset_mix_counts', 'seed',
+                  'clip_length', 'image_size', 'native_kubric512_full', 'max_steps',
+                  'motion_slots', 'query_dim', 'geometry_dim', 'precision',
+                  'fsdp_master_precision', 'trainable_mode'):
+        assert new[field] == old[field], field
+    assert new['targets_per_source'] == 10 and new['camera_k10'] is True
+    assert new['max_steps'] == 210000 and new['finetune_expected_global_step'] == 210000
+    assert new['finetune_drop_prefixes'] == ['camera_head.']
+    validate_config(new, 2)
 
 
-def test_ray_physical_denormalization_and_gt_principal():
-    K,R,p=camera_gt(1,4,6)
-    K[:,:,0,2]+=0.4
-    rays=unit_source_rays(K[:,5],4,6)
-    assert (rays[:,2]<0).all()
-    points=4*rays
-    mean=torch.tensor([0.5,0.7,-3.]).view(1,3,1,1)
-    scale=torch.tensor([2.,3.,5.]).view(1,3,1,1)
-    pred=((points-mean)/scale)[:,None].repeat(1,2,1,1,1).requires_grad_()
-    valid=torch.ones(1,2,4,6,dtype=torch.bool)
-    source=torch.tensor([[5,5]]); target=torch.tensor([[5,9]])
-    args=(valid,source,target,K,mean.flatten(),scale.flatten())
-    ray,front,dev=diagonal_ray_loss(pred,*args)
-    assert ray<1e-10 and front==0 and dev<1e-6
-    changed=pred.detach().clone(); changed[:,1]+=100 # offdiagonal must be unconstrained
-    assert diagonal_ray_loss(changed,*args)[0]<1e-10
-    changed=pred.detach().clone(); changed[:,0,0]+=0.2; changed.requires_grad_()
-    ray,front,dev=diagonal_ray_loss(changed,*args)
-    assert ray>0 and dev>0
-    ray.backward(); assert changed.grad[:,1].abs().sum()==0
-    back=(((-points)-mean)/scale)[:,None].repeat(1,2,1,1,1)
-    assert diagonal_ray_loss(back,*args)[1]>0
-    no_diag=torch.tensor([[4,9]])
-    with pytest.raises(ValueError): diagonal_ray_loss(pred,valid,source,no_diag,K,mean.flatten(),scale.flatten())
+def test_h033_rejects_unaudited_camera_profiles():
+    for change in (
+        {'loss_weights': {'diagonal_xyz': 0.5, 'offdiagonal_xyz': 0.5, 'ray': 0.1}},
+        {'pose_translation_scale': {'kubric': 0.3}},
+        {'pose_translation_scale': -1.0},
+        {'intrinsics_mode': 'per_clip'},
+        {'pose_hidden': 0},
+    ):
+        cfg = config()
+        cfg['camera_supervision'] = {**cfg['camera_supervision'], **change}
+        with pytest.raises(ValueError):
+            validate_config(cfg, 2)
+    cfg = config()
+    cfg['camera_supervision'] = {**cfg['camera_supervision'], 'memory_grid': 16}
+    with pytest.raises(ValueError):
+        validate_config(cfg, 2)
 
 
-def test_invalid_pixels_masked_and_balanced_objective():
-    K,R,p=camera_gt(1,4,4)
-    source=torch.zeros(1,3,dtype=torch.long); target=torch.tensor([[0,1,2]])
-    xyz=(3*unit_source_rays(K[:,0],4,4))[:,None].repeat(1,3,1,1,1)
-    valid=torch.ones(1,3,4,4,dtype=torch.bool); valid[:,:,0,0]=False
-    prediction=xyz.clone(); prediction[:,:,0,1,1]+=0.2
-    prediction[:,:, :,0,0]=float('nan'); prediction.requires_grad_()
-    rr,pp=relative_pose_gt(R,p,source[:,0])
-    fov=torch.full((1,21,2),2*np.arctan(.5))
-    output=CameraOutput(rr,pp,fov)
-    total,losses=camera_ray_objective(prediction,xyz,valid,source,target,output,(K,R,p),[0,0,0],[1,1,1],config()['camera_supervision'])
-    assert torch.isfinite(total) and total>0
-    total.backward(); assert torch.isfinite(prediction.grad).all()
-    assert prediction.grad[:,:,:,0,0].abs().sum()==0
-    torch.testing.assert_close(losses['diagonal_xyz'],losses['offdiagonal_xyz'])
+def test_k10_exactly_one_diagonal_and_nine_non_diagonal():
+    valid = np.ones((21, 3, 3), dtype=bool)
+    for source in range(21):
+        targets = sample_eligible_targets(valid, 10, np.random.default_rng(123), diagonal_source=source)
+        assert len(targets) == len(set(targets)) == 10
+        assert (targets == source).sum() == 1 and (targets != source).sum() == 9
 
 
-def test_zoom_supervises_each_frame_not_mean_focal():
-    K,R,p=camera_gt(1)
-    K[:,:,0,0] *= torch.linspace(0.7,1.4,21)[None]
-    K[:,:,1,1] *= torch.linspace(0.8,1.3,21)[None]
-    source=torch.tensor([3]); rr,pp=relative_pose_gt(R,p,source)
-    fov=2*torch.atan(torch.stack((8/(2*K[...,0,0]),8/(2*K[...,1,1])),dim=-1))
-    exact=CameraOutput(rr,pp,fov)
-    losses=camera_supervision_losses(exact,source,K,R,p,[1,1,1],8,8)
-    assert losses['fov']==0 and losses['focal_relative_error']<1e-6
-    torch.testing.assert_close(exact.intrinsics(8,8),K)
-    shared=CameraOutput(rr,pp,fov.mean(1,keepdim=True).expand_as(fov))
-    assert camera_supervision_losses(shared,source,K,R,p,[1,1,1],8,8)['fov']>0.01
-    with pytest.raises(ValueError,match='per-frame'):
-        camera_supervision_losses(CameraOutput(rr,pp,fov.mean(1)),source,K,R,p,[1,1,1],8,8)
+def test_camera_parameter_prefixes_match_the_model():
+    decoder = tiny_decoder()
+    names = {name for name, _ in decoder.named_parameters()}
+    camera = {name for name in names if name.startswith(CAMERA_MODULE_PREFIXES)}
+    assert camera == {name for name in names if name.split('.')[0] in ('camera_pose', 'camera_rays')}
+    assert len(decoder.camera_parameters()) == len(camera) == 17
+    assert decoder.camera_enabled
+    assert CAMERA_PARAMETER_PREFIXES == ('decoder.camera_pose.', 'decoder.camera_rays.')
 
 
-def test_calibration_guards():
-    K,R,p=camera_gt(1)
-    c=dict(intrinsics=K[0].numpy(),rotations=R[0].numpy(),positions=p[0].numpy())
-    validate_supervision_camera(c,8,8)
-    c2=deepcopy(c); c2['intrinsics'][5,0,0]*=1.01
-    assert validate_supervision_camera(c2,8,8)['focal_relative_drift'] > 0
-    with pytest.raises(ValueError,match='clip-shared'):
-        validate_supervision_camera(c2,8,8,require_shared_intrinsics=True)
-    c2=deepcopy(c); c2['intrinsics'][:,0,2]+=3
-    with pytest.raises(ValueError,match='centered'): validate_supervision_camera(c2,8,8)
-    c2=deepcopy(c); c2['rotations'][:,0,0]+=0.0003
-    validate_supervision_camera(c2,8,8)
-    c2['rotations'][:,0,0]+=0.1
-    assert validate_supervision_camera(c2,8,8)['invalid_pose_frames']==21
+# --------------------------------------------------------------------------- readout
+
+def test_pose_and_ray_shapes_diagonal_identity_and_unit_rays():
+    decoder = tiny_decoder()
+    source_t, target_t, _ = batch(pairs=4)
+    output = forward(decoder, source_t, target_t)
+    camera = output.camera
+    assert camera is not None
+    assert camera.rotation.shape == (2, 4, 3, 3)
+    assert camera.translation.shape == (2, 4, 3)
+    assert camera.rays.shape == (2, 3, GRID, GRID)
+    assert camera.ray_frames.tolist() == [3, 3]
+    assert torch.allclose(camera.rotation[:, 0], torch.eye(3).expand(2, 3, 3))
+    assert torch.allclose(camera.translation[:, 0], torch.zeros(2, 3))
+    assert torch.allclose(camera.rays.norm(dim=1), torch.ones(2, GRID, GRID), atol=1e-5)
 
 
-def test_nonrigid_pose_labels_masked_without_losing_fov_or_nan():
-    K,R,p=camera_gt(1)
-    R[:,5,0,1]=0.1  # determinant1 but nonorthogonal; do not relax .003 threshold
-    rotation=torch.eye(3).repeat(1,21,1,1).requires_grad_()
-    translation=torch.zeros(1,21,3,requires_grad=True)
-    fov=torch.ones(1,21,2,requires_grad=True)
-    out=CameraOutput(rotation,translation,fov)
-    losses=camera_supervision_losses(out,torch.tensor([0]),K,R,p,[1,1,1],8,8)
-    assert losses['pose_valid_pairs']==19
-    (losses['pose_rotation']+losses['pose_translation']+losses['fov']).backward()
-    assert rotation.grad[:,5].abs().sum()==translation.grad[:,5].abs().sum()==0
-    assert fov.grad[:,5].abs().sum()>0
-    # Invalid source means no valid relative pose labels, but all K_t still train.
-    losses=camera_supervision_losses(out,torch.tensor([5]),K,R,p,[1,1,1],8,8)
-    assert losses['pose_valid_pairs']==0 and losses['pose_rotation']==losses['pose_translation']==0
-    assert all(torch.isfinite(v).all() for v in losses.values())
+def test_ray_field_and_pose_do_not_depend_on_unrelated_pairs():
+    decoder = tiny_decoder()
+    decoder.eval()
+    source_t, target_t, _ = batch(pairs=4)
+    other = target_t.clone()
+    other[:, 2] = 21 - 1 - other[:, 2].clamp(max=20)  # change only non-diagonal pairs
+    z4d = structured()
+    with torch.no_grad():
+        first = forward(decoder, source_t, target_t, z4d)
+        second = forward(decoder, source_t, other, z4d)
+    assert torch.equal(first.camera.rays, second.camera.rays)
+    assert torch.equal(first.camera.rotation[:, 0], second.camera.rotation[:, 0])
+    # A different diagonal frame is a different camera prediction.
+    moved_source = source_t + 1
+    with torch.no_grad():
+        third = forward(decoder, moved_source, target_t + 1, z4d)
+    assert not torch.equal(first.camera.rays, third.camera.rays)
 
 
-def test_fresh_camera_warmup_anchored_to_phase_not_resume():
-    cfg=config(); parameters=[nn.Parameter(torch.ones(1)) for _ in range(6)]
-    optimizer=torch.optim.AdamW([dict(params=[p],name=name,lr=lr) for p,(name,lr) in zip(parameters,cfg['lr_restart']['group_learning_rates'].items())])
-    for update in (196001,196021,196500,200000):
-        apply_lr_restart_schedule(optimizer,update,cfg['lr_restart'])
-        apply_fresh_group_warmup(optimizer,{'camera_head'},update,196000,500)
-        actual={g['name']:g['lr'] for g in optimizer.param_groups}
-        assert actual['camera_head']==pytest.approx(1e-4*min((update-196000)/500,1))
-        assert actual['wan_backbone']==5e-7 and actual['dense_decoder']==3e-6
+def test_ray_decode_recovers_real_intrinsics_including_offset_principal_point():
+    for principal in (None, (131.4, 98.2)):
+        source_t, _, (K, _, _) = batch(batch_size=1, focal=250.0, principal=principal,
+                                       height=256, width=256)
+        grid = 32
+        ys, xs = _pixel_grid(grid, 256, 256)
+        rays = unit_rays_at(K[:, 0], ys, xs)
+        output = CameraOutput(torch.eye(3)[None, None].expand(1, 1, 3, 3),
+                              torch.zeros(1, 1, 3), rays, torch.zeros(1, dtype=torch.long))
+        decoded = output.decode_pinhole(256, 256)
+        expected_cx, expected_cy = principal if principal else (127.5, 127.5)
+        assert float(decoded['focal_x']) == pytest.approx(250.0, abs=1e-3)
+        assert float(decoded['focal_y']) == pytest.approx(250.0, abs=1e-3)
+        assert float(decoded['principal_x']) == pytest.approx(expected_cx, abs=1e-3)
+        assert float(decoded['principal_y']) == pytest.approx(expected_cy, abs=1e-3)
+        assert bool(decoded['valid'])
 
 
-def test_model_forward_attaches_camera_and_legacy_state_unchanged():
-    class Backbone(nn.Module):
-        def __init__(self): super().__init__(); self.proj=nn.Linear(4,4)
-        def forward(self,x):
-            return StructuredZ4D(self.proj(x.permute(0,2,3,4,1)).permute(0,4,1,2,3),x.new_zeros(x.shape[0],21,1,4))
-    class Decoder(nn.Module):
-        def __init__(self): super().__init__(); self.proj=nn.Linear(4,3)
-        def forward(self,z,source,target,source_rgb=None):
-            xyz=self.proj(z.dense.mean((2,3,4)))[:,None,:,None,None].expand(-1,source.shape[1],-1,4,4)
-            return DenseQueryOutput(xyz,z.dense)
-    old=DenseQueryWanModel(Backbone(),Decoder()); old_state=deepcopy(old.state_dict())
-    model=DenseQueryWanModel(Backbone(),Decoder(),SourceConditionedCameraHead(4,32,4,memory_grid=2))
-    missing,unexpected=model.load_state_dict(old_state,strict=False)
-    assert missing and all(k.startswith('camera_head.') for k in missing) and not unexpected
-    for k,v in old_state.items(): assert torch.equal(model.state_dict()[k],v)
-    src=torch.tensor([[2,2]]); tgt=torch.tensor([[2,6]]); latent=torch.randn(1,4,21,4,4)
-    prediction,z,out=model(latent,src,tgt)
-    assert out.camera is not None
-    torch.testing.assert_close(prediction,old(latent,src,tgt)[0])
-    assert model(latent,src,tgt,z4d_override=z)[2].camera is None
-    cfg={'learning_rate':3e-6,'weight_decay':1e-4,'camera_supervision':{'learning_rate':1e-4}}
-    groups=parameter_groups(model,cfg)
-    names={g['name'] for g in groups}; assert 'camera_head' in names
-    assert sum(len(g['params']) for g in groups)==len(list(model.parameters()))
+def test_degenerate_ray_field_is_flagged_not_reported():
+    rays = torch.zeros(1, 3, 8, 8)
+    rays[:, 2] = -1.0  # perfectly flat: focal length is not identifiable
+    output = CameraOutput(torch.eye(3)[None, None].expand(1, 1, 3, 3),
+                          torch.zeros(1, 1, 3), rays, torch.zeros(1, dtype=torch.long))
+    assert not bool(output.decode_pinhole(64, 64)['valid'])
+
+
+def _pixel_grid(grid: int, height: int, width: int):
+    from worldbridge.trainer.camera_objective import pixel_grid_coordinates
+    return pixel_grid_coordinates(grid, height, width, torch.device('cpu'), torch.float32)
+
+
+def test_gt_rays_use_real_principal_points_never_the_predicted_centre():
+    K = torch.eye(3)[None].repeat(1, 1, 1)
+    K[:, 0, 0] = 100.0
+    K[:, 1, 1] = 120.0
+    K[:, 0, 2] = 111.5
+    K[:, 1, 2] = 77.25
+    height = width = 32
+    full = unit_source_rays(K, height, width)
+    grid = 8
+    ys, xs = _pixel_grid(grid, height, width)
+    sampled = unit_rays_at(K, ys, xs)
+    centre_only = unit_rays_at(K, torch.zeros(1), torch.zeros(1))
+    assert not torch.allclose(sampled[:, :, 0, 0], sampled[:, :, -1, -1])
+    # Grid pixel centres sit at (i+0.5)*scale-0.5, so the first centre is (1.5,1.5).
+    expected = torch.tensor([(1.5 - 111.5) / 100.0, -(1.5 - 77.25) / 120.0, -1.0])
+    expected = expected / expected.norm()
+    assert torch.allclose(sampled[0, :, 0, 0], expected, atol=1e-6)
+    assert torch.allclose(full[0, :, 2, 2], sampled[0, :, 0, 0], atol=4e-2)
+    assert not torch.allclose(centre_only, sampled[:, :, 0, 0])
+
+
+# --------------------------------------------------------------------------- objective
+
+def test_objective_is_finite_balanced_and_camera_gradients_flow():
+    decoder = tiny_decoder()
+    source_t, target_t, cameras = batch()
+    output = forward(decoder, source_t, target_t)
+    cfg = config()['camera_supervision']
+    prediction = torch.randn(2, 4, 3, 32, 32)
+    target_xyz = torch.randn(2, 4, 3, 32, 32)
+    valid = torch.ones(2, 4, 32, 32, dtype=torch.bool)
+    total, losses = camera_ray_objective(prediction, target_xyz, valid, source_t, target_t,
+                                         output.camera, cameras, torch.zeros(3), torch.ones(3),
+                                         cfg, dataset='kubric')
+    assert torch.isfinite(total)
+    for key in ('diagonal_xyz', 'offdiagonal_xyz', 'diagonal_ray', 'front', 'ray_field',
+                'ray_angle_deg', 'pose_rotation', 'pose_translation', 'rotation_deg',
+                'translation_m', 'focal_relative_error', 'fov'):
+        assert torch.isfinite(torch.as_tensor(losses[key])), key
+    # Three non-diagonal pairs per item survive the diagonal mask.
+    assert float(losses['pose_valid_pairs']) == 6.0
+    total.backward()
+    grads = {name: parameter.grad for name, parameter in decoder.named_parameters()
+             if name.startswith(CAMERA_MODULE_PREFIXES)}
+    assert grads and all(value is not None and torch.isfinite(value).all()
+                         for value in grads.values())
+
+
+def test_translation_supervision_uses_the_camera_scale_not_the_pointcloud_sigma():
+    decoder = tiny_decoder()
+    source_t, target_t, cameras = batch()
+    output = forward(decoder, source_t, target_t)
+    base = config()['camera_supervision']
+    prediction = torch.zeros(2, 4, 3, 32, 32)
+    target_xyz = torch.zeros(2, 4, 3, 32, 32)
+    valid = torch.ones(2, 4, 32, 32, dtype=torch.bool)
+    kubric = camera_supervision_losses(output.camera, source_t, target_t, *cameras,
+                                       torch.ones(3), 32, 32, base, dataset='kubric')
+    point = camera_supervision_losses(output.camera, source_t, target_t, *cameras,
+                                      torch.ones(3), 32, 32, base, dataset='pointodyssey')
+    assert float(kubric['pose_translation']) != pytest.approx(float(point['pose_translation']))
+    # The metric itself is scale-free (metres), so it must not depend on sigma.
+    assert float(kubric['translation_m']) == pytest.approx(float(point['translation_m']))
+    assert float(kubric['translation_m']) > 0
+
+
+def test_invalid_gt_pose_masks_only_its_own_labels():
+    decoder = tiny_decoder()
+    source_t, target_t, (K, R, p) = batch()
+    shear = torch.tensor([[1.0, 0.2, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    R[:, 5] = shear  # frame 5 has a non-rigid annotation base
+    output = forward(decoder, source_t, target_t)
+    cfg = config()['camera_supervision']
+    losses = camera_supervision_losses(output.camera, source_t, target_t, K, R, p,
+                                       torch.ones(3), 32, 32, cfg, dataset='kubric')
+    assert torch.isfinite(losses['pose_rotation']) and torch.isfinite(losses['ray_field'])
+    assert float(losses['pose_valid_fraction']) < 1.0
+    # Frame 3 stays valid; frame 5 is the shared source for other pairs, so all
+    # of its pairs are masked while the diagonal frame still has ray labels.
+    assert 0.0 < float(losses['pose_valid_pairs']) < 6.0
+    assert float(losses['ray_angle_deg']) >= 0.0
+
+
+def test_ray_field_loss_is_zero_for_perfect_rays():
+    source_t, target_t, (K, R, p) = batch(batch_size=2)
+    ys, xs = _pixel_grid(GRID, 32, 32)
+    rays = unit_rays_at(K[torch.arange(2), torch.tensor([3, 3])], ys, xs)
+    output = CameraOutput(torch.eye(3)[None, None].expand(2, 1, 3, 3), torch.zeros(2, 1, 3),
+                          rays, torch.tensor([3, 3]))
+    field, angle = ray_field_loss(output, K, 32, 32)
+    assert float(field) == pytest.approx(0.0, abs=1e-6)
+    assert float(angle) == pytest.approx(0.0, abs=0.05)
+    decoded = output.decode_pinhole(32, 32)
+    assert float(decoded['focal_x'][0]) == pytest.approx(float(K[0, 3, 0, 0]), rel=1e-3)
+
+
+def test_diagonal_ray_projection_still_uses_gt_intrinsics():
+    source_t, target_t, (K, R, p) = batch()
+    valid = torch.ones(2, 4, 32, 32, dtype=torch.bool)
+    xyz = torch.zeros(2, 4, 3, 32, 32)
+    mean = torch.zeros(3)
+    scale = torch.ones(3)
+    ray, front, deviation = diagonal_ray_loss(xyz, valid, source_t, target_t, K, mean, scale)
+    assert float(ray) == pytest.approx(0.0, abs=1e-8)
+    assert float(deviation) == pytest.approx(0.0, abs=1e-8)
+    behind = xyz.clone()
+    behind[:, 0, 2] = 5.0
+    _, front_behind, _ = diagonal_ray_loss(behind, valid, source_t, target_t, K, mean, scale)
+    assert float(front_behind) > 0.0
+
+
+def test_relative_pose_direction_and_rounding_are_unchanged():
+    K, perturbed, positions = None, None, None
+    rotations = torch.eye(3)[None, None].repeat(1, 3, 1, 1)
+    angle = torch.tensor(0.3)
+    rotations[0, 1] = torch.tensor([[torch.cos(angle), -torch.sin(angle), 0.0],
+                                    [torch.sin(angle), torch.cos(angle), 0.0],
+                                    [0.0, 0.0, 1.0]])
+    rotations[0, 2] = rotations[0, 1] @ rotations[0, 1]
+    positions = torch.tensor([[[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]]])
+    reference = torch.tensor([0])
+    R, p = relative_pose_gt(rotations, positions, reference)
+    assert torch.allclose(R[0, 0], torch.eye(3), atol=1e-6)
+    assert torch.allclose(p[0, 0], torch.zeros(3), atol=1e-6)
+    assert torch.allclose(p[0, 1], torch.tensor([1.0, 0.0, 0.0]), atol=1e-6)
+    assert torch.allclose(R[0, 1], rotations[0, 1], atol=1e-6)
+
+
+def test_calibration_guards_still_hold():
+    _, _, (K, R, p) = batch(batch_size=1)
+    camera = dict(intrinsics=K[0].numpy(), rotations=R[0].numpy(), positions=p[0].numpy())
+    report = validate_supervision_camera(camera, 32, 32)
+    assert report['invalid_pose_frames'] == 0
+    shifted = dict(camera)
+    moved = K[0].numpy().copy()
+    moved[:, 0, 2] += 25.0
+    shifted['intrinsics'] = moved
+    with pytest.raises(ValueError):
+        validate_supervision_camera(shifted, 32, 32)
+
+
+def test_fresh_camera_warmup_is_anchored_to_the_phase_not_the_resume_step():
+    parameter = nn.Parameter(torch.zeros(1))
+    optimizer = torch.optim.AdamW([{'params': [parameter], 'lr': 1e-4, 'name': 'camera_head'}])
+    for update in (196001, 196250, 196500, 200000):
+        optimizer.param_groups[0]['lr'] = 1e-4
+        actual = apply_fresh_group_warmup(optimizer, {'camera_head'}, update, 196000, 500)
+        expected = 1e-4 * min((update - 196000) / 500, 1.0)
+        assert optimizer.param_groups[0]['lr'] == pytest.approx(expected)
+        assert actual == pytest.approx(min((update - 196000) / 500, 1.0))
+
+
+# --------------------------------------------------------------------------- model wiring
+
+def test_model_attaches_camera_through_the_decoder_and_groups_it_once():
+    model = DenseQueryWanModel(TinyBackbone(), tiny_decoder())
+    model.train()
+    latent = torch.randn(2, 16, 6, 32, 32)
+    source_t, target_t, _ = batch()
+    prediction, z4d, output = model(latent, source_t, target_t)
+    assert prediction.shape[:2] == (2, 4) and output.camera is not None
+    groups = parameter_groups(model, {'learning_rate': 3e-6, 'backbone_learning_rate': 5e-7,
+                                      'geometry_learning_rate': 3e-6, 'weight_decay': 0.0,
+                                      'camera_supervision': {'learning_rate': 1e-4}})
+    names = {group['name']: group['params'] for group in groups}
+    assert 'camera_head' in names and 'dense_decoder' in names
+    camera_ids = {id(value) for value in model.camera_head_parameters()}
+    assert {id(value) for value in names['camera_head']} == camera_ids
+    assert not ({id(value) for value in names['dense_decoder']} & camera_ids)
+    total = sum(value.numel() for group in groups for value in group['params'])
+    assert total == sum(value.numel() for _, value in model.named_parameters())
+
+
+def test_decoder_without_camera_config_has_no_camera_readout():
+    decoder = tiny_decoder(camera=False)
+    assert not decoder.camera_enabled and decoder.camera_parameters() == []
+    source_t, target_t, _ = batch()
+    output = forward(decoder, source_t, target_t)
+    assert output.camera is None

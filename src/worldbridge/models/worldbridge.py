@@ -8,12 +8,18 @@ from .decoder.query_decoder import DenseQueryDecoder
 from .outputs import DenseQueryOutput, StructuredZ4D
 
 class DenseQueryWanModel(nn.Module):
-    def __init__(self, backbone: nn.Module, decoder: DenseQueryDecoder,
-                 camera_head: nn.Module | None = None):
+    def __init__(self, backbone: nn.Module, decoder: DenseQueryDecoder):
         super().__init__()
         self.backbone = backbone
         self.decoder = decoder
-        self.camera_head = camera_head
+
+    @property
+    def camera_head(self) -> nn.Module | None:
+        """Distinguish camera-enabled models without exposing the old head module."""
+        return self.decoder.camera_pose if getattr(self.decoder, 'camera_enabled', False) else None
+
+    def camera_head_parameters(self) -> list[nn.Parameter]:
+        return list(getattr(self.decoder, 'camera_parameters', list)())
 
     def forward(self, clean_video_latent: torch.Tensor, source: torch.Tensor,
                 target: torch.Tensor, encoder_hidden_states: torch.Tensor | None = None,
@@ -27,10 +33,6 @@ class DenseQueryWanModel(nn.Module):
         else:
             z4d = self.backbone(clean_video_latent, encoder_hidden_states)
         output = self.decoder(z4d, source, target, source_rgb=source_rgb)
-        if self.camera_head is not None and z4d_override is None:
-            if source.ndim != 2 or not torch.all(source == source[:, :1]):
-                raise ValueError('camera forward requires one shared source per batch item')
-            output.camera = self.camera_head(z4d, source[:, 0])
         return output.normalized_xyz, z4d, output
 
     def configure_trainable(self, mode: str = "full") -> None:

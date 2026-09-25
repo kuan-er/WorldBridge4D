@@ -1,7 +1,35 @@
-updated_at: '2026-09-24T14:22:04Z'
-active_hypothesis: H032
+updated_at: '2026-09-25T06:20:00Z'
+active_hypothesis: H033
 active_task: T-20260924090829-46789c
-next_step: Continue the same K10 GPU1/6 Run uninterrupted to210000 under existing fatal/progress/197k events. Full196040 restore and first196041 update verified; no further planned capacity stop.
+next_step: H033 implementation is landed and the CPU suite passes. Wait for the H032/K10 GPU1/6 continuation to reach210000, then run the H033 gate (R gate, CPU) which pins the parent endpoint, writes the counters into the config and runs the real GT ray/decode probes; afterwards the50-update capacity, its review, and the continuation.
+h033:
+  status: implementation_landed_cpu_suite_passed_gate_waiting_on_parent_210000
+  hypothesis: research/hypotheses/H033.md
+  config: configs/h033_camera_query_ray_to210000.yaml
+  launcher: research/analysis/h033_camera_train.py
+  config_generator: research/analysis/h033_make_config.py
+  parent: /data/WorldBridge4D-runs/h032-source-camera-ray-k10-to210000-20260924/checkpoint-0210000.pt
+  handoff: /data/WorldBridge4D-runs/h033-camera-query-ray-handoff-20260925
+  output: /data/WorldBridge4D-runs/h033-camera-query-ray-to210000-20260925
+  deleted_from_h032: [memory_projection, spatial_projection, memory_time, cross_attention, cross_mlp, temporal, pose_mlp, fov_mlp, 21 pose queries, 21 intrinsic queries, time embeddings]
+  design:
+    pose: one camera token appended to the decoder pair-query sequence, MLP + fc_t/fc_qvec
+    intrinsics: per-frame unit ray field from the diagonal pair pixel tokens, decoded to pinhole K
+    translation_normalisation: per-dataset camera-scale medians 0.30/0.032/0.020 m
+    camera_parameters: 17 tensors 926218 params
+  preserved: [K10_sampling, direct_per_pair_pose, source_independent_per_frame_intrinsics, GT_principal_points, invalid_pose_masking_only, warmup_anchored196000, trunk_and_seeds]
+  migration:
+    drop_prefixes: ['camera_head.']
+    missing_prefixes: ['decoder.camera_pose.', 'decoder.camera_rays.']
+    expected_optimizer_states: 1070
+  tests:
+    full_suite: 576_passed
+    camera_tests: 27_passed
+    caught_bug: bare_reshape_interleaved_token_and_channel_axes_in_the_ray_head
+  open_items:
+    - fixed_clip_camera_evaluation_is_still_missing_and_is_the_decisive_measurement
+    - linear_probe_from_memory_to_GT_pose_and_8clip_overfit_test
+    - H033_reuses_no_WB_run_id_so_it_gets_its_own_run_rather_than_appending_to_H032_thlx6gtz
 latest:
   status: K10_210k_continuation_completed197000
   milestone197000:

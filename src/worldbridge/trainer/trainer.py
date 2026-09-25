@@ -25,6 +25,7 @@ from ..data.constants import DATASET_NAMES
 from ..data.factory import load_training_datasets, prepare_training_indexes
 from ..data.sampling import sample_eligible_targets
 from ..models.decoder import DenseUpsampler2D
+from ..models.decoder.query_decoder import CAMERA_MODULE_PREFIXES
 from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_dataset_text_conditions
 from ..utils.io import atomic_json
@@ -42,6 +43,10 @@ from .lazy_vae import (
 )
 from .cycle import camera_batch, pixel_cycle_loss
 from .camera_objective import camera_ray_objective, supervision_camera_batch
+
+# H033 reads the camera from decoder-native modules; these prefixes are the
+# audited fresh parameters for a structural migration into an older trunk.
+CAMERA_PARAMETER_PREFIXES = tuple(f'decoder.{prefix}' for prefix in CAMERA_MODULE_PREFIXES)
 from .objective import (boundary_weighted_pair_smooth_l1, loss_scale_to_reference,
                         masked_pair_smooth_l1, source_edge_contrast_loss)
 from .optimizer import apply_fresh_group_warmup, parameter_groups
@@ -317,7 +322,7 @@ def main() -> None:
         )
     adapter_count = sum(p.numel() for p in model.backbone.adapter_parameters)
     decoder_count = sum(p.numel() for p in model.decoder.parameters())
-    camera_count = sum(p.numel() for p in model.camera_head.parameters()) if model.camera_head is not None else 0
+    camera_count = sum(p.numel() for p in model.camera_head_parameters())
     non_wan_count = adapter_count + decoder_count + camera_count
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
@@ -330,7 +335,8 @@ def main() -> None:
     if finetune_from is not None:
         finetune_payload, finetune_state, finetune_rng_states = load_unwrapped_model_checkpoint(
             finetune_from, model, rank, world,
-            allowed_missing_prefixes=(("camera_head.",) if camera_cfg else ("decoder.query_rgb_projection.",)),
+            allowed_missing_prefixes=(CAMERA_PARAMETER_PREFIXES if camera_cfg else ("decoder.query_rgb_projection.",)),
+            allowed_unexpected_prefixes=tuple(config.get('finetune_drop_prefixes', ())),
         )
         expected_step = int(config.get("finetune_expected_global_step", -1))
         if int(finetune_state["global_step"]) != expected_step:
@@ -432,8 +438,9 @@ def main() -> None:
         load_filtered_optimizer_checkpoint(
             finetune_payload, fsdp, optimizer, finetune_rng_states,
             current_group_names, rank,
-            allowed_fresh_prefixes=(("camera_head.",) if camera_cfg else ("decoder.query_rgb_projection.",)),
+            allowed_fresh_prefixes=(CAMERA_PARAMETER_PREFIXES if camera_cfg else ("decoder.query_rgb_projection.",)),
             require_all_source_state=camera_cfg is not None,
+            allowed_unexpected_prefixes=tuple(config.get('finetune_drop_prefixes', ())),
         )
         start_step = int(finetune_state["global_step"])
         clips_seen.update({
@@ -766,7 +773,7 @@ def main() -> None:
                             optimized_xyz_value, camera_losses = camera_ray_objective(
                                 prediction, xyz, valid, source_t, target_t, model_output.camera,
                                 camera_tensors, mean, scale, camera_cfg,
-                                beta=float(config.get('smooth_l1_beta', 0.05)),
+                                beta=float(config.get('smooth_l1_beta', 0.05)), dataset=name,
                             )
                         for metric_name, metric_value in camera_losses.items():
                             camera_metrics[metric_name] = camera_metrics.get(metric_name, 0.0) + float(metric_value.detach()) / accumulation
