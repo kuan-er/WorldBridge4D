@@ -90,7 +90,12 @@ def health(gpu_ids, allow_degraded=False):
 def smoke(gpu_ids, allow_degraded=False):
     assert os.environ.get('CUDA_VISIBLE_DEVICES') == ','.join(gpu_ids), 'declare the exact GPU ids'
     assert PARENT_CHECKPOINT.is_file(), f'missing parent checkpoint {PARENT_CHECKPOINT}'
-    assert not OUTPUT.exists(), f'{OUTPUT} already exists'
+    if OUTPUT.exists():
+        leftovers = sorted(str(path.name) for path in OUTPUT.glob('checkpoint-*.pt')) \
+            + sorted(str(path.name) for path in OUTPUT.glob('latest.pt'))
+        if leftovers:
+            raise RuntimeError(f'{OUTPUT} already holds checkpoints from another attempt: {leftovers}')
+        print(json.dumps(dict(event='H033_SMOKE_REUSE_EMPTY_OUTPUT', output=str(OUTPUT))), flush=True)
     parent = parent_state()
     assert parent['step'] == PARENT_STEP, parent
     assert parent['old_camera_tensors'] == 51, parent
@@ -103,7 +108,7 @@ def smoke(gpu_ids, allow_degraded=False):
         print(json.dumps(dict(event='H033_SMOKE_DEGRADED_GPU_OVERRIDE', degraded=degraded,
                               note='operator explicitly accepted these GPUs; numeric results are not '
                                    'usable as quality or performance evidence')), flush=True)
-    OUTPUT.mkdir()
+    OUTPUT.mkdir(exist_ok=True)
     (OUTPUT/'gpu_health.xml').write_text(xml)
     os.environ['PYTHONPATH'] = str(ROOT/'src') + os.pathsep + os.environ.get('PYTHONPATH', '')
     os.environ['PYTHONFAULTHANDLER'] = '1'
