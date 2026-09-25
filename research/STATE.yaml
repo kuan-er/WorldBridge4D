@@ -54,7 +54,8 @@ h033:
       details: [370_to_219_lines, 19_legacy_profile_flags_rejected_explicitly, cycle/boundary/contrast/extension_keys_fail_closed, tracking_cycle_metric_definitions_removed, lazy_vae_LazyVAEPipeline_class_removed_245_to_112_lines]
     verification: [234_tests_pass, build_real_model_on_CPU_with_the_H033_config, non_wan_parameter_count_matches_195523351, camera_tensor_prefix_audit]
     net_diff: 54_files_+269/-3583_lines
-    slice5_removed: factory and model single-path
+    slice5_removed:
+      name: factory_and_model_single_path
       details: [readout_must_be_wan_hidden_structured, CleanLatentBackbone_and_FeedForwardWanBackbone_deleted, empty_text_condition/wan_dit_root/wan_checkpoint/wan_truncate_after_block_removed, layer_gate_random_init_removed_explicit_logits_required, coarse_diagnostic_DenseQueryOutput.coarse_and_coarse_head_removed, fullres_coordinates_and_fullres_uv_removed, motion_pair_projection_and_pair_conditioned_query_removed, 13_deleted_knobs_added_to_the_fail_closed_list]
       verification: [234_tests_pass, model_builds_with_camera_926218_and_non_wan_195523351]
     remaining_planned:
