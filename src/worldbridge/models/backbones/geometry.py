@@ -159,17 +159,12 @@ class WanHiddenGeometryBackbone(nn.Module):
         return -(weights * weights.clamp_min(1e-12).log()).sum()
 
     def forward(self, clean_video_latent: torch.Tensor,
-                encoder_hidden_states: torch.Tensor | None = None) -> StructuredZ4D:
+                encoder_hidden_states: torch.Tensor) -> StructuredZ4D:
         flow_time = torch.zeros(clean_video_latent.shape[0], device=clean_video_latent.device,
                                 dtype=clean_video_latent.dtype)
-        if encoder_hidden_states is None:
-            hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
-                clean_video_latent, flow_time, self.hidden_layers
-            )
-        else:
-            hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
-                clean_video_latent, flow_time, self.hidden_layers, encoder_hidden_states
-            )
+        hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
+            clean_video_latent, flow_time, self.hidden_layers, encoder_hidden_states
+        )
         if grid_shape[0] != self.native_frames:
             raise RuntimeError(f"Wan hidden temporal grid {grid_shape[0]} != {self.native_frames}")
         projected = torch.stack([

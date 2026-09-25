@@ -120,7 +120,7 @@ class WanVAEEncoder(nn.Module):
 class WanDiTMapping(nn.Module):
     """Native Wan DiT used as F_theta(Y, tau)."""
 
-    def __init__(self, checkpoint: str | Path, condition: torch.Tensor | None = None,
+    def __init__(self, checkpoint: str | Path,
                  device: torch.device | str = "cpu", dtype: torch.dtype = torch.float32,
                  timestep_scale: float = WAN_TIMESTEP_SCALE,
                  expected_latent_shape: tuple[int, int, int, int] = WAN_LATENT_SHAPE,
@@ -138,9 +138,6 @@ class WanDiTMapping(nn.Module):
             self.checkpoint, torch.device(device), dtype,
             load_pretrained_weights=bool(load_pretrained_weights),
         )
-        self.register_buffer("empty_condition", torch.empty(0), persistent=False)
-        if condition is not None:
-            self.set_condition(condition)
 
     @staticmethod
     def _architecture(path: Path) -> dict[str, Any]:
@@ -266,22 +263,11 @@ class WanDiTMapping(nn.Module):
         model.to(device=device, dtype=dtype)
         return model
 
-    def set_condition(self, condition: torch.Tensor) -> None:
-        condition = torch.as_tensor(condition).detach()
-        if condition.ndim == 2:
-            condition = condition[None]
-        if condition.ndim != 3 or condition.shape[1:] != (512, 4096):
-            raise ValueError(f"WAN null condition must be [1 or B,512,4096], got {tuple(condition.shape)}")
-        self.empty_condition = condition.to(device=next(self.dit.parameters()).device,
-                                           dtype=next(self.dit.parameters()).dtype)
-
     def _condition(self, batch: int, device: torch.device, dtype: torch.dtype,
-                   encoder_hidden_states: torch.Tensor | None = None) -> torch.Tensor:
-        condition = self.empty_condition if encoder_hidden_states is None else torch.as_tensor(encoder_hidden_states)
+                   encoder_hidden_states: torch.Tensor) -> torch.Tensor:
+        condition = torch.as_tensor(encoder_hidden_states)
         if condition.numel() == 0:
-            # Retained only for synthetic architecture tests. Formal training
-            # always passes a native UMT5 condition explicitly on every call.
-            return torch.zeros(batch, 512, 4096, device=device, dtype=dtype)
+            raise ValueError('WAN condition must be a native UMT5 tensor, not an empty placeholder')
         if condition.ndim == 2:
             condition = condition[None]
         expected_text_dim = int(getattr(self.dit.config, "text_dim", 4096))
@@ -294,7 +280,7 @@ class WanDiTMapping(nn.Module):
         return condition.expand(batch, -1, -1).to(device=device, dtype=dtype)
 
     def _inputs(self, latent: torch.Tensor, tau: torch.Tensor,
-                encoder_hidden_states: torch.Tensor | None = None
+                encoder_hidden_states: torch.Tensor
                 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         expected_shape = getattr(self, "expected_latent_shape", WAN_LATENT_SHAPE)
         allowed_shapes = {expected_shape}
@@ -317,7 +303,7 @@ class WanDiTMapping(nn.Module):
         return hidden_states, timestep, condition
 
     def forward(self, latent: torch.Tensor, tau: torch.Tensor,
-                encoder_hidden_states: torch.Tensor | None = None) -> torch.Tensor:
+                encoder_hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states, timestep, condition = self._inputs(latent, tau, encoder_hidden_states)
         output = self.dit(hidden_states, timestep=timestep,
                           encoder_hidden_states=condition, return_dict=True).sample
@@ -331,7 +317,7 @@ class WanDiTMapping(nn.Module):
         latent: torch.Tensor,
         tau: torch.Tensor,
         layers: tuple[int, ...],
-        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor,
     ) -> tuple[tuple[torch.Tensor, ...], tuple[int, int, int]]:
         """Run Wan through selected transformer blocks without its RF output head.
 

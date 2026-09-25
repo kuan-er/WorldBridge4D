@@ -45,7 +45,7 @@ class TinyBackbone(nn.Module):
         self.gain = nn.Parameter(torch.ones(1))
         self.adapter_parameters = [self.gain]
 
-    def forward(self, latent):
+    def forward(self, latent, encoder_hidden_states=None):
         batch = latent.shape[0]
         dense = torch.randn(batch, self.channels, 21, GRID, GRID) * self.gain
         motion = torch.randn(batch, 21, 2, self.channels)
@@ -429,7 +429,12 @@ def test_model_attaches_camera_through_the_decoder_and_groups_it_once():
     model.train()
     latent = torch.randn(2, 16, 6, 32, 32)
     source_t, target_t, _ = batch()
-    prediction, z4d, output = model(latent, source_t, target_t)
+    condition = torch.zeros(2, 512, 4096)
+    prediction, z4d, output = model(latent, source_t, target_t, condition)
+    # The native text condition is required: the null-condition and shared-latent
+    # override paths were only reachable from the deleted cycle route.
+    with pytest.raises(TypeError):
+        model(latent, source_t, target_t)
     assert prediction.shape[:2] == (2, 4) and output.camera is not None
     groups = parameter_groups(model, {'learning_rate': 3e-6, 'backbone_learning_rate': 5e-7,
                                       'geometry_learning_rate': 3e-6, 'weight_decay': 0.0,
