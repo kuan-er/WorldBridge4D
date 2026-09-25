@@ -10,9 +10,16 @@ import torch.nn.functional as F
 from ..outputs import (
     DenseQueryOutput, StructuredZ4D, flatten_structured_z4d, flatten_z4d,
 )
+from ..camera import (
+    CameraOutput, CameraQueryHead, RayFieldHead, normalised_grid_coordinates,
+)
 from ..wan import WAN_LATENT_SHAPE
 from .blocks import CrossAttentionBlock, _group_count
 from .upsampler import DenseUpsampler2D
+
+# Decoder-relative names of the H033 camera readout. The trainer prefixes them
+# with ``decoder.`` for model-level migration prefixes.
+CAMERA_MODULE_PREFIXES = ('camera_pose.', 'camera_rays.')
 
 class DenseQueryDecoder(nn.Module):
     """Map global native Z4D and K dense `(s,t)` queries to K XYZ maps."""
@@ -28,7 +35,8 @@ class DenseQueryDecoder(nn.Module):
                  source_rgb_pyramid: bool = False,
                  source_rgb_channels: Sequence[int] = (32, 64, 128),
                  source_rgb_fusion_32: bool = False,
-                 pre_attention_rgb_query: bool = False, native_512: bool = False):
+                 pre_attention_rgb_query: bool = False, native_512: bool = False,
+                 camera_supervision: dict | None = None):
         super().__init__()
         channels, latent_time, latent_height, latent_width = map(int, latent_shape)
         self.native_512 = bool(native_512)
@@ -101,6 +109,31 @@ class DenseQueryDecoder(nn.Module):
             nn.init.zeros_(self.query_rgb_projection[-1].weight)
         else:
             self.query_rgb_projection = None
+        # H033 camera readout. Constructed last so enabling or disabling it does
+        # not shift the seeded initialization of any shared decoder parameter.
+        # A forked RNG keeps camera init independent of the ambient stream.
+        self.camera_supervision = dict(camera_supervision) if camera_supervision else None
+        if self.camera_supervision is not None:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(int(self.camera_supervision['seed']))
+                self.camera_pose = CameraQueryHead(
+                    self.query_dim, hidden=int(self.camera_supervision.get('pose_hidden', 256)),
+                )
+                self.camera_rays = RayFieldHead(
+                    self.query_dim, hidden=int(self.camera_supervision.get('ray_hidden', 256)),
+                )
+        else:
+            self.camera_pose = None
+            self.camera_rays = None
+
+    @property
+    def camera_enabled(self) -> bool:
+        return self.camera_pose is not None
+
+    def camera_parameters(self) -> list[nn.Parameter]:
+        if self.camera_pose is None:
+            return []
+        return list(self.camera_pose.parameters()) + list(self.camera_rays.parameters())
 
     def query_content(self, source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         source = torch.as_tensor(source, dtype=torch.long, device=self.source_embedding.weight.device)
@@ -235,12 +268,31 @@ class DenseQueryDecoder(nn.Module):
                 )
             rgb_query = rgb_query.flatten(2).transpose(1, 2)[:, None]
             query = query + rgb_query.expand(-1, content.shape[1], -1, -1)
+        if self.camera_enabled:
+            query = torch.cat((query, content[:, :, None, :] + self.camera_pose.token), dim=2)
+            # The camera token carries no pixel location: it uses the grid centre
+            # for RoPE, exactly like the non-spatial motion memory tokens.
+            attention_coordinates = torch.cat(
+                (query_coordinates, query_coordinates.mean(dim=0, keepdim=True)), dim=0)
+        else:
+            attention_coordinates = query_coordinates
         memory, memory_coordinates = flatten_structured_z4d(z4d) if structured else flatten_z4d(z4d)
         for block in self.blocks:
-            query = block(query, memory, query_coordinates, memory_coordinates)
-        batch, pairs, _, _ = query.shape
+            query = block(query, memory, attention_coordinates, memory_coordinates)
+        camera = None
+        if self.camera_enabled:
+            pixel_tokens = query[:, :, :num_query]
+            translation, rotation = self.camera_pose(query[:, :, num_query])
+            camera = self._camera_readout(
+                pixel_tokens, translation, rotation, source, target, query_grid_shape,
+            )
+        else:
+            pixel_tokens = query
+        batch, pairs, _, _ = pixel_tokens.shape
         query_height, query_width = query_grid_shape
-        feature = query.reshape(batch * pairs, query_height, query_width, self.query_dim).permute(0, 3, 1, 2)
+        feature = pixel_tokens.reshape(
+            batch * pairs, query_height, query_width, self.query_dim,
+        ).permute(0, 3, 1, 2)
         coarse = self.coarse_head(feature).reshape(batch, pairs, 3, query_height, query_width) \
             if self.coarse_head is not None else None
         xyz = self.upsampler(
@@ -249,4 +301,33 @@ class DenseQueryDecoder(nn.Module):
         )
         xyz = xyz.reshape(batch, pairs, 3, *xyz.shape[-2:])
         feature = feature.reshape(batch, pairs, self.query_dim, query_height, query_width)
-        return DenseQueryOutput(xyz, feature, coarse)
+        return DenseQueryOutput(xyz, feature, coarse, camera)
+
+    def _camera_readout(self, pixel_tokens: torch.Tensor, translation: torch.Tensor,
+                        rotation: torch.Tensor, source, target,
+                        query_grid_shape: tuple[int, int]) -> CameraOutput:
+        """Force diagonal identity and read the ray field off the diagonal pair."""
+        batch, pairs = pixel_tokens.shape[:2]
+        source = torch.as_tensor(source, device=pixel_tokens.device, dtype=torch.long)
+        target = torch.as_tensor(target, device=pixel_tokens.device, dtype=torch.long)
+        if source.ndim == 1:
+            source, target = source[None], target[None]
+        if source.shape[0] == 1:
+            source, target = source.expand(batch, -1), target.expand(batch, -1)
+        if source.shape != (batch, pairs) or target.shape != (batch, pairs):
+            raise ValueError('camera readout requires the per-pair source/target of the decoder')
+        diagonal = source == target
+        if not bool(diagonal.any(dim=1).all()):
+            raise ValueError('camera ray supervision requires one diagonal pair per batch item')
+        eye = torch.eye(3, device=rotation.device, dtype=rotation.dtype)
+        rotation = torch.where(diagonal[..., None, None], eye, rotation)
+        translation = torch.where(diagonal[..., None], torch.zeros_like(translation), translation)
+        row = torch.arange(batch, device=pixel_tokens.device)
+        frame = source[row, diagonal.long().argmax(dim=1)]
+        if query_grid_shape[0] != query_grid_shape[1]:
+            raise ValueError('ray field requires a square query grid')
+        coordinates = normalised_grid_coordinates(
+            query_grid_shape[0], pixel_tokens.device, pixel_tokens.dtype,
+        )
+        rays = self.camera_rays(pixel_tokens[row, diagonal.long().argmax(dim=1)], coordinates)
+        return CameraOutput(rotation, translation, rays, frame)

@@ -154,8 +154,8 @@ class DynamicReplicaDataset:
         self.image_size = int(image_size)
         self.trajectory_cache_root = Path(trajectory_cache_root)
         self.depth_cache_root = Path(depth_cache_root)
-        if self.image_size not in (128, 256):
-            raise ValueError("Dynamic Replica adapter supports only audited 128 or 256 grids")
+        if self.image_size not in (128, 256, 512):
+            raise ValueError("Dynamic Replica adapter supports only audited 128/256/512 grids")
         index = self.root / "splits" / f"{split}.jsonl"
         if not index.exists():
             raise FileNotFoundError(f"Dynamic Replica cache index is missing: {index}")
@@ -333,6 +333,11 @@ class DynamicReplicaDataset:
         path = self.raw_train_root / self.rows[int(index)]['frames'][int(source)]['depth']
         depth, valid = _depth(path, self.image_size, getattr(self, 'depth_cache_root', DEPTH_CACHE_ROOT))
         return depth, valid, None  # Sparse track IDs are not dense segmentation.
+
+    def supervision_camera(self, index: int) -> dict[str, np.ndarray | float]:
+        K = np.stack([_pixel_intrinsics(frame['viewpoint'], self.image_size)
+                      for frame in self.rows[int(index)]['frames']])
+        return {**self.cycle_camera(index), 'intrinsics': K.astype(np.float32)}
 
     def cycle_camera(self, index: int) -> dict[str, np.ndarray | float]:
         """Return the camera contract used by differentiable pixel cycles."""

@@ -5,6 +5,8 @@ from typing import Any
 
 import numpy as np
 
+from ..data.constants import DATASET_NAMES
+
 def validate_config(config: dict[str, Any], world: int) -> None:
     expected = {
         "image_size": 256, "clip_length": 21, "latent_spatial_size": 32,
@@ -56,8 +58,8 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         if multiplier != 10.0:
             raise ValueError("production source-RGB LR multiplier must be exactly 10")
     if bool(config.get("pre_attention_rgb_query", False)):
-        if mode != "decoder_only":
-            raise ValueError("pre-attention RGB query requires decoder_only training")
+        if mode not in {"decoder_only", "full"}:
+            raise ValueError("pre-attention RGB query requires decoder_only or full training")
         if not bool(config.get("source_rgb_pyramid", False)):
             raise ValueError("pre-attention RGB query requires source RGB")
     if mode in {"source_rgb_plus_wan_decoder", "decoder_only"}:
@@ -78,8 +80,40 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     master_precision = str(config.get("fsdp_master_precision", "model"))
     if master_precision not in {"model", "fp32"}:
         raise ValueError("fsdp_master_precision must be model or fp32")
-    if master_precision == "fp32" and (config.get("precision") != "bf16" or mode != "decoder_only"):
-        raise ValueError("FP32 master trial requires BF16 compute and decoder_only")
+    if master_precision == "fp32" and config.get("precision") != "bf16":
+        raise ValueError("FP32 master requires BF16 compute")
+    camera = config.get('camera_supervision')
+    camera_k10 = bool(config.get('camera_k10', False))
+    if camera_k10 and (camera is None or config.get('targets_per_source') != 10):
+        raise ValueError('camera K10 requires the explicit camera extension and exactly10 targets')
+    if camera is not None:
+        keys = {'pose_hidden','ray_hidden','seed','learning_rate','warmup_steps',
+                'phase_start_step','loss_weights','skip_zero_weight_cycle','intrinsics_mode',
+                'pose_translation_scale'}
+        if not isinstance(camera, dict) or set(camera) != keys:
+            raise ValueError('camera supervision requires the explicit decoder-native contract')
+        if (mode != 'full' or config.get('coordinate_frame') != 'source'
+                or not config.get('native_kubric512_full') or config.get('targets_per_source') != (10 if camera_k10 else 9)
+                or config.get('backbone_readout') != 'wan_hidden_structured'
+                or config.get('full_mode_unfreeze_resume') or config.get('boundary_supervision') is not None):
+            raise ValueError('camera extension requires full/source/nativeK9 without other structural profiles')
+        if (camera['intrinsics_mode'] != 'per_frame_source_independent'
+                or int(camera['pose_hidden']) < 8 or int(camera['ray_hidden']) < 8
+                or int(camera['warmup_steps']) < 1 or int(camera['phase_start_step']) < 0
+                or not np.isfinite(camera['learning_rate']) or camera['learning_rate'] <= 0):
+            raise ValueError('invalid camera readout architecture or learning rate')
+        scales = camera['pose_translation_scale']
+        scale_values = list(scales.values()) if isinstance(scales, dict) else [scales]
+        if (isinstance(scales, dict) and set(scales) != set(DATASET_NAMES)) \
+                or any(not np.isfinite(float(v)) or float(v) <= 0 for v in scale_values):
+            raise ValueError('camera pose translation scale must be positive for every dataset')
+        weights = camera['loss_weights']
+        if (set(weights) != {'diagonal_xyz','offdiagonal_xyz','diagonal_ray','ray_field','front',
+                             'pose_rotation','pose_translation'}
+                or any(not np.isfinite(v) or v <= 0 for v in weights.values())):
+            raise ValueError('camera loss weights must be explicit finite positive values')
+        if camera['skip_zero_weight_cycle'] and float(config.get('cycle_reprojection_weight', 0)) != 0:
+            raise ValueError('cannot skip a nonzero cycle objective')
     cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
     cycle_names = tuple(str(name) for name in config.get(
         "cycle_reprojection_datasets", ["kubric"],
@@ -128,6 +162,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     if sum((native_k15, native_k9, native_k5)) > 1:
         raise ValueError('select only one native512 target profile')
     native_512 = native_k15 or native_k9 or native_k5
+    native_full = bool(config.get('native_kubric512_full', False))
     native_long = bool(config.get('native_kubric512_k5_10k', False))
     native_mix_trial = bool(config.get('native_kubric512_k9_mix_trial', False))
     native_mix_170k = bool(config.get('native_kubric512_k9_mix_170k', False))
@@ -172,7 +207,7 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     if native_mix_trial:
         if mix != {'kubric': 10, 'pointodyssey': 5, 'dynamic_replica': 5}:
             raise ValueError('native K9 mixture trial requires exact50/25/25')
-    elif mix != validated_mix_counts():
+    elif mix != validated_mix_counts() and not native_full:
         raise ValueError('non-legacy mixture requires an explicit native K9 mixture trial')
     if native_512:
         if (mode != 'decoder_only' or master_precision != 'fp32' or not cycle_enabled
@@ -227,16 +262,43 @@ def validate_config(config: dict[str, Any], world: int) -> None:
     cycle_b2_profile = cycle_b2_k19 or cycle_b2_k15 or cycle_b2_k9
     if cycle_b2_profile and not cycle_enabled:
         raise ValueError("B2/A2 cycle profiles require the cycle objective")
-    allowed_batching = {(2, 2)} if native_b2_200k else ({(4, 1)} if native_512 else ({(2, 2)} if cycle_b2_profile else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})))
+    allowed_batching = {(2, 2)} if native_b2_200k else ({(4, 1)} if (native_512 or native_full) else ({(2, 2)} if cycle_b2_profile else ({(4, 1), (4, 2)} if cycle_enabled else {(2, 2)})))
     if (accumulation, microbatch) not in allowed_batching:
         expected = " or ".join(
             f"gradient_accumulation={accum} and microbatch_per_gpu={micro}"
             for accum, micro in sorted(allowed_batching)
         )
         raise ValueError(f"training requires {expected}")
-    required_targets = 3 if native_k3_mix else (11 if native_k11 else (5 if native_k5 or native_k5_mix else (9 if native_k9 or cycle_b2_k9 else (15 if native_k15 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)))))
+    required_targets = (int(config.get("targets_per_source")) if native_full else (3 if native_k3_mix else (11 if native_k11 else (5 if native_k5 or native_k5_mix else (9 if native_k9 or cycle_b2_k9 else (15 if native_k15 or cycle_b2_k15 or xyz_b2_k15 else (13 if cycle_enabled and not cycle_b2_k19 else 19)))))))
     if int(config["targets_per_source"]) != required_targets:
         raise ValueError(f"training requires targets_per_source={required_targets}")
+    if native_full:
+        if native_512 or native_mix_trial or native_k11 or native_k5_mix or native_k3_mix or native_b2_200k or native_b1_k9_200k or native_b1_k11_200k:
+            raise ValueError('native512 full is mutually exclusive with decoder-only native routes')
+        if mode != 'full':
+            raise ValueError('native512 full requires trainable_mode full')
+        if config.get('precision') != 'bf16':
+            raise ValueError('native512 full requires bf16 compute')
+        if master_precision != 'fp32':
+            raise ValueError('native512 full requires fp32 master precision')
+        if not cycle_enabled or set(cycle_names) != supported_cycle_names or float(config.get('cycle_reprojection_weight', -1)) != 0.0:
+            raise ValueError('native512 full requires cycle0 over all datasets with weight0')
+        if mix != {'kubric': 10, 'pointodyssey': 5, 'dynamic_replica': 5}:
+            raise ValueError('native512 full requires exact50/25/25 mixture')
+        allowed_native_targets = (10,) if camera_k10 else (3, 5, 9)
+        if int(config.get('targets_per_source')) not in allowed_native_targets:
+            raise ValueError(f'native512 full supports targets_per_source in {allowed_native_targets}')
+        gt_values = config.get('datasets', {}).get('kubric', {})
+        if gt_values.get('native_geometry_mode', 'staged') != 'verified_cache_or_raw':
+            raise ValueError('native512 full requires verified native GT demand reader')
+    native_dr512 = bool(config.get('native_dr512', False))
+    if native_dr512:
+        if not (native_512 or native_full):
+            raise ValueError('native DR512 requires a native512 training route')
+        dr = config.get('datasets', {}).get('dynamic_replica', {})
+        for key in ('native_manifest', 'native_rgb_root', 'native_latent_root'):
+            if not dr.get(key):
+                raise ValueError(f'native DR512 requires dynamic_replica {key}')
     prefetch_depth = int(config.get("geometry_prefetch_depth", 2))
     prefetch_workers = int(config.get(
         "geometry_prefetch_workers", min(4, accumulation * microbatch * 2),
@@ -264,16 +326,25 @@ def validate_config(config: dict[str, Any], world: int) -> None:
         raise ValueError("invalid runtime timeout/traceback interval")
     restart = config.get("lr_restart")
     if restart is not None:
-        if mode != "decoder_only":
-            raise ValueError("LR restart currently requires decoder_only")
+        if mode not in {"decoder_only", "full"}:
+            raise ValueError("LR restart currently requires decoder_only or full")
         start = int(restart["start_step"])
         end = int(restart["end_step"])
         warmup = int(restart["warmup_steps"])
         if not 0 <= start < start + warmup < end or int(config["max_steps"]) > end:
             raise ValueError("invalid LR restart phase interval")
         rates = restart["group_learning_rates"]
-        if set(rates) != {"dense_decoder", "source_rgb_decay", "source_rgb_no_decay"}:
-            raise ValueError("LR restart requires explicit rates for all decoder/RGB groups")
+        expected_groups = (
+            {"dense_decoder", "source_rgb_decay", "source_rgb_no_decay"}
+            if mode == "decoder_only" else
+            {"wan_backbone", "geometry_adapter", "dense_decoder", "source_rgb_decay", "source_rgb_no_decay"}
+        )
+        if camera is not None:
+            expected_groups.add('camera_head')
+            if rates.get('camera_head') != camera['learning_rate']:
+                raise ValueError('camera group schedule must match its learning rate')
+        if set(rates) != expected_groups:
+            raise ValueError(f"LR restart requires explicit rates for all {mode} groups")
         if any(not np.isfinite(float(rate)) or float(rate) <= 0 for rate in rates.values()):
             raise ValueError("LR restart rates must be finite and positive")
         if config.get("schedule_extension_start_step") is not None:

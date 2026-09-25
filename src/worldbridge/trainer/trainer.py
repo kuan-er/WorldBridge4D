@@ -25,6 +25,7 @@ from ..data.constants import DATASET_NAMES
 from ..data.factory import load_training_datasets, prepare_training_indexes
 from ..data.sampling import sample_eligible_targets
 from ..models.decoder import DenseUpsampler2D
+from ..models.decoder.query_decoder import CAMERA_MODULE_PREFIXES
 from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_dataset_text_conditions
 from ..utils.io import atomic_json
@@ -41,6 +42,11 @@ from .lazy_vae import (
     required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
 )
 from .cycle import camera_batch, pixel_cycle_loss
+from .camera_objective import camera_ray_objective, supervision_camera_batch
+
+# H033 reads the camera from decoder-native modules; these prefixes are the
+# audited fresh parameters for a structural migration into an older trunk.
+CAMERA_PARAMETER_PREFIXES = tuple(f'decoder.{prefix}' for prefix in CAMERA_MODULE_PREFIXES)
 from .objective import (boundary_weighted_pair_smooth_l1, loss_scale_to_reference,
                         masked_pair_smooth_l1, source_edge_contrast_loss)
 from .optimizer import apply_fresh_group_warmup, parameter_groups
@@ -126,7 +132,7 @@ def main() -> None:
         parser.error("--resume and --finetune-from are mutually exclusive")
     if args.lazy_vae_cache and args.lazy_vae_pipeline:
         parser.error("--lazy-vae-cache and --lazy-vae-pipeline are mutually exclusive")
-    if args.stop_after_updates is not None and (args.stop_after_updates < 1 or not args.resume
+    if args.stop_after_updates is not None and (args.stop_after_updates < 1 or not (args.resume or args.finetune_from)
             or args.lazy_vae_cache or args.lazy_vae_pipeline or args.no_checkpoint):
         parser.error('--stop-after-updates requires positive full-resume, checkpointed, non-lazy diagnosis')
     if args.startup_preflight_updates < 0:
@@ -142,6 +148,9 @@ def main() -> None:
         timeout_seconds=float(config.get("distributed_timeout_seconds", 86400)),
     )
     validate_config(config, world)
+    camera_cfg = config.get('camera_supervision')
+    if args.finetune_from and args.stop_after_updates and camera_cfg is None:
+        raise ValueError('bounded structural migration is restricted to camera extension')
     dataset_mix_counts = validated_mix_counts(config.get('dataset_mix_counts'))
     if rank == 0:
         print(json.dumps({'event': 'dataset_schedule_protocol', 'counts_per20': dataset_mix_counts,
@@ -151,7 +160,7 @@ def main() -> None:
     geometry_replay = None
     input_ready_group = None
     if args.geometry_replay or args.input_readiness:
-        if not (config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False)):
+        if not (config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False)):
             raise ValueError('input readiness/replay is restricted to bounded native512 admission')
         if not 0 < args.input_readiness_timeout_seconds <= 900:
             raise ValueError('CPU input readiness timeout must be in (0,900] seconds')
@@ -313,7 +322,8 @@ def main() -> None:
         )
     adapter_count = sum(p.numel() for p in model.backbone.adapter_parameters)
     decoder_count = sum(p.numel() for p in model.decoder.parameters())
-    non_wan_count = adapter_count + decoder_count
+    camera_count = sum(p.numel() for p in model.camera_head_parameters())
+    non_wan_count = adapter_count + decoder_count + camera_count
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
         raise RuntimeError(f"non-Wan readout parameters {non_wan_count:,} != expected {expected_non_wan:,}")
@@ -325,7 +335,8 @@ def main() -> None:
     if finetune_from is not None:
         finetune_payload, finetune_state, finetune_rng_states = load_unwrapped_model_checkpoint(
             finetune_from, model, rank, world,
-            allowed_missing_prefixes=("decoder.query_rgb_projection.",),
+            allowed_missing_prefixes=(CAMERA_PARAMETER_PREFIXES if camera_cfg else ("decoder.query_rgb_projection.",)),
+            allowed_unexpected_prefixes=tuple(config.get('finetune_drop_prefixes', ())),
         )
         expected_step = int(config.get("finetune_expected_global_step", -1))
         if int(finetune_state["global_step"]) != expected_step:
@@ -427,7 +438,9 @@ def main() -> None:
         load_filtered_optimizer_checkpoint(
             finetune_payload, fsdp, optimizer, finetune_rng_states,
             current_group_names, rank,
-            allowed_fresh_prefixes=("decoder.query_rgb_projection.",),
+            allowed_fresh_prefixes=(CAMERA_PARAMETER_PREFIXES if camera_cfg else ("decoder.query_rgb_projection.",)),
+            require_all_source_state=camera_cfg is not None,
+            allowed_unexpected_prefixes=tuple(config.get('finetune_drop_prefixes', ())),
         )
         start_step = int(finetune_state["global_step"])
         clips_seen.update({
@@ -441,16 +454,24 @@ def main() -> None:
                 "rng_states": len(finetune_rng_states),
             }), flush=True)
     if resume_state is not None:
-        load_optimizer_checkpoint(
-            resume_payload, fsdp, optimizer, resume_rng_states, rank,
-        )
+        if config.get('full_mode_unfreeze_resume'):
+            load_filtered_optimizer_checkpoint(
+                resume_payload, fsdp, optimizer, resume_rng_states,
+                current_group_names, rank, allowed_fresh_prefixes=("backbone.",),
+            )
+            optimizer_label = "filtered_restored"
+        else:
+            load_optimizer_checkpoint(
+                resume_payload, fsdp, optimizer, resume_rng_states, rank,
+            )
+            optimizer_label = "restored"
         start_step = int(resume_state["global_step"])
         clips_seen.update({key: int(value) for key, value in resume_state["clips_seen"].items()})
         del resume_payload
         if rank == 0:
             print(json.dumps({
                 "event": "resume_state_loaded", "step": start_step,
-                "world_size": world, "optimizer": "restored", "rng_states": len(resume_rng_states),
+                "world_size": world, "optimizer": optimizer_label, "rng_states": len(resume_rng_states),
             }), flush=True)
     if args.stop_after_updates is not None and start_step != planned_start:
         raise ValueError('diagnostic checkpoint planning sidecar does not match restored step')
@@ -523,6 +544,7 @@ def main() -> None:
         cycle_dataset_names=cycle_dataset_names,
         boundary_supervision=boundary_supervision,
         edge_contrast_enabled=edge_contrast_weight > 0,
+        camera_supervision=camera_cfg is not None,
         start_step=start_step,
         target_steps=execution_end,
         depth=prefetch_depth,
@@ -582,6 +604,7 @@ def main() -> None:
                               if boundary_supervision is not None else None)
             contrast_stats = (torch.zeros(3, device=device, dtype=torch.float64)
                               if edge_contrast_weight > 0 else None)
+            camera_metrics = {} if camera_cfg is not None else None
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
@@ -606,7 +629,8 @@ def main() -> None:
                     ), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
-                    targets = sample_eligible_targets(valid_all, k, rng)
+                    targets = (sample_eligible_targets(valid_all, k, rng, diagonal_source=source)
+                               if camera_cfg else sample_eligible_targets(valid_all, k, rng))
                     batch_values.append((
                         index, source, targets, xyz_all[targets], valid_all[targets],
                         source_rgb_np, visible_all, camera, valid_all, boundary_np, contrast_edges_np,
@@ -665,7 +689,11 @@ def main() -> None:
                         value[10] for value in batch_values
                     ])).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
+                camera_tensors = (supervision_camera_batch([v[7] for v in batch_values], device)
+                                  if camera_cfg else None)
                 cycle_batch = cycle_enabled and name in cycle_dataset_names
+                if camera_cfg and camera_cfg['skip_zero_weight_cycle'] and cycle_weight == 0:
+                    cycle_batch = False  # zero-weight reverse graph has no training contribution
                 cycle_pair_indices = cycle_targets = None
                 cycle_source_t = cycle_target_t = cycle_source_rgb_t = None
                 cycle_source_valid = cycle_target_valid = cycle_target_visible = None
@@ -715,11 +743,11 @@ def main() -> None:
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
                     trace_phase("forward_start", step, micro)
-                    prediction, z4d, _ = fsdp(
+                    prediction, z4d, model_output = fsdp(
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
                     trace_phase("forward_enqueued", step, micro)
-                    if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False):
+                    if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False):
                         if prediction.shape != xyz.shape or tuple(prediction.shape[-2:]) != (image_size, image_size):
                             raise RuntimeError('native prediction/GT alignment mismatch')
                         if micro == 0:
@@ -728,10 +756,11 @@ def main() -> None:
                                 'RGB': list(source_rgb_t.shape), 'prediction_GT': list(prediction.shape),
                                 'dense': list(z4d.dense.shape), 'B': microbatch_per_gpu,
                                 'A': accumulation, 'K': k, 'world': world}), flush=True)
-                    xyz_value = masked_pair_smooth_l1(
-                        prediction.float(), xyz.float(), valid,
-                        beta=float(config.get("smooth_l1_beta", 0.05)),
-                    )
+                    with torch.set_grad_enabled(camera_cfg is None):
+                        xyz_value = masked_pair_smooth_l1(
+                            prediction.float(), xyz.float(), valid,
+                            beta=float(config.get("smooth_l1_beta", 0.05)),
+                        )
                     optimized_xyz_value = xyz_value
                     if boundary_supervision is not None:
                         optimized_xyz_value = boundary_weighted_pair_smooth_l1(
@@ -739,6 +768,15 @@ def main() -> None:
                             multiplier=float(boundary_supervision['multiplier']),
                             beta=float(config.get('smooth_l1_beta', 0.05)),
                         )
+                    if camera_cfg:
+                        with torch.autocast('cuda', enabled=False):
+                            optimized_xyz_value, camera_losses = camera_ray_objective(
+                                prediction, xyz, valid, source_t, target_t, model_output.camera,
+                                camera_tensors, mean, scale, camera_cfg,
+                                beta=float(config.get('smooth_l1_beta', 0.05)), dataset=name,
+                            )
+                        for metric_name, metric_value in camera_losses.items():
+                            camera_metrics[metric_name] = camera_metrics.get(metric_name, 0.0) + float(metric_value.detach()) / accumulation
                     # Keep xyz_value UNWEIGHTED for cycle diagnostics and all
                     # historical train/xyz_loss comparisons.
                     loss = optimized_xyz_value / accumulation
@@ -835,6 +873,8 @@ def main() -> None:
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
                         gap_hist[abs(int(target_index) - source)] += 1
+                if camera_cfg:
+                    del prediction, z4d, model_output, camera_losses
             gradient_norm = fsdp.clip_grad_norm_(float(config["gradient_clip"]))
             if not torch.isfinite(gradient_norm):
                 raise FloatingPointError(f"non-finite gradient norm at step={step + 1}")
@@ -849,6 +889,9 @@ def main() -> None:
                     None if extension_horizon is None else int(extension_horizon),
                 )
             )
+            if camera_cfg:
+                apply_fresh_group_warmup(optimizer, {'camera_head'}, step+1,
+                    int(camera_cfg['phase_start_step']), int(camera_cfg['warmup_steps']))
             warmup_groups = (
                 {"wan_backbone", "dense_decoder"}
                 if str(config.get("trainable_mode")) == "source_rgb_plus_wan_decoder"
@@ -891,6 +934,11 @@ def main() -> None:
                 ], device=device, dtype=torch.float64)
                 dist.all_reduce(scalars, op=dist.ReduceOp.SUM)
                 dist.all_reduce(timing_max, op=dist.ReduceOp.MAX)
+                if camera_cfg:
+                    camera_metric_names = sorted(camera_metrics)
+                    camera_metric_values = torch.tensor([camera_metrics[n] for n in camera_metric_names],
+                                                        device=device, dtype=torch.float64)
+                    dist.all_reduce(camera_metric_values, op=dist.ReduceOp.SUM)
                 if boundary_stats is not None:
                     dist.all_reduce(boundary_stats, op=dist.ReduceOp.SUM)
                 if contrast_stats is not None:
@@ -996,6 +1044,13 @@ def main() -> None:
                         'train/source_edge_contrast_valid_edges': int(edge_count),
                         'train/source_edge_contrast_eligible_pairs': int(eligible_pairs),
                     })
+                if camera_cfg:
+                    for key, value in zip(camera_metric_names, camera_metric_values.tolist()):
+                        payload[f'train/camera/{key}'] = value/world
+                        payload[f'train/camera_by_dataset/{name}/{key}'] = value/world
+                    payload['train/camera_head_lr'] = next(g['lr'] for g in optimizer.param_groups if g['name']=='camera_head')
+                    payload['train/diagonal_pairs'] = world*accumulation*microbatch_per_gpu
+                    payload['train/targets_per_source'] = k
                 print(json.dumps(payload), flush=True)
                 if run is not None and completed > args.wandb_log_after_step:
                     run.log(payload, step=completed)

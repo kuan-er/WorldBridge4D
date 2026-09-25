@@ -156,6 +156,15 @@ class PointOdysseyDataset:
         depth, valid = _depth(path, self.image_size, getattr(self, 'depth_cache_root', DEPTH_CACHE_ROOT))
         return depth, valid, None  # No dense instance GT contract for this adapter.
 
+    def supervision_camera(self, index: int) -> dict[str, np.ndarray | float]:
+        row = self.rows[int(index)]
+        start, size = int(row['start']), self.image_size
+        K = self._load(row)['intrinsics'][start:start + T].astype(np.float64).copy()
+        affine = np.array([[size/CROP_SIZE, 0, -CROP_X*size/CROP_SIZE],
+                           [0, size/CROP_SIZE, 0], [0, 0, 1]], np.float64)
+        K = np.einsum('ij,tjk->tik', affine, K)
+        return {**self.cycle_camera(index), 'intrinsics': K.astype(np.float32)}
+
     def cycle_camera(self, index: int) -> dict[str, np.ndarray | float]:
         """Return the camera contract used by differentiable pixel cycles."""
         row, a = self.rows[int(index)], self._load(self.rows[int(index)])

@@ -7,7 +7,7 @@ from .constants import DATASET_NAMES
 from .types import TrainingDataset
 
 def source_with_eligible_targets(dataset: TrainingDataset, index: int,
-                                 sources: np.ndarray, min_targets: int = 1
+                                 sources: np.ndarray, min_targets: int = 1, require_diagonal: bool = False
                                  ) -> tuple[int, np.ndarray, np.ndarray]:
     """Return the first source with at least ``min_targets`` supervised pairs."""
     min_targets = int(min_targets)
@@ -17,7 +17,7 @@ def source_with_eligible_targets(dataset: TrainingDataset, index: int,
     for source in sources:
         xyz, valid = dataset.source_all_targets(int(index), int(source))
         eligible = np.asarray(valid, dtype=bool).reshape(21, -1).any(axis=1)
-        if int(eligible.sum()) >= min_targets:
+        if int(eligible.sum()) >= min_targets and (not require_diagonal or eligible[int(source)]):
             return int(source), xyz, valid
     raise ValueError(
         f"clip index {index} has no source with {min_targets} eligible targets"
@@ -25,8 +25,8 @@ def source_with_eligible_targets(dataset: TrainingDataset, index: int,
 
 
 def sample_eligible_targets(valid: np.ndarray, k: int,
-                            rng: np.random.Generator) -> np.ndarray:
-    """Uniform without-replacement targets among pairs with >=1 valid point."""
+                            rng: np.random.Generator, *, diagonal_source: int | None = None) -> np.ndarray:
+    """Uniform valid targets; optional exactly-one diagonal + K-1 non-diagonals."""
     valid = np.asarray(valid, dtype=bool)
     if valid.ndim != 3:
         raise ValueError("valid must be [T,H,W]")
@@ -38,6 +38,12 @@ def sample_eligible_targets(valid: np.ndarray, k: int,
         raise ValueError(
             f"selected source has {len(eligible)} eligible targets, fewer than K={k}"
         )
+    if diagonal_source is not None:
+        source = int(diagonal_source)
+        if source not in eligible:
+            raise ValueError('required diagonal source has no valid GT')
+        others = eligible[eligible != source]
+        return np.concatenate(([source], rng.choice(others, size=k-1, replace=False))).astype(np.int64)
     return np.asarray(rng.choice(eligible, size=k, replace=False), dtype=np.int64)
 
 

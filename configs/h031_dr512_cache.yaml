@@ -1,0 +1,14 @@
+# DR 512x512 square native cache: centre-crop 720x720 -> LANCZOS 512, then FP32 VAE.
+version: 1
+seed: 20260812
+cache_gpu: '1'
+cache_root: /data/WorldBridge4D-persistent/worldbridge4d-native-vae-v1
+rgb_root: /data/WorldBridge4D-persistent/worldbridge4d-native-rgb-v1
+vae_checkpoint: /data/WorldBridge4D/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
+minimum_free_bytes: 68719476736
+transform: center_crop_720_lanczos_512
+datasets:
+  dynamic_replica:
+    raw_root: /dataset/data/Dynamic_dataset/dynamic_stereo
+    index: /data/WorldBridge4D-persistent/worldbridge4d_256_three_dataset_v1/dynamic_replica/splits/train.jsonl
+    native_hw: [512, 512]

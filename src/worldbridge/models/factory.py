@@ -83,7 +83,7 @@ def build_real_model(
             expected_latent_shape=wan_latent_shape,
             truncate_after_block=config.get("wan_truncate_after_block"),
             load_pretrained_weights=load_wan_pretrained,
-            native_512=bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False)),
+            native_512=bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False)),
         )
         if bool(config.get("gradient_checkpointing", True)):
             mapping.dit.enable_gradient_checkpointing()
@@ -110,7 +110,7 @@ def build_real_model(
                 layer_gate_init_std=float(config.get("layer_gate_init_std", 0.0)),
                 layer_gate_seed=int(config.get("layer_gate_seed", geometry_seed)),
                 layer_gate_initial_logits=config.get("layer_gate_initial_logits"),
-                native_512=bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False)),
+                native_512=bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False)),
             )
     elif readout == "clean_latent":
         backbone = CleanLatentBackbone()
@@ -146,8 +146,11 @@ def build_real_model(
         )),
         source_rgb_fusion_32=bool(config.get("source_rgb_fusion_32", False)),
         pre_attention_rgb_query=bool(config.get("pre_attention_rgb_query", False)),
-        native_512=bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False)),
+        native_512=bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False)),
+        camera_supervision=config.get('camera_supervision') if structured else None,
     ).to(device=device, dtype=dtype)
+    if config.get('camera_supervision') is not None and not structured:
+        raise ValueError('camera supervision requires structured physical-frame features')
     model = DenseQueryWanModel(backbone, decoder)
     model.configure_trainable(str(config.get("trainable_mode", "full")))
     return model

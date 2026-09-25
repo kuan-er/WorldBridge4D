@@ -13,6 +13,14 @@ class DenseQueryWanModel(nn.Module):
         self.backbone = backbone
         self.decoder = decoder
 
+    @property
+    def camera_head(self) -> nn.Module | None:
+        """Distinguish camera-enabled models without exposing the old head module."""
+        return self.decoder.camera_pose if getattr(self.decoder, 'camera_enabled', False) else None
+
+    def camera_head_parameters(self) -> list[nn.Parameter]:
+        return list(getattr(self.decoder, 'camera_parameters', list)())
+
     def forward(self, clean_video_latent: torch.Tensor, source: torch.Tensor,
                 target: torch.Tensor, encoder_hidden_states: torch.Tensor | None = None,
                 source_rgb: torch.Tensor | None = None,
