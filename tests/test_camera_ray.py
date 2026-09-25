@@ -157,19 +157,25 @@ def test_k10_exactly_one_diagonal_and_nine_non_diagonal():
         assert (targets == source).sum() == 1 and (targets != source).sum() == 9
 
 
-def test_native512_query_grid_is_densified_but_the_upsampler_stays_32():
+def test_native512_mixes_64_and_32_dense_grids_in_one_run():
+    """The regression the first PO step of the 202k run hit: native512 is a
+    run-level flag, but PO256 clips carry 32x32 dense planes, so the query grid
+    (and the RGB query residual) must follow each clip's dense tensor."""
+    torch.manual_seed(3)
     decoder = DenseQueryDecoder(
         num_frames=21, latent_shape=(16, 21, 32, 32), query_dim=64, embedding_dim=16,
         num_layers=1, num_heads=4, upsample_channels=(64, 32, 16, 8), output_size=(256, 256),
         query_grid_size=32, structured_motion_slots=2, structured_local_queries=True,
-        source_rgb_pyramid=True, native_512=True, camera_supervision=None,
+        source_rgb_pyramid=True, source_rgb_channels=(32, 64, 128),
+        pre_attention_rgb_query=True, native_512=True, camera_supervision=None,
     )
-    assert decoder.query_grid_shape == (64, 64)
-    assert decoder.upsampler_grid_shape == (32, 32)
-    assert tuple(decoder.query_coordinates.shape) == (64 * 64, 2)
-    # native512 uses integer grid coordinates, not the latent linspace.
-    assert torch.equal(decoder.query_coordinates[1], torch.tensor([1.0, 0.0]))
-    assert torch.equal(decoder.query_coordinates[-1], torch.tensor([63.0, 63.0]))
+    assert decoder.query_grid_shape == (32, 32)
+    source, target = torch.tensor([[0, 0]]), torch.tensor([[1, 5]])   # one shared source per clip
+    for grid, rgb_size, out_size in ((64, 512, 512), (32, 256, 256)):
+        z4d = StructuredZ4D(dense=torch.randn(1, 16, 21, grid, grid),
+                            motion=torch.randn(1, 21, 2, 16))
+        output = decoder(z4d, source, target, source_rgb=torch.zeros(1, 3, rgb_size, rgb_size))
+        assert output.normalized_xyz.shape == (1, 2, 3, out_size, out_size), (grid, out_size)
 
 
 def test_camera_parameter_prefixes_match_the_model():
