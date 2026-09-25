@@ -1,9 +1,51 @@
-updated_at: '2026-09-24T10:13:47Z'
+updated_at: '2026-09-24T14:22:04Z'
 active_hypothesis: H032
 active_task: T-20260924090829-46789c
 next_step: Continue the same K10 GPU1/6 Run uninterrupted to210000 under existing fatal/progress/197k events. Full196040 restore and first196041 update verified; no further planned capacity stop.
 latest:
-  status: K10_210k_continuation_full_restore_and_first_update_verified
+  status: K10_210k_continuation_completed197000
+  milestone197000:
+    notification: N-16630b12ab4691ca1fb4_acknowledged
+    at: '2026-09-24T14:22:04.597Z'
+    step: 197000
+    continuation_completed_updates: 960
+    peak_cuda_GiB_logged: 63.50692081451416
+    camera_head_lr: 0.0001
+    loss: 0.05977651383727789
+    gradient_norm: 10.103838920593262
+    pairs: 80
+    diagonal_pairs: 8
+    dataset: kubric
+    focal_relative_error: 0.01580618740990758
+    rotation_deg: 2.3158044442534447
+    translation_m: 0.448166923597455
+    checkpoint197000_complete_observed: false
+    decision: continue_same_GPU1_6_K10_to210k_no_change
+    caveat: single_training_batch_not_fixed_clip_quality_trend_or_checkpoint_completion
+  camera_training_trend:
+    analysis_run: R-20260924113923-c64d22
+    notification: N-380239071acb58316480_acknowledged
+    source: W_and_B_thlx6gtz_readonly_API
+    fetched_rows: 366
+    fetched_through_step: 196366
+    report_at: '2026-09-24T11:53:52.580Z'
+    caveat: API_SSL_retries_delayed_report_not_live_training_step
+    comparison: first10_vs_last10_per_dataset_K10_only_after196020_different_training_clips
+    mean_focal_relative_error:
+      kubric: [0.1604365887, 0.0162990740]
+      pointodyssey: [0.2000852514, 0.0847175318]
+      dynamic_replica: [0.0509639519, 0.0196995949]
+    mean_rotation_deg:
+      kubric: [4.0275357652, 3.2695941415]
+      pointodyssey: [2.4160357349, 3.3840225387]
+      dynamic_replica: [0.7010532092, 0.5613753384]
+    mean_translation_m:
+      kubric: [0.5769756379, 0.5138679056]
+      pointodyssey: [0.0646606343, 0.0702547726]
+      dynamic_replica: [0.0291085684, 0.0261411258]
+    conclusion: focal_training_fit_improved_pose_mixed_PO_pose_means_worse
+    limitations: no_fixed_clip_validation_or_identity_constant_camera_baseline_no_source_conditioning_or_zoom_generalization_proof
+    decision: continue_same_training_no_hyperparameter_change_based_on_small_unpaired_windows
   latest_verified_checkpoint:
     step: 196040
     path: /data/WorldBridge4D-runs/h032-camera-ray-k10-handoff-20260924/capacity.pt
