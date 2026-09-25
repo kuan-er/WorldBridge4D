@@ -150,6 +150,21 @@ def test_k10_exactly_one_diagonal_and_nine_non_diagonal():
         assert (targets == source).sum() == 1 and (targets != source).sum() == 9
 
 
+def test_native512_query_grid_is_densified_but_the_upsampler_stays_32():
+    decoder = DenseQueryDecoder(
+        num_frames=21, latent_shape=(16, 21, 32, 32), query_dim=64, embedding_dim=16,
+        num_layers=1, num_heads=4, upsample_channels=(64, 32, 16, 8), output_size=(256, 256),
+        query_grid_size=32, structured_motion_slots=2, structured_local_queries=True,
+        source_rgb_pyramid=True, native_512=True, camera_supervision=None,
+    )
+    assert decoder.query_grid_shape == (64, 64)
+    assert decoder.upsampler_grid_shape == (32, 32)
+    assert tuple(decoder.query_coordinates.shape) == (64 * 64, 2)
+    # native512 uses integer grid coordinates, not the latent linspace.
+    assert torch.equal(decoder.query_coordinates[1], torch.tensor([1.0, 0.0]))
+    assert torch.equal(decoder.query_coordinates[-1], torch.tensor([63.0, 63.0]))
+
+
 def test_camera_parameter_prefixes_match_the_model():
     decoder = tiny_decoder()
     names = {name for name, _ in decoder.named_parameters()}
@@ -463,7 +478,7 @@ def test_non_wan_accounting_counts_the_camera_readout_once():
 
 def test_decoder_without_camera_config_has_no_camera_readout():
     decoder = tiny_decoder(camera=False)
-    assert not decoder.camera_enabled and decoder.camera_parameters() == []
+    assert not decoder.camera_enabled and decoder.camera_parameters() == ()
     source_t, target_t, _ = batch()
     output = forward(decoder, source_t, target_t)
     assert output.camera is None
