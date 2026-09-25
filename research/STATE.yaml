@@ -146,6 +146,21 @@ h033:
       - downstream runs inject the gate's pinned counters and rewrite the config byte-identically
       - capacity launcher reuses a checkpoint-free output dir so the W&B id survives a retry
     open: fixed-clip held-out camera evaluation plus the identity/constant baselines is still not built
+  camera_eval_tier_a:
+    status: done
+    script: research/analysis/h033_camera_eval_set.py
+    output: /data/WorldBridge4D-runs/h033-camera-eval-set-20260925
+    scope: fixed deterministic clip set and GT-only baselines, CPU only, no model
+    clips_per_dataset: 32
+    identity_pose_baseline:
+      kubric: {rotation_deg_mean: 2.978, rotation_deg_median: 2.345, translation_m_mean: 0.5257, translation_m_median: 0.5396}
+      pointodyssey: {rotation_deg_mean: 4.681, rotation_deg_median: 1.064, translation_m_mean: 0.06763, translation_m_median: 0.04627}
+      dynamic_replica: {rotation_deg_mean: 0.5236, rotation_deg_median: 0.3925, translation_m_mean: 0.02564, translation_m_median: 0.02173}
+    focal_oracle_clip_constant: [0.0, 2.9e-16, 0.0]
+    focal_finding: within-clip focal is constant on all 96 sampled clips, so the intrinsic task on this subset is per-clip identification; the 209 varying-focal PO clips must be selected explicitly to test per-frame zoom
+    anchor_distance_finding: GT identity-baseline error is only 2-10pct higher at distance 0 than at 1-2 for all datasets, so the 6-frame latent grid does not by itself make the between-anchor pairs harder; Tier B must measure the model, not the baseline
+    tier_b_plan: after210k evaluate the H032 checkpoint (202000) and the H033 checkpoint (210000) on eval_clips.json, compare pose and decoded intrinsics against these baselines, and add the varying-focal PO subset plus the two zero-cost ablations
+    caveat: fixed clips overlap the training corpus; this is not a held-out split
   dead_code_removal:
     status: slices1_to4_done_verified
     slice1_removed:
