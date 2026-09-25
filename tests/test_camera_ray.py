@@ -102,7 +102,14 @@ def test_h033_config_is_the_single_supported_profile():
     assert cfg['fsdp_master_precision'] == 'fp32'
     assert (cfg['gradient_accumulation'], cfg['microbatch_per_gpu']) == (4, 1)
     assert cfg['coordinate_frame'] == 'source'
-    assert cfg['max_steps'] == 210000 and cfg['finetune_expected_global_step'] == 210000
+    # The fork point and the endpoint come from the generator, so a re-planned
+    # phase start (202000 now) cannot leave a stale literal behind.
+    assert cfg['max_steps'] == m033.END_STEP == 210000
+    assert cfg['lr_restart']['end_step'] == cfg['max_steps']
+    assert cfg['finetune_expected_global_step'] == m033.PARENT_STEP
+    assert cfg['camera_supervision']['phase_start_step'] == m033.PARENT_STEP
+    assert cfg['checkpoint_steps'][-1] == m033.END_STEP
+    assert cfg['checkpoint_steps'][0] == m033.PARENT_STEP + 1000
     assert cfg['finetune_drop_prefixes'] == ['camera_head.']
     assert cfg['camera_supervision'] == m033.camera_supervision()
     assert m033.camera_parameter_count(1536, 256, 256) + 194597133 == cfg['expected_non_wan_parameters']
