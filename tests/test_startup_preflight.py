@@ -119,9 +119,8 @@ def test_wiring_keeps_catalog_and_actual_input_checks_before_forward():
     preflight = s.index('startup_preflight = validate_startup_latents(')
     loop = s.index('for step in range(start_step, execution_end):')
     read = s.index('dataset.clean_latent(value[0])', loop)
-    readiness = s.index('input_ready(input_ready_group', read)
-    forward = s.index('prediction, z4d, model_output = fsdp(', readiness)
-    assert catalog < preflight < loop < read < readiness < forward
+    forward = s.index('prediction, z4d, model_output = fsdp(', read)
+    assert catalog < preflight < loop < read < forward
     assert 'updates=args.startup_preflight_updates, dataset_mix_counts=dataset_mix_counts' in s
     assert 'default=DEFAULT_PREFLIGHT_UPDATES' in s
     assert 'target_steps=execution_end,' in s  # geometry prefetch still spans full execution

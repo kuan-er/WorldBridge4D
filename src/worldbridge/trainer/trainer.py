@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-from datetime import timedelta
 from contextlib import nullcontext
 import faulthandler
 import json
@@ -37,10 +36,7 @@ from .fsdp_checkpoint import (
     load_optimizer_checkpoint, load_unwrapped_model_checkpoint, prune_periodic_checkpoints,
     save_checkpoint, update_latest_checkpoint,
 )
-from .lazy_vae import (
-    LazyVAEPipeline, lazy_latent_owner, pipeline_work_for_rank, required_latent_indices,
-    required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
-)
+from .lazy_vae import set_lazy_vae_identity
 from .cycle import camera_batch, pixel_cycle_loss
 from .camera_objective import camera_ray_objective, supervision_camera_batch
 
@@ -96,12 +92,6 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--resume")
-    parser.add_argument("--geometry-replay", help="hash-verified bounded native512 CPU geometry snapshot")
-    parser.add_argument("--input-readiness", action="store_true",
-                        help="CPU rank readiness guard with original live geometry readers")
-    parser.add_argument("--input-readiness-timeout-seconds", type=float, default=120)
-    parser.add_argument('--quiesce-geometry-before-forward', action='store_true',
-                        help='finish current/lookahead CPU futures before GPU compute; retain all inputs/RNG')
     parser.add_argument(
         "--finetune-from",
         help="load an audited structural extension and retained optimizer moments",
@@ -122,25 +112,14 @@ def main() -> None:
         "--no-checkpoint", action="store_true",
         help="debug only: skip periodic/final checkpoint materialization",
     )
-    parser.add_argument("--lazy-vae-cache", action="store_true",
-                        help="encode/cache all planned missing latents before constructing FSDP")
-    parser.add_argument("--lazy-vae-pipeline", action="store_true",
-                        help="warm a short prefix, then encode future clips beside training")
-    parser.add_argument("--pipeline-lookahead-steps", type=int, default=16)
     args = parser.parse_args()
     if args.resume and args.finetune_from:
         parser.error("--resume and --finetune-from are mutually exclusive")
-    if args.lazy_vae_cache and args.lazy_vae_pipeline:
-        parser.error("--lazy-vae-cache and --lazy-vae-pipeline are mutually exclusive")
     if args.stop_after_updates is not None and (args.stop_after_updates < 1 or not (args.resume or args.finetune_from)
-            or args.lazy_vae_cache or args.lazy_vae_pipeline or args.no_checkpoint):
-        parser.error('--stop-after-updates requires positive full-resume, checkpointed, non-lazy diagnosis')
+            or args.no_checkpoint):
+        parser.error('--stop-after-updates requires positive full-resume checkpointed diagnosis')
     if args.startup_preflight_updates < 0:
         parser.error('--startup-preflight-updates must be nonnegative (0 = full invocation)')
-    if args.quiesce_geometry_before_forward and not args.input_readiness:
-        parser.error('--quiesce-geometry-before-forward requires CPU input readiness')
-    if args.pipeline_lookahead_steps < 1:
-        parser.error("--pipeline-lookahead-steps must be positive")
     for value in (signal.SIGINT, signal.SIGTERM, signal.SIGUSR1):
         signal.signal(value, stop_signal)
     config = yaml.safe_load(Path(args.config).read_text())
@@ -157,22 +136,6 @@ def main() -> None:
                           'schedule': deterministic_dataset_schedule(config.get('seed', 20260812), dataset_mix_counts),
                           'phase_origin': config.get('selected_checkpoint_step'),
                           'K': config['targets_per_source']}), flush=True)
-    geometry_replay = None
-    input_ready_group = None
-    if args.geometry_replay or args.input_readiness:
-        if not (config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False)):
-            raise ValueError('input readiness/replay is restricted to bounded native512 admission')
-        if not 0 < args.input_readiness_timeout_seconds <= 900:
-            raise ValueError('CPU input readiness timeout must be in (0,900] seconds')
-        input_ready_group = dist.new_group(backend='gloo',
-            timeout=timedelta(seconds=args.input_readiness_timeout_seconds))
-    if args.geometry_replay:
-        from .geometry_replay import GeometryReplay
-        from ..data.cache.native import file_sha256
-        indexes = {name: file_sha256(Path(values['cache_root']) / 'splits/train.jsonl')
-                   for name, values in config['datasets'].items()}
-        geometry_replay = GeometryReplay(args.geometry_replay, file_sha256(args.config),
-                                         indexes=indexes, expected_count=80)
     seed = int(config.get("seed", 20260812))
     random.seed(seed + rank); np.random.seed(seed + rank); torch.manual_seed(seed + rank)
     torch.cuda.manual_seed_all(seed + rank)
@@ -188,12 +151,10 @@ def main() -> None:
     dist.barrier()
     mean, scale = load_stats(config)
     conditions, prompt_metadata = load_dataset_text_conditions(config)
-    datasets = load_training_datasets(
-        config, allow_missing_latents=args.lazy_vae_cache or args.lazy_vae_pipeline,
-    )
+    datasets = load_training_datasets(config)
     target_steps = int(args.steps if args.steps is not None else config["max_steps"])
     if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False):
-        if target_steps != int(config['max_steps']) or args.lazy_vae_cache or args.lazy_vae_pipeline or not args.resume:
+        if target_steps != int(config['max_steps']) or not args.resume:
             raise ValueError('native training requires the declared full-resume budget and no lazy input generation')
         from ..data.cache.native import file_sha256
         set_lazy_vae_identity(datasets, file_sha256(config['vae_checkpoint']))
@@ -232,59 +193,14 @@ def main() -> None:
                           'unchanged_LR_horizon': target_steps}), flush=True)
     if planned_start >= target_steps:
         raise ValueError(f"checkpoint step {planned_start} already reaches target {target_steps}")
-    lazy_counts = None
-    startup_preflight = None  # lazy production modes retain their own existing warmup policy
-    pipeline: LazyVAEPipeline | None = None
-    if args.lazy_vae_cache:
-        local_required = required_latent_indices(
-            datasets, seed, planned_start, target_steps, rank,
-            int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
-            dataset_mix_counts=dataset_mix_counts,
-        )
-        gathered: list[Any] = [None] * world
-        dist.all_gather_object(gathered, local_required)
-        # A clip needed by multiple ranks gets one deterministic hash owner, so
-        # overlapping rank-local plans remain balanced instead of assigning
-        # almost every shared clip to the first requester (rank zero). File
-        # locks still protect independent jobs sharing the persistent cache.
-        owned = {name: [] for name in DATASET_NAMES}
-        for name in DATASET_NAMES:
-            all_indices = sorted({index for item in gathered for index in item[name]})
-            for index in all_indices:
-                if lazy_latent_owner(name, index, world) == rank:
-                    owned[name].append(index)
-        lazy_counts = warm_lazy_latents(config, datasets, owned, device, rank)
-        dist.barrier()
-    elif args.lazy_vae_pipeline:
-        local_requests = required_latent_requests(
-            datasets, seed, planned_start, target_steps, rank,
-            int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
-            dataset_mix_counts=dataset_mix_counts,
-        )
-        gathered_requests: list[Any] = [None] * world
-        dist.all_gather_object(gathered_requests, local_requests)
-        work = pipeline_work_for_rank(gathered_requests, rank, world)
-        pipeline = LazyVAEPipeline(config, work, device, rank, output)
-        set_lazy_vae_identity(datasets, pipeline.checksum)
-        pipeline.warm_through(planned_start + args.pipeline_lookahead_steps)
-        dist.barrier()
-        pipeline.start()
-        lazy_counts = pipeline.snapshot()
-        if rank == 0:
-            print(json.dumps({
-                "event": "lazy_vae_pipeline_training_start",
-                "planned_start": planned_start,
-                "lookahead_steps": args.pipeline_lookahead_steps,
-            }), flush=True)
-    else:
-        # Keep complete catalog checks above, but do not scan the whole future phase.
-        # Actual batch indices are still read/validated before every forward below.
-        startup_preflight = validate_startup_latents(
-            datasets, seed, planned_start, execution_end, rank,
-            int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
-            updates=args.startup_preflight_updates, dataset_mix_counts=dataset_mix_counts,
-        )
-    if rank == 0 and not args.lazy_vae_pipeline:
+    # Keep complete catalog checks above, but do not scan the whole future phase.
+    # Actual batch indices are still read/validated before every forward below.
+    startup_preflight = validate_startup_latents(
+        datasets, seed, planned_start, execution_end, rank,
+        int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
+        updates=args.startup_preflight_updates, dataset_mix_counts=dataset_mix_counts,
+    )
+    if rank == 0:
         print(json.dumps({"event": "three_dataset_cache_ready", "clips": {k: len(v) for k, v in datasets.items()},
                           "startup_preflight": startup_preflight,
                           "note": "catalog ready; prefix validation does not certify every future payload"}), flush=True)
@@ -549,7 +465,6 @@ def main() -> None:
         target_steps=execution_end,
         depth=prefetch_depth,
         workers=prefetch_workers,
-        geometry_replay=geometry_replay,
         dataset_mix_counts=dataset_mix_counts,
     )
     optimizer.zero_grad(set_to_none=True)
@@ -572,24 +487,11 @@ def main() -> None:
                 faulthandler.dump_traceback_later(stall_seconds, repeat=True)
             trace_phase("update_start", step)
             planned = prefetcher.pop(step)
-            quiesce_seconds = 0.0
-            if args.quiesce_geometry_before_forward:
-                quiesce_start = time.perf_counter()
-                read_count = prefetcher.quiesce(planned)
-                quiesce_seconds = time.perf_counter() - quiesce_start
-                print(json.dumps({'event': 'GEOMETRY_PREFETCH_QUIESCENT', 'rank': rank,
-                                  'update_number': step + 1, 'read_count': read_count,
-                                  'seconds': quiesce_seconds}), flush=True)
             name = planned.dataset_name
             dataset = planned.dataset
             image_size = int(getattr(dataset, 'image_size', config['image_size']))
             plans = planned.sample_plans
             futures = planned.geometry_futures
-            if pipeline is not None:
-                pipeline.wait_for(
-                    dataset, name, planned.clip_indices,
-                    float(config.get("pipeline_wait_timeout_seconds", 3600)),
-                )
             update_loss = 0.0
             xyz_loss_sum = 0.0
             update_epe = 0.0
@@ -608,8 +510,8 @@ def main() -> None:
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
-            step_started = time.perf_counter() - quiesce_seconds
-            geometry_wait_seconds = quiesce_seconds
+            step_started = time.perf_counter()
+            geometry_wait_seconds = 0.0
             geometry_task_max_seconds = 0.0
             latent_load_seconds = 0.0
             for micro in range(accumulation):
@@ -735,11 +637,6 @@ def main() -> None:
                     cycle_cameras = camera_batch(
                         [value[7] for value in batch_values], device, torch.float32,
                     )
-                if input_ready_group is not None:
-                    from .geometry_replay import input_ready
-                    input_ready(input_ready_group, rank=rank, step=step, micro=micro,
-                                dataset=name, clips=[int(v[0]) for v in batch_values],
-                                timeout_seconds=args.input_readiness_timeout_seconds)
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
                     trace_phase("forward_start", step, micro)
@@ -1010,8 +907,6 @@ def main() -> None:
                     "system/latent_load_seconds_max_rank": float(timing_max[2]),
                     "system/geometry_prefetch_depth": prefetch_depth,
                     "system/geometry_prefetch_workers": prefetch_workers,
-                    "system/geometry_quiesce_seconds_rank0": quiesce_seconds,
-                    "system/geometry_quiesce_enabled": int(args.quiesce_geometry_before_forward),
                     "system/diagnostic_dataset_coverage": int(ensure_dataset_diagnostics),
                     "system/elapsed_seconds": elapsed, "train/lr_factor": lr_factor,
                     "train/fresh_group_warmup_factor": fresh_group_warmup_factor,
@@ -1124,9 +1019,6 @@ def main() -> None:
         if stall_seconds > 0:
             faulthandler.cancel_dump_traceback_later()
         prefetcher.close()
-        if pipeline is not None:
-            pipeline.close()
-            lazy_counts = pipeline.snapshot()
         if run is not None:
             run.finish()
     dist.barrier()
@@ -1134,7 +1026,6 @@ def main() -> None:
         result = {
             "completed_steps": completed, "target_steps": target_steps, "world_size": world,
             "execution_end": execution_end, "diagnostic_stop_after_updates": args.stop_after_updates,
-            "quiesce_geometry_before_forward": bool(args.quiesce_geometry_before_forward),
             "startup_preflight": startup_preflight,
             "clips_seen": clips_seen, "non_wan_parameters": non_wan_count,
             "dataset_mix_counts": dataset_mix_counts,
@@ -1143,9 +1034,6 @@ def main() -> None:
             "source_rgb_pyramid": use_source_rgb,
             "trainable_mode": str(config.get("trainable_mode")),
             "trainable_parameters": trainable_count,
-            "lazy_vae_cache": bool(args.lazy_vae_cache),
-            "lazy_vae_pipeline": bool(args.lazy_vae_pipeline),
-            "lazy_vae_rank0": lazy_counts,
         }
         atomic_json(output / "train_status.json", result)
         print(json.dumps(result, indent=2), flush=True)

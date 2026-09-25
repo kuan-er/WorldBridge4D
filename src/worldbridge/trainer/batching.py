@@ -154,11 +154,9 @@ class GeometryPrefetcher:
         target_steps: int,
         depth: int,
         workers: int,
-        geometry_replay=None,
         dataset_mix_counts=None,
     ) -> None:
         self.datasets = datasets
-        self.geometry_replay = geometry_replay
         self.dataset_mix_counts = validated_mix_counts(dataset_mix_counts)
         self.seed = int(seed)
         self.rank = int(rank)
@@ -170,8 +168,6 @@ class GeometryPrefetcher:
         self.boundary_supervision = None if boundary_supervision is None else dict(boundary_supervision)
         self.edge_contrast_enabled = bool(edge_contrast_enabled)
         self.camera_supervision = bool(camera_supervision)
-        if self.camera_supervision and geometry_replay is not None:
-            raise ValueError('legacy geometry replay lacks camera-supervised sampling contract')
         self.target_steps = int(target_steps)
         self.depth = int(depth)
         self.next_step = int(start_step)
@@ -191,12 +187,6 @@ class GeometryPrefetcher:
             )
             for slot in range(self.slots_per_rank)
         ]
-        if self.geometry_replay is not None:
-            from .geometry_replay import request_for
-            futures = [self.pool.submit(self.geometry_replay.load,
-                        request_for(self, step, slot, dataset_name, index))
-                       for slot, (index, _source, _rng) in enumerate(sample_plans)]
-            return PlannedStep(step, dataset_name, dataset, sample_plans, futures)
         geometry_futures = [
             self.pool.submit(
                 load_geometry,
