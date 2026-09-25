@@ -136,7 +136,8 @@ h033:
       ray_field: ['1.253', '0.0449']
       ray_angle_deg: ['107.4', '11.03']
       decoded_valid_fraction_end: '0.875'
-      rotation_deg: 14.66 -> 8.18 | translation_m: 0.664 -> 0.567
+      rotation_deg: '14.66 -> 8.18 | translation_m: 0.664 -> 0.567'
+
       trunk: xyz_loss 0.0599 -> 0.0443, raw_epe_m 0.3585 -> 0.3038, peak_cuda 63.518 GiB
       throughput: 1022 s / 50 updates = 20.4 s per update -> ~45 h for the remaining 7950 updates
     fixes_this_phase:
