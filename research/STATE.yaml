@@ -1,6 +1,18 @@
-updated_at: '2026-09-25T08:20:00Z'
+updated_at: '2026-09-25T17:12:00Z'
 active_hypothesis: H033
 active_task: T-20260925081716-d5e7ad
+user_decision_20260925:
+  decision: stop the K10 continuation and train the H033 camera from the durable202000 checkpoint to210000; no old-vs-new head comparison was requested
+  k10_stop: R-20260924095832-a6900f terminated gracefully at17:08:49Z (checkpoint-first SIGTERM, no SIGKILL); the queued K10 endpoint review R-20260924095842-8398e6 becomes dependency_failed and must not be retried
+  fork_point: checkpoint-0202000.pt step202000 world2 rng2 optimizer1104 old_camera_tensors51 clips_seen{kubric624664,pointodyssey465120,dynamic_replica526216} cycle_offset0
+  lr_redesign: camera head warmup re-anchored to the H033 phase start202000 (was196000) so the fresh head ramps over500 updates to1e-4; trunk rates unchanged (wan5e-7 others3e-6 rgb3e-5); max_steps and lr_restart.end_step stay210000, giving8000 camera updates
+  h033_dag:
+    gate: R-20260925171029-80abf4 (CPU; pins202000, writes counters, 238 tests, real GT ray probes)
+    capacity50: R-20260925171048-6cd605 (GPU1,6 exclusive77824MiB)
+    review_capacity: R-20260925171107-10ec8c (CPU)
+    continue_to210k: R-20260925171126-7499e7 (GPU1,6)
+    review_endpoint: R-20260925171146-620c16 (CPU)
+  abandoned: the K10 203k-210k segment under the old source-conditioned head
 next_step: H033 now lives in its own task worktree T-20260925081716-d5e7ad (branch prl/t-20260925081716-d5e7ad-decoder-camera-query-ray-210k). Wait for the H032/K10 GPU1/6 continuation to reach210000, then run the H033 gate (CPU) under the new task; afterwards the50-update capacity, its review, and the continuation.
 worktree_split:
   h033_task: T-20260925081716-d5e7ad
