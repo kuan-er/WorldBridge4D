@@ -1,7 +1,14 @@
-updated_at: '2026-09-25T06:20:00Z'
+updated_at: '2026-09-25T08:20:00Z'
 active_hypothesis: H033
-active_task: T-20260924090829-46789c
-next_step: H033 implementation is landed and the CPU suite passes. Wait for the H032/K10 GPU1/6 continuation to reach210000, then run the H033 gate (R gate, CPU) which pins the parent endpoint, writes the counters into the config and runs the real GT ray/decode probes; afterwards the50-update capacity, its review, and the continuation.
+active_task: T-20260925081716-d5e7ad
+next_step: H033 now lives in its own task worktree T-20260925081716-d5e7ad (branch prl/t-20260925081716-d5e7ad-decoder-camera-query-ray-210k). Wait for the H032/K10 GPU1/6 continuation to reach210000, then run the H033 gate (CPU) under the new task; afterwards the50-update capacity, its review, and the continuation.
+worktree_split:
+  h033_task: T-20260925081716-d5e7ad
+  h033_worktree: /data/WorldBridge4D/.pi-research/worktrees/T-20260925081716-d5e7ad
+  h032_task: T-20260924090829-46789c
+  h032_worktree: /data/WorldBridge4D/.pi-research/worktrees/T-20260924090829-46789c
+  method: new_task_then_no_ff_merge_of_the_H032_branch_tip_69a09119_into_the_new_branch
+  note: further H033 edits and runs belong to the new task; the H032 branch tip keeps the initial H033 implementation as history and the H032 running experiment stays snapshot-pinned and unaffected
 h033:
   status: implementation_landed_cpu_suite_passed_gate_waiting_on_parent_210000
   hypothesis: research/hypotheses/H033.md
@@ -30,6 +37,7 @@ h033:
     - fixed_clip_camera_evaluation_is_still_missing_and_is_the_decisive_measurement
     - linear_probe_from_memory_to_GT_pose_and_8clip_overfit_test
     - H033_reuses_no_WB_run_id_so_it_gets_its_own_run_rather_than_appending_to_H032_thlx6gtz
+    - H032_baseline_evaluation_for_the_AB_must_use_the_H032_run_snapshots_because_the_branch_tip_now_carries_H033
 latest:
   status: K10_210k_continuation_completed197000
   milestone197000:
