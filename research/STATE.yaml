@@ -111,6 +111,36 @@ h033:
       - GPU3_is_hardware_degraded_so_the_health_gate_refused_it_first_the_operator_then_authorized_an_explicit_override
       - non_wan_parameter_double_count_of_camera_parameters_926218_introduced_by_moving_the_camera_into_the_decoder_fixed_with_a_unit_test
       - smoke_launcher_output_dir_assertion_on_retry_fixed
+  h033_training_run:
+    status: capacity50_verified_continue_starting
+    config: configs/h033_camera_query_ray_to210000.yaml
+    output: /data/WorldBridge4D-runs/h033-camera-query-ray-to210000-20260925
+    handoff: /data/WorldBridge4D-runs/h033-camera-query-ray-handoff-20260925
+    wandb_run_id: 4fkx8tv0
+    parent: checkpoint-0202000.pt (sha beebc817d37039eb95b4d23d368b37828acb3b1d51d8df182bbfbfecc4a89b05)
+    gate: R-20260925172558-822a16 succeeded (fresh17, dropped51, 1104->1070, 238 tests, real GT ray probes ~1e-7)
+    capacity50: R-20260925173728-f5ba18 succeeded exit0 (202001..202050)
+    review_capacity: R-20260925173733-657ec0 H033_CHECKPOINT_VERIFIED
+      checkpoint_sha256: 80e8080856a2f2498349d83c9cb605f87ac7d18399d6ee82cd5eb3270c055777
+      optimizer_states: 1070
+      camera_tensors: 17
+      clips_seen: {kubric: 624872, pointodyssey: 465208, dynamic_replica: 526320}
+      adam_increment: 50 on every parameter, model/moments finite, rng 2
+    continue_to210k: R-20260925173800-b83307 (queued, waiting_for checkpoint_validation of capacity.pt)
+    endpoint_review: R-20260925173806-566ac1 (queued)
+    capacity_observations:
+      po256_steps: 11 updates ran (the previous attempt crashed on the first 32x32 dense clip; the mixed-resolution fix is validated)
+      camera_head_lr: 2e-07 at202001 -> 1e-05 at202050 (exactly the 500-step ramp)
+      ray_field: 1.253 -> 0.0449 | ray_angle_deg: 107.4 -> 11.03 | decoded_valid_fraction: up to 0.875 at202050
+      rotation_deg: 14.66 -> 8.18 | translation_m: 0.664 -> 0.567
+      trunk: xyz_loss 0.0599 -> 0.0443, raw_epe_m 0.3585 -> 0.3038, peak_cuda 63.518 GiB
+      throughput: 1022 s / 50 updates = 20.4 s per update -> ~45 h for the remaining 7950 updates
+    fixes_this_phase:
+      - mixed-resolution query grid regression (native512 frozen the grid at construction) + regression test
+      - gate audit accepted only camera_head.* differences and used the per-pair CameraOutput ranks
+      - downstream runs inject the gate's pinned counters and rewrite the config byte-identically
+      - capacity launcher reuses a checkpoint-free output dir so the W&B id survives a retry
+    open: fixed-clip held-out camera evaluation plus the identity/constant baselines is still not built
   dead_code_removal:
     status: slices1_to4_done_verified
     slice1_removed:
