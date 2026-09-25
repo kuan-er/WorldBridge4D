@@ -61,7 +61,7 @@ def test_scripts_expose_exactly_five_thin_entrypoints():
 def test_prepare_data_subcommands_resolve_to_package_modules():
     script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_data.py"
     commands = runpy.run_path(str(script))["COMMANDS"]
-    assert len(commands) == 19
+    assert len(commands) == 18
     assert all(importlib.util.find_spec(module) is not None for module in commands.values())
 
 

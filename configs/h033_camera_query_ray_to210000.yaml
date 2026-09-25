@@ -91,17 +91,6 @@ max_steps: 210000
 selected_checkpoint_step: 183000
 gradient_clip: 1.0
 smooth_l1_beta: 0.05
-cycle_reprojection_enabled: true
-cycle_reprojection_datasets:
-- kubric
-- pointodyssey
-- dynamic_replica
-cycle_reprojection_weight: 0.0
-cycle_reprojection_normalize_to_xyz: true
-cycle_reprojection_normalization_epsilon: 1.0e-06
-cycle_reprojection_normalization_max_scale: 1000.0
-cycle_reprojection_pixel_stride: 4
-cycle_reprojection_huber_delta: 0.01
 gradient_checkpointing: true
 seed: 20260812
 geometry_seed: 20260812
@@ -200,7 +189,6 @@ camera_supervision:
   learning_rate: 0.0001
   warmup_steps: 500
   phase_start_step: 196000
-  skip_zero_weight_cycle: true
   intrinsics_mode: per_frame_source_independent
   pose_translation_scale:
     kubric: 0.3

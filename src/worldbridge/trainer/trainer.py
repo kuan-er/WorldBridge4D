@@ -37,14 +37,12 @@ from .fsdp_checkpoint import (
     save_checkpoint, update_latest_checkpoint,
 )
 from .lazy_vae import set_lazy_vae_identity
-from .cycle import camera_batch, pixel_cycle_loss
 from .camera_objective import camera_ray_objective, supervision_camera_batch
 
 # H033 reads the camera from decoder-native modules; these prefixes are the
 # audited fresh parameters for a structural migration into an older trunk.
 CAMERA_PARAMETER_PREFIXES = tuple(f'decoder.{prefix}' for prefix in CAMERA_MODULE_PREFIXES)
-from .objective import (boundary_weighted_pair_smooth_l1, loss_scale_to_reference,
-                        masked_pair_smooth_l1, source_edge_contrast_loss)
+from .objective import masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .precision import assert_fp32_optimizer_storage, prepare_fsdp_master_parameters
 from .preflight import DEFAULT_PREFLIGHT_UPDATES, validate_startup_latents
@@ -413,32 +411,12 @@ def main() -> None:
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     use_source_rgb = bool(config.get("source_rgb_pyramid", False))
-    boundary_supervision = config.get('boundary_supervision')
-    edge_contrast_weight = float(config.get('source_edge_contrast_weight', 0.0))
-    cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
-    cycle_dataset_names = tuple(str(name) for name in config.get(
-        "cycle_reprojection_datasets", ["kubric"],
-    ))
-    cycle_weight = float(config.get("cycle_reprojection_weight", 0.0))
-    cycle_pixel_stride = int(config.get("cycle_reprojection_pixel_stride", 1))
-    cycle_huber_delta = float(config.get("cycle_reprojection_huber_delta", 0.01))
-    cycle_normalize_to_xyz = bool(config.get(
-        "cycle_reprojection_normalize_to_xyz", False,
-    ))
-    cycle_normalization_epsilon = float(config.get(
-        "cycle_reprojection_normalization_epsilon", 1e-6,
-    ))
-    cycle_normalization_max_scale = float(config.get(
-        "cycle_reprojection_normalization_max_scale", 1000.0,
-    ))
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     ensure_dataset_diagnostics = bool(
         config.get("diagnostic_ensure_dataset_coverage", False)
     )
     last_diagnostic_cycle: dict[str, int] = {}
     completed_diagnostic_cycles: set[int] = set()
-    extension_start = config.get("schedule_extension_start_step")
-    extension_horizon = config.get("schedule_extension_horizon_steps")
     checkpoint_steps = {int(value) for value in config.get("checkpoint_steps", [])}
     checkpoint_every = int(config.get("checkpoint_every_after", 5000))
     graceful_seconds = float(config.get("graceful_stop_hours", 68)) * 3600
@@ -456,10 +434,6 @@ def main() -> None:
         microbatch_per_gpu=microbatch_per_gpu,
         targets_per_source=k,
         use_source_rgb=use_source_rgb,
-        cycle_enabled=cycle_enabled,
-        cycle_dataset_names=cycle_dataset_names,
-        boundary_supervision=boundary_supervision,
-        edge_contrast_enabled=edge_contrast_weight > 0,
         camera_supervision=camera_cfg is not None,
         start_step=start_step,
         target_steps=execution_end,
@@ -497,15 +471,6 @@ def main() -> None:
             update_epe = 0.0
             valid_points = 0
             pair_count = 0
-            cycle_loss_sum = 0.0
-            weighted_cycle_loss_sum = 0.0
-            cycle_scale_sum = 0.0
-            cycle_pixel_error_sum = 0.0
-            cycle_valid_points = 0
-            boundary_stats = (torch.zeros(7, device=device, dtype=torch.float64)
-                              if boundary_supervision is not None else None)
-            contrast_stats = (torch.zeros(3, device=device, dtype=torch.float64)
-                              if edge_contrast_weight > 0 else None)
             camera_metrics = {} if camera_cfg is not None else None
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
@@ -525,17 +490,14 @@ def main() -> None:
                 target_counts = []
                 for (_planned_index, _source, rng), future in group:
                     wait_started = time.perf_counter()
-                    (
-                        index, source, xyz_all, valid_all, source_rgb_np,
-                        visible_all, camera, boundary_np, contrast_edges_np,
-                    ), task_seconds = future.result()
+                    (index, source, xyz_all, valid_all, source_rgb_np, camera), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
                     targets = (sample_eligible_targets(valid_all, k, rng, diagonal_source=source)
                                if camera_cfg else sample_eligible_targets(valid_all, k, rng))
                     batch_values.append((
                         index, source, targets, xyz_all[targets], valid_all[targets],
-                        source_rgb_np, visible_all, camera, valid_all, boundary_np, contrast_edges_np,
+                        source_rgb_np, camera, valid_all,
                     ))
                     target_counts.append(len(targets))
                 if len(set(target_counts)) != 1:
@@ -574,69 +536,9 @@ def main() -> None:
                 )
                 xyz = torch.from_numpy(normalized_np).to(device, non_blocking=True)
                 valid = torch.from_numpy(valid_np).to(device, non_blocking=True)
-                boundary_t = target_visible_t = None
-                if boundary_supervision is not None:
-                    if any(value[9] is None or value[6] is None for value in batch_values):
-                        raise RuntimeError('boundary-enabled batch is missing GT masks/visibility')
-                    boundary_t = torch.from_numpy(np.stack([value[9] for value in batch_values])).to(
-                        device, non_blocking=True)
-                    target_visible_t = torch.from_numpy(np.stack([
-                        value[6][value[2]] for value in batch_values
-                    ])).to(device, non_blocking=True)
-                contrast_edges_t = None
-                if edge_contrast_weight > 0:
-                    if any(value[10] is None for value in batch_values):
-                        raise RuntimeError('edge contrast batch is missing GT neighbor masks')
-                    contrast_edges_t = torch.from_numpy(np.stack([
-                        value[10] for value in batch_values
-                    ])).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
-                camera_tensors = (supervision_camera_batch([v[7] for v in batch_values], device)
+                camera_tensors = (supervision_camera_batch([v[6] for v in batch_values], device)
                                   if camera_cfg else None)
-                cycle_batch = cycle_enabled and name in cycle_dataset_names
-                if camera_cfg and camera_cfg['skip_zero_weight_cycle'] and cycle_weight == 0:
-                    cycle_batch = False  # zero-weight reverse graph has no training contribution
-                cycle_pair_indices = cycle_targets = None
-                cycle_source_t = cycle_target_t = cycle_source_rgb_t = None
-                cycle_source_valid = cycle_target_valid = cycle_target_visible = None
-                cycle_cameras = None
-                if cycle_batch:
-                    cycle_pair_indices = np.asarray([
-                        int(np.argmax(np.abs(value[2] - value[1])))
-                        for value in batch_values
-                    ], dtype=np.int64)
-                    cycle_targets = np.asarray([
-                        int(value[2][pair_index])
-                        for value, pair_index in zip(batch_values, cycle_pair_indices)
-                    ], dtype=np.int64)
-                    if any(value[6] is None or value[7] is None for value in batch_values):
-                        raise RuntimeError("cycle-enabled batch is missing visibility or camera metadata")
-                    reverse_rgb_np = np.stack([
-                        dataset.source_rgb(value[0], target_index)
-                        for value, target_index in zip(batch_values, cycle_targets)
-                    ])
-                    cycle_source_t = torch.from_numpy(cycle_targets[:, None]).to(
-                        device, dtype=torch.long, non_blocking=True,
-                    )
-                    cycle_target_t = source_t[:, :1]
-                    cycle_source_rgb_t = torch.from_numpy(reverse_rgb_np).permute(0, 3, 1, 2).to(
-                        device, dtype=dtype, non_blocking=True,
-                    ) / 127.5 - 1.0
-                    cycle_source_valid = torch.from_numpy(np.stack([
-                        value[8][value[1]] & value[6][value[1]]
-                        for value in batch_values
-                    ])).to(device, non_blocking=True)
-                    cycle_target_valid = torch.from_numpy(np.stack([
-                        value[8][target_index]
-                        for value, target_index in zip(batch_values, cycle_targets)
-                    ])).to(device, non_blocking=True)
-                    cycle_target_visible = torch.from_numpy(np.stack([
-                        value[6][target_index]
-                        for value, target_index in zip(batch_values, cycle_targets)
-                    ])).to(device, non_blocking=True)
-                    cycle_cameras = camera_batch(
-                        [value[7] for value in batch_values], device, torch.float32,
-                    )
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
                     trace_phase("forward_start", step, micro)
@@ -659,12 +561,6 @@ def main() -> None:
                             beta=float(config.get("smooth_l1_beta", 0.05)),
                         )
                     optimized_xyz_value = xyz_value
-                    if boundary_supervision is not None:
-                        optimized_xyz_value = boundary_weighted_pair_smooth_l1(
-                            prediction.float(), xyz.float(), valid, boundary_t,
-                            multiplier=float(boundary_supervision['multiplier']),
-                            beta=float(config.get('smooth_l1_beta', 0.05)),
-                        )
                     if camera_cfg:
                         with torch.autocast('cuda', enabled=False):
                             optimized_xyz_value, camera_losses = camera_ray_objective(
@@ -677,64 +573,6 @@ def main() -> None:
                     # Keep xyz_value UNWEIGHTED for cycle diagnostics and all
                     # historical train/xyz_loss comparisons.
                     loss = optimized_xyz_value / accumulation
-                    if edge_contrast_weight > 0:
-                        contrast_value, contrast_edges_count, contrast_pairs = source_edge_contrast_loss(
-                            prediction.float(), xyz.float(), valid, contrast_edges_t,
-                            beta=float(config.get('smooth_l1_beta', 0.05)),
-                        )
-                        loss = loss + edge_contrast_weight * contrast_value / accumulation
-                        contrast_stats[0] += contrast_value.detach().double() / accumulation
-                        contrast_stats[1] += contrast_edges_count.detach()
-                        contrast_stats[2] += contrast_pairs.detach()
-                    cycle_value = prediction.new_zeros(())
-                    weighted_cycle_value = prediction.new_zeros(())
-                    cycle_scale = prediction.new_zeros(())
-                    cycle_points = prediction.new_zeros(())
-                    cycle_pixel_error = prediction.new_zeros(())
-                    if cycle_batch:
-                        batch_indices = torch.arange(
-                            prediction.shape[0], device=device,
-                        )
-                        forward_cycle = prediction[batch_indices, torch.as_tensor(
-                            cycle_pair_indices, device=device,
-                        )]
-                        forward_cycle = forward_cycle * torch.as_tensor(
-                            scale, device=device, dtype=forward_cycle.dtype,
-                        ).view(1, 3, 1, 1) + torch.as_tensor(
-                            mean, device=device, dtype=forward_cycle.dtype,
-                        ).view(1, 3, 1, 1)
-                        trace_phase("cycle_forward_start", step, micro)
-                        reverse_prediction, _, _ = fsdp(
-                            latent, cycle_source_t, cycle_target_t, condition,
-                            cycle_source_rgb_t, z4d_override=z4d,
-                        )
-                        trace_phase("cycle_forward_enqueued", step, micro)
-                        reverse_cycle = reverse_prediction[:, 0]
-                        reverse_cycle = reverse_cycle * torch.as_tensor(
-                            scale, device=device, dtype=reverse_cycle.dtype,
-                        ).view(1, 3, 1, 1) + torch.as_tensor(
-                            mean, device=device, dtype=reverse_cycle.dtype,
-                        ).view(1, 3, 1, 1)
-                        with torch.autocast("cuda", enabled=False):
-                            cycle_value, cycle_points, cycle_pixel_error = pixel_cycle_loss(
-                                forward_cycle.float(), reverse_cycle.float(),
-                                source_t[:, 0], cycle_source_t[:, 0],
-                                cycle_source_valid, cycle_target_valid, cycle_target_visible,
-                                *cycle_cameras,
-                                huber_delta=cycle_huber_delta, image_size=image_size,
-                                pixel_stride=cycle_pixel_stride,
-                            )
-                        cycle_scale = (
-                            loss_scale_to_reference(
-                                xyz_value, cycle_value,
-                                epsilon=cycle_normalization_epsilon,
-                                max_scale=cycle_normalization_max_scale,
-                            )
-                            if cycle_normalize_to_xyz
-                            else cycle_value.new_ones(())
-                        )
-                        weighted_cycle_value = cycle_weight * cycle_scale * cycle_value
-                        loss = loss + weighted_cycle_value / accumulation
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step={step}, micro={micro}")
                 trace_phase("backward_start", step, micro)
@@ -742,30 +580,13 @@ def main() -> None:
                 trace_phase("backward_enqueued", step, micro)
                 update_loss += float(loss.detach())
                 xyz_loss_sum += float(xyz_value.detach()) / accumulation
-                cycle_loss_sum += float(cycle_value.detach()) / accumulation
-                weighted_cycle_loss_sum += float(weighted_cycle_value.detach()) / accumulation
-                cycle_scale_sum += float(cycle_scale.detach()) / accumulation
-                cycle_pixel_error_sum += float(cycle_pixel_error.detach() * cycle_points.detach())
-                cycle_valid_points += int(cycle_points.detach())
                 with torch.no_grad():
                     metric_error = (prediction.float() - xyz) * torch.as_tensor(scale, device=device).view(1, 1, 3, 1, 1)
                     epe = torch.linalg.vector_norm(metric_error, dim=2)
                     update_epe += float(epe[valid].sum())
                     valid_points += int(valid.sum())
-                    if boundary_stats is not None:
-                        boundary_valid = valid & boundary_t[:, None]
-                        occluded_boundary = boundary_valid & ~target_visible_t
-                        counts = valid.sum(dim=(-2, -1))
-                        fractions = boundary_valid.sum(dim=(-2, -1)).double() / counts.clamp_min(1)
-                        boundary_stats[0] += optimized_xyz_value.detach().double() / accumulation
-                        boundary_stats[1] += epe[boundary_valid].double().sum()
-                        boundary_stats[2] += boundary_valid.sum()
-                        boundary_stats[3] += fractions[counts > 0].mean() / accumulation
-                        boundary_stats[4] += epe[occluded_boundary].double().sum()
-                        boundary_stats[5] += occluded_boundary.sum()
-                        boundary_stats[6] += epe[valid & ~boundary_t[:, None]].double().sum()
                 pair_count += sum(target_counts)
-                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all, _boundary, _contrast_edges in batch_values:
+                for _index, source, targets, _xyz, _valid, _source_rgb, _camera, _valid_all in batch_values:
                     source_hist[source] += 1
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
@@ -782,8 +603,6 @@ def main() -> None:
                     step + 1,
                     int(config["warmup_steps"]),
                     int(config["schedule_horizon_steps"]),
-                    None if extension_start is None else int(extension_start),
-                    None if extension_horizon is None else int(extension_horizon),
                 )
             )
             if camera_cfg:
@@ -820,11 +639,8 @@ def main() -> None:
             if diagnostic:
                 last_diagnostic_cycle[name] = step // 20
                 scalars = torch.tensor(
-                    [
-                        update_loss, xyz_loss_sum, update_epe, valid_points, pair_count,
-                        cycle_loss_sum, weighted_cycle_loss_sum, cycle_scale_sum,
-                        cycle_pixel_error_sum, cycle_valid_points,
-                    ], device=device, dtype=torch.float64,
+                    [update_loss, xyz_loss_sum, update_epe, valid_points, pair_count],
+                    device=device, dtype=torch.float64,
                 )
                 timing_max = torch.tensor([
                     geometry_wait_seconds, geometry_task_max_seconds, latent_load_seconds,
@@ -836,10 +652,6 @@ def main() -> None:
                     camera_metric_values = torch.tensor([camera_metrics[n] for n in camera_metric_names],
                                                         device=device, dtype=torch.float64)
                     dist.all_reduce(camera_metric_values, op=dist.ReduceOp.SUM)
-                if boundary_stats is not None:
-                    dist.all_reduce(boundary_stats, op=dist.ReduceOp.SUM)
-                if contrast_stats is not None:
-                    dist.all_reduce(contrast_stats, op=dist.ReduceOp.SUM)
                 for histogram in (source_hist, target_hist, gap_hist):
                     dist.all_reduce(histogram, op=dist.ReduceOp.SUM)
                 rgb_alpha_names = list(fsdp.module.decoder.upsampler.source_fusions)
@@ -858,21 +670,11 @@ def main() -> None:
                     rgb_alpha_stats = torch.empty((0, 2), device=device, dtype=torch.float64)
             if rank == 0 and diagnostic:
                 (
-                    global_loss, global_xyz_loss, global_epe_sum, global_valid,
-                    global_pairs, global_cycle_loss, global_weighted_cycle_loss,
-                    global_cycle_scale, global_cycle_pixel_error_sum,
-                    global_cycle_points,
+                    global_loss, global_xyz_loss, global_epe_sum, global_valid, global_pairs,
                 ) = scalars.tolist()
                 dataset_loss = global_loss / world
                 dataset_xyz_loss = global_xyz_loss / world
                 raw_epe_m = global_epe_sum / max(global_valid, 1)
-                cycle_dataset_loss = global_cycle_loss / world
-                weighted_cycle_dataset_loss = global_weighted_cycle_loss / world
-                cycle_loss_ratio = weighted_cycle_dataset_loss / max(
-                    dataset_xyz_loss, cycle_normalization_epsilon,
-                )
-                cycle_scale = global_cycle_scale / world
-                cycle_pixel_error = global_cycle_pixel_error_sum / max(global_cycle_points, 1)
                 weights = fsdp.module.backbone.layer_weights().detach().float().cpu().tolist()
                 rgb_alphas = {
                     scale_name: float(rgb_alpha_stats[index, 0] / rgb_alpha_stats[index, 1])
@@ -885,16 +687,6 @@ def main() -> None:
                     f"train/xyz_loss_by_dataset/{name}": dataset_xyz_loss,
                     "train/raw_epe_m": raw_epe_m,
                     f"train/raw_epe_m_by_dataset/{name}": raw_epe_m,
-                    "train/cycle_reprojection_loss": cycle_dataset_loss,
-                    f"train/cycle_reprojection_loss_by_dataset/{name}": cycle_dataset_loss,
-                    "train/weighted_cycle_reprojection_loss": weighted_cycle_dataset_loss,
-                    f"train/weighted_cycle_reprojection_loss_by_dataset/{name}": weighted_cycle_dataset_loss,
-                    "train/cycle_reprojection_loss_ratio": cycle_loss_ratio,
-                    f"train/cycle_reprojection_loss_ratio_by_dataset/{name}": cycle_loss_ratio,
-                    "train/cycle_reprojection_scale": cycle_scale,
-                    f"train/cycle_reprojection_scale_by_dataset/{name}": cycle_scale,
-                    "train/cycle_reprojection_pixel_error": cycle_pixel_error,
-                    "train/cycle_reprojection_valid_points": int(global_cycle_points),
                     "train/dataset": DATASET_NAMES.index(name), "train/pairs": int(global_pairs),
                     "train/clips_seen_total": sum(clips_seen.values()),
                     **{f"train/clips_seen_{key}": value for key, value in clips_seen.items()},
@@ -915,30 +707,6 @@ def main() -> None:
                     **{f"sampling/target_{index}": int(value) for index, value in enumerate(target_hist.tolist())},
                     **{f"sampling/gap_{index}": int(value) for index, value in enumerate(gap_hist.tolist())},
                 }
-                if boundary_stats is not None:
-                    weighted_xyz, boundary_epe_sum, boundary_points, pair_fraction, occluded_epe_sum, occluded_points, nonboundary_epe_sum = boundary_stats.tolist()
-                    payload.update({
-                        'train/boundary_weighted_xyz_loss': weighted_xyz / world,
-                        'train/boundary_multiplier': float(boundary_supervision['multiplier']),
-                        'train/boundary_uses_dense_instance_gt': int(name == 'kubric'),
-                        'train/boundary_raw_epe_m': boundary_epe_sum / max(boundary_points, 1),
-                        'train/boundary_valid_points': int(boundary_points),
-                        'train/boundary_pair_mean_fraction': pair_fraction / world,
-                        'train/boundary_valid_fraction': boundary_points / max(global_valid, 1),
-                        'train/nonboundary_raw_epe_m': nonboundary_epe_sum / max(global_valid - boundary_points, 1),
-                        'train/nonboundary_valid_points': int(global_valid - boundary_points),
-                        'train/boundary_occluded_raw_epe_m': occluded_epe_sum / max(occluded_points, 1),
-                        'train/boundary_occluded_valid_points': int(occluded_points),
-                    })
-                if contrast_stats is not None:
-                    contrast_loss, edge_count, eligible_pairs = contrast_stats.tolist()
-                    payload.update({
-                        'train/source_edge_contrast_loss': contrast_loss / world,
-                        'train/weighted_source_edge_contrast_loss': edge_contrast_weight * contrast_loss / world,
-                        'train/source_edge_contrast_weight': edge_contrast_weight,
-                        'train/source_edge_contrast_valid_edges': int(edge_count),
-                        'train/source_edge_contrast_eligible_pairs': int(eligible_pairs),
-                    })
                 if camera_cfg:
                     for key, value in zip(camera_metric_names, camera_metric_values.tolist()):
                         payload[f'train/camera/{key}'] = value/world

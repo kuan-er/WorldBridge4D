@@ -76,18 +76,14 @@ def test_small_adam_updates_round_away_in_bf16_but_accumulate_in_fp32():
     assert float(initial.float() - fp) > 0.0002
 
 
-def test_precision_control_keeps_cycle_and_other_scientific_settings():
-    cycle = yaml.safe_load((ROOT / "configs/h030_150k_to_160k_gpu23_b2_k15_native_reuse.yaml").read_text())
-    master = yaml.safe_load((ROOT / "configs/h030_150k_to_155k_gpu23_b2_k15_fp32_master.yaml").read_text())
-    validate_config(master, world=2)
-    assert {k for k in cycle.keys() | master.keys() if cycle.get(k) != master.get(k)} == {
-        "fsdp_master_precision", "max_steps", "lr_restart", "checkpoint_steps", "tracking",
-    }
-    assert master["fsdp_master_precision"] == "fp32"
-    assert master["precision"] == "bf16" and master["cycle_reprojection_enabled"] is True
-    assert master["lr_restart"] == {**cycle["lr_restart"], "end_step": 155000}
-    assert master["max_steps"] == 155000
-    assert master["checkpoint_steps"] == [s for s in cycle["checkpoint_steps"] if s <= 155000]
-    for override in ({"fsdp_master_precision": "fp16"}, {"precision": "fp32"}):
+def test_precision_control_is_fp32_master_with_bf16_compute():
+    root = Path(__file__).resolve().parents[1]
+    config = yaml.safe_load((root / "configs/h033_camera_query_ray_to210000.yaml").read_text())
+    validate_config(config, world=2)
+    assert config["fsdp_master_precision"] == "fp32"
+    assert config["precision"] == "bf16"
+    for override in ({"fsdp_master_precision": "fp16"}, {"precision": "fp32"},
+                     {"fsdp_master_precision": "model"}):
         with pytest.raises(ValueError):
-            validate_config({**master, **override}, world=2)
+            validate_config({**config, **override}, world=2)
+

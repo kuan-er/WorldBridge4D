@@ -23,7 +23,6 @@ from ..data.constants import DATASET_NAMES
 from ..data.factory import load_dataset
 from ..models.factory import build_real_model
 from ..data.text_conditions import load_inference_text_condition
-from ..trainer.cycle import camera_batch, pixel_cycle_loss
 from ..utils.io import atomic_json
 from .diagnostic_metrics import (
     cross_instance_neighbor_proxy, depth_discontinuity, edge_distance,
@@ -113,7 +112,7 @@ def geometry_context(dataset, index):
         gi = dataset.geometry_indices[index]
         _, _, depth, depth_valid = dataset.geometry.camera(gi)
         segmentation = None
-    return depth, depth_valid, segmentation, dataset.cycle_camera(index)
+    return depth, depth_valid, segmentation
 
 
 def prepare_clip(item, dataset, spec, root, protocol):
@@ -227,26 +226,6 @@ def decode(model, z4d, rgb, source, targets, device):
     return torch.stack(predictions).numpy()
 
 
-def cycle_diagnostic(pred, reverse, data, camera, source):
-    target = int(data["reverse_source"])
-    camera_tensors = camera_batch([camera], torch.device("cpu"), torch.float32)
-    source_valid = data["valid"][source] & data["visible"][source]
-    args = (torch.tensor([source]), torch.tensor([target]),
-            torch.from_numpy(source_valid[None]), torch.from_numpy(data["valid"][target:target + 1]),
-            torch.from_numpy(data["visible"][target:target + 1]), *camera_tensors)
-    loss, count, error = pixel_cycle_loss(torch.from_numpy(pred[target:target + 1]),
-                                         torch.from_numpy(reverse[None]), *args, pixel_stride=4)
-    ref_loss, ref_count, ref_error = pixel_cycle_loss(torch.from_numpy(data["xyz"][target:target + 1]),
-                                                    torch.from_numpy(data["reverse_gt"][None]), *args,
-                                                    pixel_stride=4)
-    eligible = source_valid & data["valid"][target] & data["visible"][target]
-    return {"target": target, "pixel_error": float(error), "loss": float(loss), "valid_points": int(count),
-            "gt_eligible_stride4": int(eligible[::4, ::4].sum()),
-            "gt_reference_pixel_error": float(ref_error), "gt_reference_loss": float(ref_loss),
-            "gt_reference_valid_points": int(ref_count),
-            "caveat": "training-compatible prediction-dependent in-bounds mask; report coverage; sparse raster GT cycle need not be zero"}
-
-
 def diagnostic_device():
     if torch.cuda.device_count() != 1:
         raise RuntimeError("each diagnostic worker requires exactly one explicitly leased physical GPU")
@@ -348,7 +327,6 @@ def run(args):
                                              minimum_frames=spec["minimum_track_valid_frames"],
                                              motion_static_m=spec.get("motion_static_m", 0.01),
                                              motion_large_m=spec.get("motion_large_m", 0.1))
-                    metrics["cycle"] = cycle_diagnostic(prediction, reverse[0], data, camera, source)
                     if "segmentation" in data:
                         metrics["cross_instance"] = cross_instance_neighbor_proxy(
                             prediction, data["xyz"], data["valid"], data["segmentation"], source,
@@ -385,9 +363,6 @@ def metric_values(record):
     if "cross_instance" in metrics:
         for key in ("neighbor_closer", "toward_neighbor", "between_surfaces"):
             values[f"cross_instance/{key}"] = metrics["cross_instance"][key]
-    cycle = metrics["cycle"]
-    values["cycle/pixel_error"] = {"mean": cycle["pixel_error"] if cycle["valid_points"] else None,
-                                    "count": cycle["valid_points"], "sum": cycle["pixel_error"] * cycle["valid_points"]}
     return values
 
 
@@ -422,7 +397,7 @@ def aggregate(args):
     primary = ["all/all/all", "all/boundary/all", "all/interior/all", "pointmap/boundary/all",
                "tracking/all/all", "gap8plus/boundary/all", "tracking/all/occluded",
                "track_mean_epe/boundary", "displacement_epe/boundary", "sim3/all",
-               "cross_instance/neighbor_closer", "cycle/pixel_error",
+               "cross_instance/neighbor_closer",
                "tracking/motion_le_1cm/all", "tracking/motion_1to10cm/all",
                "tracking/motion_gt_10cm/all"]
     for cohort in ("historical_train_replay", "validation_screen"):
@@ -458,7 +433,7 @@ def aggregate(args):
                         ma, mb = metric_values(a).get(metric), metric_values(b).get(metric)
                         if ma is None or mb is None:
                             continue
-                        if not metric.startswith("cycle/") and ma["count"] != mb["count"]:
+                        if ma["count"] != mb["count"]:
                             raise ValueError(f"GT metric population changed: {metric}")
                         if ma["mean"] is None or mb["mean"] is None:
                             continue

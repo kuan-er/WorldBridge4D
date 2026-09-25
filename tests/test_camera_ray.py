@@ -5,8 +5,9 @@ import numpy as np
 import pytest
 import torch
 from torch import nn
-import yaml
+import importlib.util
 
+import yaml
 from worldbridge.models.camera import (
     CameraOutput, normalised_grid_coordinates, quaternion_to_matrix,
 )
@@ -24,17 +25,16 @@ from worldbridge.models.decoder.query_decoder import CAMERA_MODULE_PREFIXES
 from worldbridge.trainer.trainer import CAMERA_PARAMETER_PREFIXES
 
 CONFIG = Path('configs/h033_camera_query_ray_to210000.yaml')
-PARENT = Path('configs/h032_camera_ray_k10_to210000.yaml')
+_SPEC = importlib.util.spec_from_file_location(
+    'h033_make_config', Path(__file__).resolve().parents[1] / 'research/analysis/h033_make_config.py')
+m033 = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(m033)
 TRUNK_NON_WAN = 194597133
 GRID = 8
 
 
 def config():
     return yaml.safe_load(CONFIG.read_text())
-
-
-def parent_config():
-    return yaml.safe_load(PARENT.read_text())
 
 
 class TinyBackbone(nn.Module):
@@ -91,21 +91,31 @@ def forward(decoder: DenseQueryDecoder, source_t, target_t, z4d: StructuredZ4D |
 
 # --------------------------------------------------------------------------- protocol
 
-def test_h033_is_a_minimal_documented_diff_of_the_k10_protocol():
-    new, old = config(), parent_config()
-    assert {k for k in old.keys() | new.keys() if old.get(k) != new.get(k)} == {
-        'camera_supervision', 'expected_non_wan_parameters', 'finetune_expected_global_step',
-        'finetune_expected_clips_seen', 'finetune_drop_prefixes', 'tracking',
-    }
-    for field in ('targets_per_source', 'camera_k10', 'dataset_mix_counts', 'seed',
-                  'clip_length', 'image_size', 'native_kubric512_full', 'max_steps',
-                  'motion_slots', 'query_dim', 'geometry_dim', 'precision',
-                  'fsdp_master_precision', 'trainable_mode'):
-        assert new[field] == old[field], field
-    assert new['targets_per_source'] == 10 and new['camera_k10'] is True
-    assert new['max_steps'] == 210000 and new['finetune_expected_global_step'] == 210000
-    assert new['finetune_drop_prefixes'] == ['camera_head.']
-    validate_config(new, 2)
+def test_h033_config_is_the_single_supported_profile():
+    cfg = config()
+    validate_config(cfg, 2)
+    assert cfg['targets_per_source'] == 10 and cfg['camera_k10'] is True
+    assert cfg['native_kubric512_full'] is True and cfg['native_dr512'] is True
+    assert cfg['trainable_mode'] == 'full' and cfg['precision'] == 'bf16'
+    assert cfg['fsdp_master_precision'] == 'fp32'
+    assert (cfg['gradient_accumulation'], cfg['microbatch_per_gpu']) == (4, 1)
+    assert cfg['coordinate_frame'] == 'source'
+    assert cfg['max_steps'] == 210000 and cfg['finetune_expected_global_step'] == 210000
+    assert cfg['finetune_drop_prefixes'] == ['camera_head.']
+    assert cfg['camera_supervision'] == m033.camera_supervision()
+    assert m033.camera_parameter_count(1536, 256, 256) + 194597133 == cfg['expected_non_wan_parameters']
+    # H033 deleted these routes; a config that still carries them must be refused.
+    for key in ('cycle_reprojection_enabled', 'boundary_supervision',
+                'source_edge_contrast_weight', 'schedule_extension_start_step'):
+        broken = config()
+        broken[key] = 0
+        with pytest.raises(ValueError):
+            validate_config(broken, 2)
+    for key in ('native_kubric512_b1_a4_k9', 'xyz_b2_a2_k15'):
+        broken = config()
+        broken[key] = True
+        with pytest.raises(ValueError):
+            validate_config(broken, 2)
 
 
 def test_h033_rejects_unaudited_camera_profiles():
@@ -121,7 +131,11 @@ def test_h033_rejects_unaudited_camera_profiles():
         with pytest.raises(ValueError):
             validate_config(cfg, 2)
     cfg = config()
-    cfg['camera_supervision'] = {**cfg['camera_supervision'], 'memory_grid': 16}
+    cfg['camera_supervision'] = {**cfg['camera_supervision'], 'skip_zero_weight_cycle': False}
+    with pytest.raises(ValueError):
+        validate_config(cfg, 2)
+    cfg = config()
+    cfg['trainable_mode'] = 'decoder_only'
     with pytest.raises(ValueError):
         validate_config(cfg, 2)
 

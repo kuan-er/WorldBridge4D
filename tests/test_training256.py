@@ -15,8 +15,7 @@ from worldbridge.models import (
     StructuredZ4D, WanHiddenGeometryBackbone,
 )
 from worldbridge.models.wan import WAN_LATENT_SHAPE_256, WanDiTMapping
-from worldbridge.trainer.cycle import pixel_cycle_loss
-from worldbridge.trainer.objective import loss_scale_to_reference, masked_pair_smooth_l1
+from worldbridge.trainer.objective import masked_pair_smooth_l1
 from worldbridge.trainer.optimizer import parameter_groups
 from worldbridge.trainer.trainer import fsdp_auto_wrap_policy
 from worldbridge.data.cache import KubricGeometryMmapStore, LazyLatentCache, RGBUInt8ShardStore
@@ -349,36 +348,6 @@ def test_checkpoint_publishes_matching_planning_sidecar():
     assert 'atomic_json(output / "train_status.json", checkpoint_status)' in source
 
 
-def test_staging_is_checksum_verified_reusable_and_wires_runtime_paths(tmp_path):
-    import yaml
-    from worldbridge.trainer.commands.stage_inputs import stage_training_inputs
-
-    wan = tmp_path / "wan"; wan.mkdir()
-    dit = wan / "diffusion_pytorch_model.safetensors"; dit.write_bytes(b"dit-weights")
-    vae = wan / "Wan2.1_VAE.pth"; vae.write_bytes(b"vae-weights")
-    output = tmp_path / "output"; output.mkdir()
-    resume = output / "latest.pt"; resume.write_bytes(b"resume-state")
-    (output / "train_status.json").write_text('{"completed_steps":2}\n')
-    source_config = tmp_path / "config.yaml"
-    source_config.write_text(yaml.safe_dump({"wan_root": str(wan)}))
-    staged_config, staged_resume = stage_training_inputs(
-        source_config, tmp_path / "ssd", resume
-    )
-    values = yaml.safe_load(staged_config.read_text())
-    assert Path(values["wan_checkpoint"]).read_bytes() == b"dit-weights"
-    assert Path(values["vae_checkpoint"]).read_bytes() == b"vae-weights"
-    assert Path(staged_resume).read_bytes() == b"resume-state"
-    assert values["resume_status_path"] == str(output / "train_status.json")
-    second_config, second_resume = stage_training_inputs(
-        source_config, tmp_path / "ssd", resume
-    )
-    assert second_config == staged_config
-    assert second_resume == staged_resume
-    # Resume checkpoints already live on /data and are intentionally not copied
-    # into a second object on the same filesystem.
-    assert len(list((tmp_path / "ssd" / "objects").iterdir())) == 2
-
-
 def test_inference_script_encodes_backbone_once_before_target_chunks():
     source = (REPOSITORY_ROOT / "src/worldbridge/evaluation/inference.py").read_text()
     assert "z4d = model.backbone(latent, condition)" in source
@@ -438,26 +407,6 @@ def test_required_latents_respect_true_microbatch_slots():
     assert sum(map(len, batched.values())) == 2
 
 
-def test_pipeline_work_is_global_unique_balanced_and_needed_step_ordered():
-    from worldbridge.trainer.lazy_vae import pipeline_work_for_rank
-
-    gathered = [
-        [(9, "kubric", 1), (3, "pointodyssey", 4), (7, "kubric", 1)],
-        [(2, "kubric", 1), (5, "dynamic_replica", 8), (6, "pointodyssey", 4)],
-    ]
-    rank0 = pipeline_work_for_rank(gathered, 0, 2)
-    rank1 = pipeline_work_for_rank(gathered, 1, 2)
-    combined = rank0 + rank1
-    keys = [(name, index) for _step, name, index in combined]
-    assert len(keys) == len(set(keys)) == 3
-    earliest = {(name, index): step for step, name, index in combined}
-    assert earliest[("kubric", 1)] == 2
-    assert earliest[("pointodyssey", 4)] == 3
-    assert earliest[("dynamic_replica", 8)] == 5
-    assert rank0 == sorted(rank0, key=lambda value: (value[0], ("kubric", "pointodyssey", "dynamic_replica").index(value[1]), value[2]))
-    assert rank1 == sorted(rank1, key=lambda value: (value[0], ("kubric", "pointodyssey", "dynamic_replica").index(value[1]), value[2]))
-
-
 def test_offline_lazy_cache_hash_owner_balances_fully_overlapping_plans():
     from worldbridge.trainer.lazy_vae import lazy_latent_owner
 
@@ -514,86 +463,6 @@ def test_kubric_mmap_conversion_is_exact_atomic_and_resumable(tmp_path):
     mtimes = {path: path.stat().st_mtime_ns for path in destination.glob("*.npy")}
     convert(source, destination, range(3), shard_size=2, min_free_gib=0)
     assert mtimes == {path: path.stat().st_mtime_ns for path in destination.glob("*.npy")}
-
-
-def test_production_protocol_rejects_historical_capacity_modes():
-    import yaml
-    from worldbridge.trainer.config import validate_config
-
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml"
-    )
-    config = yaml.safe_load(path.read_text())
-    validate_config(config, world=2)
-    with pytest.raises(ValueError, match="exactly 2 ranks"):
-        validate_config(config, world=4)
-    with pytest.raises(ValueError, match="gradient_accumulation=2"):
-        validate_config({**config, "microbatch_per_gpu": 1}, world=2)
-    with pytest.raises(ValueError, match="targets_per_source=19"):
-        validate_config({**config, "targets_per_source": 16}, world=2)
-
-
-def test_source_rgb_fusion32_step100k_config_is_strictly_resumable():
-    import yaml
-    from worldbridge.trainer.config import validate_config
-
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "configs/worldbridge4d_256_source_rgb_fusion32_step100000.yaml"
-    )
-    config = yaml.safe_load(path.read_text())
-    assert config["source_rgb_fusion_scales"] == [32, 64, 128, 256]
-    assert config["source_rgb_fusion_32"] is True
-    assert config["expected_non_wan_parameters"] == 194_400_525
-    assert config["joint_fresh_group_warmup_steps"] == 0
-    assert config["joint_fresh_group_max_lr_scale"] == 0.1
-    assert config["max_steps"] == config["selected_checkpoint_step"] == 100_000
-    assert config["schedule_extension_horizon_steps"] == 150_000
-    assert config["selected_checkpoint_sha256"] == (
-        "3181a255d48687f1634fe62372355815a61f9aba5fef40bca50572459145d0f2"
-    )
-    assert config["checkpoint_steps"] == [100_000]
-    assert config["checkpoint_every_after"] == 5_000
-    validate_config(config, world=2)
-
-
-def test_h027_pre_attention_rgb_query_finetune_contract():
-    import yaml
-    from worldbridge.trainer.config import validate_config
-
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "configs/h027_pre_attention_rgb_query_step110000.yaml"
-    )
-    config = yaml.safe_load(path.read_text())
-    assert config["pre_attention_rgb_query"] is True
-    assert config["trainable_mode"] == "decoder_only"
-    assert config["finetune_expected_global_step"] == 100_000
-    assert config["max_steps"] == 110_000
-    assert config["expected_non_wan_parameters"] - 194_400_525 == 196_608
-    validate_config(config, world=2)
-
-
-def test_h027_step130k_exact_resume_contract():
-    import yaml
-    from worldbridge.trainer.config import validate_config
-
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "configs/h027_pre_attention_rgb_query_step130000.yaml"
-    )
-    config = yaml.safe_load(path.read_text())
-    assert config["pre_attention_rgb_query"] is True
-    assert "pre_attention_rgb_query_gate_max" not in config
-    assert config["trainable_mode"] == "decoder_only"
-    assert config["max_steps"] == 130_000
-    assert config["schedule_extension_horizon_steps"] == 150_000
-    assert config["checkpoint_steps"] == [110_000, 115_000, 120_000, 125_000, 130_000]
-    assert config["checkpoint_every_after"] == 5_000
-    assert config["checkpoint_keep_last"] == 5
-    assert config["resume_status_path"].endswith("resume_status_0105000.json")
-    validate_config(config, world=2)
 
 
 def test_periodic_checkpoint_pruning_bounds_disk_usage(tmp_path):
@@ -984,54 +853,6 @@ def test_geometry_prefetcher_preserves_order_and_deterministic_sampling():
     assert "def timed_geometry" not in source
     assert "def plan_step" not in source
     assert "def refill_plans" not in source
-
-
-def test_pixel_cycle_is_zero_for_identity_and_responds_to_reverse_shift():
-    size = 8
-    uv = torch.stack(torch.meshgrid(
-        torch.arange(size), torch.arange(size), indexing="xy",
-    ), dim=-1).float()
-    source_xyz = torch.stack((
-        (uv[..., 0] - 3.5) / size,
-        -(uv[..., 1] - 3.5) / size,
-        -torch.ones(size, size),
-    ), dim=0).unsqueeze(0).requires_grad_()
-    reverse_xyz = source_xyz.detach().clone()
-    reverse_xyz[:, 0] += 0.1
-    positions = torch.zeros(1, 21, 3)
-    rotations = torch.eye(3).reshape(1, 1, 3, 3).expand(1, 21, 3, 3).clone()
-    valid = torch.ones(1, size, size, dtype=torch.bool)
-    args = (
-        torch.tensor([0]), torch.tensor([1]), valid, valid, valid,
-        positions, rotations, torch.tensor([1.0]), torch.tensor([1.0]),
-    )
-    loss, count, pixel_error = pixel_cycle_loss(
-        source_xyz.detach(), source_xyz.detach(), *args, image_size=size,
-    )
-    assert count.item() == size * size
-    assert loss.item() == pytest.approx(0.0)
-    assert pixel_error.item() == pytest.approx(0.0)
-    loss, count, pixel_error = pixel_cycle_loss(
-        source_xyz, reverse_xyz, *args, image_size=size,
-    )
-    assert 0 < count.item() < size * size
-    assert pixel_error.item() > 0.0
-    loss.backward()
-    assert source_xyz.grad is not None and torch.isfinite(source_xyz.grad).all()
-
-
-def test_batch_local_auxiliary_normalization_matches_reference_without_scale_gradient():
-    xyz_loss = torch.tensor(0.068, requires_grad=True)
-    cycle_loss = torch.tensor(0.00025, requires_grad=True)
-    scale = loss_scale_to_reference(xyz_loss, cycle_loss)
-    weighted_cycle = 0.3 * scale * cycle_loss
-    assert scale.item() == pytest.approx(272.0)
-    assert weighted_cycle.item() / xyz_loss.item() == pytest.approx(0.3)
-    (xyz_loss + weighted_cycle).backward()
-    assert xyz_loss.grad.item() == pytest.approx(1.0)
-    assert cycle_loss.grad.item() == pytest.approx(0.3 * 272.0)
-    zero_scale = loss_scale_to_reference(xyz_loss.detach(), torch.zeros(()))
-    assert zero_scale.item() == 0.0
 
 
 def test_pair_loss_ignores_empty_pair_instead_of_treating_it_as_zero():

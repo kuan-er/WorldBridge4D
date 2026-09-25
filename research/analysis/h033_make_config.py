@@ -24,7 +24,7 @@ def camera_parameter_count(query_dim: int, pose_hidden: int, ray_hidden: int) ->
 def camera_supervision(query_dim: int = 1536) -> dict:
     return dict(
         pose_hidden=256, ray_hidden=256, seed=424243, learning_rate=1e-4,
-        warmup_steps=500, phase_start_step=196000, skip_zero_weight_cycle=True,
+        warmup_steps=500, phase_start_step=196000,
         intrinsics_mode='per_frame_source_independent',
         # Camera-scale translation normalisation replaces the point-cloud sigma
         # (5.62 m) that left PO/DR translation supervision in smooth-L1's
@@ -39,6 +39,16 @@ def make_config(parent: dict | None = None, clips_seen: dict | None = None) -> d
     cfg = dict(parent) if parent else yaml.safe_load(
         (ROOT/'configs/h032_camera_ray_k10_to210000.yaml').read_text())
     trunk_non_wan = 194597133
+    # H033 deleted the cycle, boundary, edge-contrast, schedule-extension and
+    # staged-input machinery, so none of those keys may survive into the config.
+    for key in ('cycle_reprojection_enabled', 'cycle_reprojection_datasets',
+                'cycle_reprojection_weight', 'cycle_reprojection_pixel_stride',
+                'cycle_reprojection_huber_delta', 'cycle_reprojection_normalize_to_xyz',
+                'cycle_reprojection_normalization_epsilon',
+                'cycle_reprojection_normalization_max_scale', 'boundary_supervision',
+                'source_edge_contrast_weight', 'schedule_extension_start_step',
+                'schedule_extension_horizon_steps'):
+        cfg.pop(key, None)
     cfg['camera_supervision'] = camera_supervision()
     cfg['expected_non_wan_parameters'] = trunk_non_wan + camera_parameter_count(1536, 256, 256)
     cfg['finetune_expected_global_step'] = PARENT_STEP

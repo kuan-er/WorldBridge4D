@@ -329,10 +329,6 @@ class DynamicReplicaDataset:
         ])
         return intrinsics, camera_to_world, np.stack(depth), np.stack(depth_valid)
 
-    def source_boundary_context(self, index: int, source: int):
-        path = self.raw_train_root / self.rows[int(index)]['frames'][int(source)]['depth']
-        depth, valid = _depth(path, self.image_size, getattr(self, 'depth_cache_root', DEPTH_CACHE_ROOT))
-        return depth, valid, None  # Sparse track IDs are not dense segmentation.
 
     def supervision_camera(self, index: int) -> dict[str, np.ndarray | float]:
         K = np.stack([_pixel_intrinsics(frame['viewpoint'], self.image_size)

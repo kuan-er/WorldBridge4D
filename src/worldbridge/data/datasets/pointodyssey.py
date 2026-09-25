@@ -150,11 +150,6 @@ class PointOdysseyDataset:
         c2w = np.linalg.inv(np.einsum("ij,tjk->tik", D, a["extrinsics"][start:start + T].astype(np.float64)))
         return K, c2w, np.stack(depth), np.stack(depth_valid)
 
-    def source_boundary_context(self, index: int, source: int):
-        row = self.rows[int(index)]
-        path = Path(row['source_scene']) / 'depths' / f"depth_{int(row['start']) + int(source):05d}.png"
-        depth, valid = _depth(path, self.image_size, getattr(self, 'depth_cache_root', DEPTH_CACHE_ROOT))
-        return depth, valid, None  # No dense instance GT contract for this adapter.
 
     def supervision_camera(self, index: int) -> dict[str, np.ndarray | float]:
         row = self.rows[int(index)]
