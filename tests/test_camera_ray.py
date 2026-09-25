@@ -1,5 +1,6 @@
 """H033 camera contract: decoder-native pose token plus per-frame ray field."""
 from copy import deepcopy
+import math
 from pathlib import Path
 import numpy as np
 import pytest
@@ -160,6 +161,49 @@ def test_camera_parameter_prefixes_match_the_model():
 
 
 # --------------------------------------------------------------------------- readout
+
+def test_quaternion_to_matrix_matches_scipy_reference():
+    """The local formula is pinned against an independent implementation."""
+    Rotation = pytest.importorskip('scipy.spatial.transform').Rotation
+    rng = np.random.default_rng(11)
+    q = rng.normal(size=(4096, 4))
+    q /= np.linalg.norm(q, axis=1, keepdims=True)
+    reference = Rotation.from_quat(q).as_matrix()
+    got = quaternion_to_matrix(torch.as_tensor(q, dtype=torch.float32)).double().numpy()
+    assert np.abs(got - reference).max() < 1e-6
+    assert np.abs(got @ got.transpose(0, 2, 1) - np.eye(3)).max() < 1e-6
+    assert np.abs(np.linalg.det(got) - 1).max() < 1e-6
+    # XYZW scalar-last, Hamilton, active rotation: 90 degrees about each axis.
+    for axis in range(3):
+        vector = np.zeros(3)
+        vector[axis] = math.sin(math.pi / 4)
+        quaternion = np.array([[vector[0], vector[1], vector[2], math.cos(math.pi / 4)]])
+        assert np.allclose(quaternion_to_matrix(torch.tensor(quaternion))[0].numpy(),
+                           Rotation.from_quat(quaternion[0]).as_matrix(), atol=1e-6)
+    # The conversion always runs in FP32, even from a BF16 input under autocast.
+    assert quaternion_to_matrix(torch.zeros(2, 4, dtype=torch.bfloat16)).dtype == torch.float32
+    assert torch.isfinite(quaternion_to_matrix(torch.zeros(2, 4))).all()
+    assert torch.allclose(quaternion_to_matrix(torch.zeros(2, 4)),
+                          torch.eye(3).expand(2, 3, 3))
+
+
+def test_quaternion_to_matrix_gradient_matches_central_differences():
+    rng = np.random.default_rng(12)
+    quaternion = torch.tensor(rng.normal(size=(1, 4)), dtype=torch.float32)
+    weight = torch.tensor(rng.normal(size=(1, 3, 3)), dtype=torch.float32)
+    tracked = quaternion.clone().requires_grad_(True)
+    (quaternion_to_matrix(tracked) * weight).sum().backward()
+    analytic = tracked.grad.clone()
+    step = 1e-3
+    numeric = torch.zeros_like(quaternion)
+    for index in range(4):
+        for sign in (1.0, -1.0):
+            perturbed = quaternion.clone()
+            perturbed[0, index] += sign * step
+            numeric[0, index] += sign * (quaternion_to_matrix(perturbed) * weight).sum() / (2 * step)
+    relative = float((analytic - numeric).abs().max() / analytic.abs().max())
+    assert relative < 1e-3, relative
+
 
 def test_pose_and_ray_shapes_diagonal_identity_and_unit_rays():
     decoder = tiny_decoder()
