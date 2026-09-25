@@ -37,7 +37,7 @@ from worldbridge.utils.io import atomic_json
 
 CONFIG = ROOT/'configs/h033_camera_query_ray_to210000.yaml'
 PARENT = Path('/data/WorldBridge4D-runs/h032-source-camera-ray-k10-to210000-20260924')
-PARENT_STEP = 210000
+PARENT_STEP = 202000
 PARENT_CHECKPOINT = PARENT/f'checkpoint-{PARENT_STEP:07d}.pt'
 HANDOFF = Path('/data/WorldBridge4D-runs/h033-camera-query-ray-handoff-20260925')
 OUTPUT = Path('/data/WorldBridge4D-runs/h033-camera-query-ray-to210000-20260925')

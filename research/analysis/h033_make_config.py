@@ -7,7 +7,8 @@ sampling (K10), optimizer groups and seeds are inherited unchanged.
 from pathlib import Path
 import yaml
 ROOT = Path(__file__).resolve().parents[2]
-PARENT_STEP = 210000
+PARENT_STEP = 202000
+END_STEP = 210000
 
 
 def camera_parameter_count(query_dim: int, pose_hidden: int, ray_hidden: int) -> int:
@@ -21,10 +22,11 @@ def camera_parameter_count(query_dim: int, pose_hidden: int, ray_hidden: int) ->
             + (ray_hidden*3 + 3))                                             # ray output
 
 
-def camera_supervision(query_dim: int = 1536) -> dict:
+def camera_supervision(query_dim: int = 1536, phase_start_step: int = PARENT_STEP) -> dict:
+    """Fresh camera readout: 500-update ramp anchored at the H033 phase start."""
     return dict(
         pose_hidden=256, ray_hidden=256, seed=424243, learning_rate=1e-4,
-        warmup_steps=500, phase_start_step=196000,
+        warmup_steps=500, phase_start_step=int(phase_start_step),
         intrinsics_mode='per_frame_source_independent',
         # Camera-scale translation normalisation replaces the point-cloud sigma
         # (5.62 m) that left PO/DR translation supervision in smooth-L1's
@@ -59,8 +61,10 @@ def make_config(parent: dict | None = None, clips_seen: dict | None = None) -> d
     else:
         cfg['finetune_expected_clips_seen'] = {str(k): int(v) for k, v in clips_seen.items()}
     cfg['finetune_drop_prefixes'] = ['camera_head.']
-    cfg['max_steps'] = 210000
+    cfg['max_steps'] = END_STEP
+    cfg['lr_restart']['end_step'] = END_STEP
     cfg['lr_restart']['group_learning_rates']['camera_head'] = 1e-4
+    cfg['checkpoint_steps'] = list(range(PARENT_STEP + 1000, END_STEP + 1, 1000))
     cfg['tracking']['group'] = 'h033-decoder-camera-query-ray-field'
     cfg['tracking']['tags'] = ['h033', 'decoder-camera-query', 'ray-field',
                                'camera-scale-translation', 'b1-a4-k10', 'native512-full']
