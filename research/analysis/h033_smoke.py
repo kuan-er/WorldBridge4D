@@ -62,23 +62,32 @@ def configuration(parent):
     return cfg
 
 
-def health(gpu_ids):
+def health(gpu_ids, allow_degraded=False):
     raw = subprocess.check_output(['nvidia-smi', '-i', ','.join(gpu_ids), '-q', '-x'], timeout=20)
     gpus = ET.fromstring(raw).findall('gpu')
     uuids = [g.findtext('uuid') for g in gpus]
     if len(uuids) != 2:
         raise RuntimeError(f'expected two GPUs, got {uuids}')
+    degraded = []
     for gpu in gpus:
+        counters = {}
         for key in ('dram_uncorrectable', 'sram_uncorrectable_parity', 'sram_uncorrectable_secded'):
-            if gpu.findtext('ecc_errors/volatile/'+key) != '0':
-                raise RuntimeError(f"{gpu.findtext('uuid')} {key} != 0")
-        for key in ('remapped_row_pending', 'remapped_row_failure'):
-            if gpu.findtext('remapped_rows/'+key) != 'No':
-                raise RuntimeError(f"{gpu.findtext('uuid')} {key} != No")
-    return uuids, raw.decode()
+            counters[f'ecc_errors/volatile/{key}'] = gpu.findtext('ecc_errors/volatile/'+key)
+        for key in ('remapped_row_pending', 'remapped_row_failure', 'remapped_row_unc'):
+            counters[f'remapped_rows/{key}'] = gpu.findtext('remapped_rows/'+key)
+        unhealthy = (counters['ecc_errors/volatile/dram_uncorrectable'] not in ('0', 'N/A')
+                     or counters['ecc_errors/volatile/sram_uncorrectable_parity'] not in ('0', 'N/A')
+                     or counters['ecc_errors/volatile/sram_uncorrectable_secded'] not in ('0', 'N/A')
+                     or counters['remapped_rows/remapped_row_pending'] != 'No'
+                     or counters['remapped_rows/remapped_row_failure'] != 'No')
+        if unhealthy:
+            degraded.append(dict(uuid=gpu.findtext('uuid'), counters=counters, unhealthy=unhealthy))
+    if degraded and not allow_degraded:
+        raise RuntimeError(f'degraded GPU refused by the health gate: {json.dumps(degraded)}')
+    return uuids, raw.decode(), degraded
 
 
-def smoke(gpu_ids):
+def smoke(gpu_ids, allow_degraded=False):
     assert os.environ.get('CUDA_VISIBLE_DEVICES') == ','.join(gpu_ids), 'declare the exact GPU ids'
     assert PARENT_CHECKPOINT.is_file(), f'missing parent checkpoint {PARENT_CHECKPOINT}'
     assert not OUTPUT.exists(), f'{OUTPUT} already exists'
@@ -89,7 +98,11 @@ def smoke(gpu_ids):
     validate_config(cfg, 2)
     CONFIG.write_text(yaml.safe_dump(cfg, sort_keys=False))
     atomic_json(EXPECTATION, parent)
-    uuids, xml = health(gpu_ids)
+    uuids, xml, degraded = health(gpu_ids, allow_degraded=allow_degraded)
+    if degraded:
+        print(json.dumps(dict(event='H033_SMOKE_DEGRADED_GPU_OVERRIDE', degraded=degraded,
+                              note='operator explicitly accepted these GPUs; numeric results are not '
+                                   'usable as quality or performance evidence')), flush=True)
     OUTPUT.mkdir()
     (OUTPUT/'gpu_health.xml').write_text(xml)
     os.environ['PYTHONPATH'] = str(ROOT/'src') + os.pathsep + os.environ.get('PYTHONPATH', '')
@@ -103,6 +116,7 @@ def smoke(gpu_ids):
             '--startup-preflight-updates', '5']
     print(json.dumps(dict(event='H033_SMOKE_BEGIN', physical_gpus=gpu_ids, gpu_uuids=uuids,
                           parent=parent, config=str(CONFIG), output=str(OUTPUT),
+                          degraded_gpus=degraded,
                           config_sha256=file_sha256(CONFIG), argv=argv,
                           allocator_env={k: os.environ.get(k) for k in ALLOCATOR_KEYS})), flush=True)
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -119,10 +133,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', required=True, choices=['smoke'])
     parser.add_argument('--gpus', required=True, help='exact authorized physical ids, e.g. 3,5')
+    parser.add_argument('--allow-degraded-gpus', action='store_true',
+                        help='explicit operator opt-in for GPUs the ECC gate rejects; logged loudly')
     args = parser.parse_args()
     ids = args.gpus.split(',')
     assert len(ids) == len(set(ids)) == 2 and all(value.isdigit() for value in ids), args.gpus
-    smoke(ids)
+    smoke(ids, allow_degraded=args.allow_degraded_gpus)
 
 
 if __name__ == '__main__':
