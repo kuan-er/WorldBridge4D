@@ -72,6 +72,18 @@ def fsdp_auto_wrap_policy(
     )
 
 
+def non_wan_parameter_counts(model) -> tuple[int, int, int]:
+    """Adapter, decoder (camera readout included) and camera parameter counts."""
+    adapter = sum(p.numel() for p in model.backbone.adapter_parameters)
+    decoder_parameters = list(model.decoder.parameters())
+    decoder_ids = {id(p) for p in decoder_parameters}
+    camera_parameters = list(model.camera_head_parameters())
+    if any(id(p) not in decoder_ids for p in camera_parameters):
+        raise RuntimeError('camera parameters must live inside the decoder')
+    return (adapter, sum(p.numel() for p in decoder_parameters),
+            sum(p.numel() for p in camera_parameters))
+
+
 def execution_stop_step(start: int, horizon: int, stop_after_updates: int | None) -> int:
     """Bound a diagnostic invocation without changing the configured LR horizon."""
     if stop_after_updates is None:
@@ -234,10 +246,10 @@ def main() -> None:
         raise RuntimeError(
             f"constructed readout weights changed: {layer_weights} != {expected_layer_weights}"
         )
-    adapter_count = sum(p.numel() for p in model.backbone.adapter_parameters)
-    decoder_count = sum(p.numel() for p in model.decoder.parameters())
-    camera_count = sum(p.numel() for p in model.camera_head_parameters())
-    non_wan_count = adapter_count + decoder_count + camera_count
+    adapter_count, decoder_count, camera_count = non_wan_parameter_counts(model)
+    # The H033 camera readout lives inside the decoder, so decoder_count already
+    # contains camera_count; adding it again double-counts 926,218 parameters.
+    non_wan_count = adapter_count + decoder_count
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
         raise RuntimeError(f"non-Wan readout parameters {non_wan_count:,} != expected {expected_non_wan:,}")

@@ -42,6 +42,7 @@ class TinyBackbone(nn.Module):
         super().__init__()
         self.channels = channels
         self.gain = nn.Parameter(torch.ones(1))
+        self.adapter_parameters = [self.gain]
 
     def forward(self, latent):
         batch = latent.shape[0]
@@ -396,6 +397,19 @@ def test_model_attaches_camera_through_the_decoder_and_groups_it_once():
     assert not ({id(value) for value in names['dense_decoder']} & camera_ids)
     total = sum(value.numel() for group in groups for value in group['params'])
     assert total == sum(value.numel() for _, value in model.named_parameters())
+
+
+def test_non_wan_accounting_counts_the_camera_readout_once():
+    from worldbridge.trainer.trainer import non_wan_parameter_counts
+    model = DenseQueryWanModel(TinyBackbone(), tiny_decoder())
+    adapter, decoder, camera = non_wan_parameter_counts(model)
+    assert camera == sum(p.numel() for p in model.camera_head_parameters()) > 0
+    assert decoder == sum(p.numel() for p in model.decoder.parameters())
+    assert adapter == sum(p.numel() for p in model.backbone.adapter_parameters)
+    # The camera readout is inside the decoder, so the audited non-Wan total is
+    # adapter + decoder; the old code added camera again (the 926218 mismatch).
+    assert decoder > camera
+    assert adapter + decoder + camera != adapter + decoder
 
 
 def test_decoder_without_camera_config_has_no_camera_readout():
