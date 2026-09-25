@@ -1,4 +1,4 @@
-current_task: T-20260924090829-46789c
+current_task: T-20260925081716-d5e7ad
 h031_epe_audit_20260914:
   user_question: old256_EPE0p37_vs_current_about0p58_convergence
   run: R-20260914020544-ae32d0
@@ -1311,6 +1311,7 @@ h031_parallel_gpu6_20260908:
   caveat: K8GiB_budget_above_observed_process6p2_DR32_plus4_safety_no_allocator_cap
   throughput: baseline_K918_at3214seconds_restart_revalidates_old_RGB_before_new_K_writes_IO_bottleneck_unproven
 active_hypotheses:
+  - H033
   - H032
   - H031
 recent_results:
@@ -4447,7 +4448,7 @@ h030_relay_timeout_recovery:
   safety_gates: no_dependency_failed_bypass_same_CPU215_origin_SHA_input_policy_memory_thresholds_GPUs_SIGTERM_only
   current_training: no_stop_restart_extension_or_runtime_change
   scope: operational_requeue_not_new_scientific_factor_or_additive_training_progress
-updated_at: 2026-09-24T09:08:36.062Z
+updated_at: 2026-09-25T08:17:17.830Z
 main_consolidation_20260914:
   authority: repository_owner_explicit_local_main_merge_and_unused_worktree_cleanup_keep_current_training
   H030_task: finished_by_PRL_20260914T043309Z
