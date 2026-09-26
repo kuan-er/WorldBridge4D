@@ -13,17 +13,21 @@ class DenseQueryWanModel(nn.Module):
         self.backbone = backbone
         self.decoder = decoder
 
+    @property
+    def camera_head(self) -> nn.Module | None:
+        """Distinguish camera-enabled models without exposing the old head module."""
+        return self.decoder.camera_pose if getattr(self.decoder, 'camera_enabled', False) else None
+
+    def camera_head_parameters(self) -> list[nn.Parameter]:
+        return list(getattr(self.decoder, 'camera_parameters', list)())
+
     def forward(self, clean_video_latent: torch.Tensor, source: torch.Tensor,
-                target: torch.Tensor, encoder_hidden_states: torch.Tensor | None = None,
+                target: torch.Tensor, encoder_hidden_states: torch.Tensor,
                 source_rgb: torch.Tensor | None = None,
-                z4d_override: torch.Tensor | StructuredZ4D | None = None
-                ) -> tuple[torch.Tensor, torch.Tensor | StructuredZ4D, DenseQueryOutput]:
-        if z4d_override is not None:
-            z4d = z4d_override
-        elif encoder_hidden_states is None:
-            z4d = self.backbone(clean_video_latent)
-        else:
-            z4d = self.backbone(clean_video_latent, encoder_hidden_states)
+                ) -> tuple[torch.Tensor, StructuredZ4D, DenseQueryOutput]:
+        # The native UMT5 condition is required on every call: the null-condition
+        # and shared-latent override paths were only used by the deleted cycle route.
+        z4d = self.backbone(clean_video_latent, encoder_hidden_states)
         output = self.decoder(z4d, source, target, source_rgb=source_rgb)
         return output.normalized_xyz, z4d, output
 

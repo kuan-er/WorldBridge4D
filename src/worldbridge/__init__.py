@@ -1,17 +1,15 @@
-"""WorldBridge4D models, datasets, training, and evaluation components."""
-
+"""WorldBridge4D: feed-forward 4D reconstruction from monocular video."""
 from .data import (
     CameraModel, DynamicReplicaDataset, GeometryBuilder, MOViFDataset, MOViSample,
     PointOdysseyDataset,
 )
 from .models import (
-    DenseQueryDecoder, DenseQueryWanModel, FeedForwardWanBackbone,
-    StructuredZ4D, WanHiddenGeometryBackbone,
+    DenseQueryDecoder, DenseQueryWanModel, StructuredZ4D, WanHiddenGeometryBackbone,
 )
 
 __all__ = [
     "MOViFDataset", "MOViSample", "PointOdysseyDataset",
     "DynamicReplicaDataset", "CameraModel", "GeometryBuilder",
-    "DenseQueryDecoder", "DenseQueryWanModel", "FeedForwardWanBackbone",
+    "DenseQueryDecoder", "DenseQueryWanModel",
     "StructuredZ4D", "WanHiddenGeometryBackbone",
 ]

@@ -149,7 +149,8 @@ def load_dataset(
         "rgb_cache_root": rgb_cache_root,
         "rgb_cache_max_open_shards": rgb_cache_max_open_shards,
     }
-    native_512 = bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False))
+    native_512 = bool(config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False))
+    native_dr512 = bool(config.get('native_dr512', False))
     if name == "kubric":
         if native_512:
             if split != 'train' or allow_missing_latents:
@@ -157,6 +158,11 @@ def load_dataset(
             from .datasets.native_kubric import NativeKubricDataset
             return NativeKubricDataset(values)
         return _load_kubric_dataset(values, **cache_options)
+    if name == "dynamic_replica" and native_dr512:
+        if split != 'train' or allow_missing_latents:
+            raise ValueError('native DR512 admission uses complete train inputs only')
+        from .datasets.native_dynamic_replica import NativeDynamicReplicaDataset
+        return NativeDynamicReplicaDataset(values)
     if native_512:
         # PO/DR already live in the atomic per-clip256 tier, not compact shards.
         # Permit discovering that tier; native admission forbids VAE generation

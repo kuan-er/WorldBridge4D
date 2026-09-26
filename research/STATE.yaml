@@ -4492,3 +4492,483 @@ h030_gpu23_recovery_20260908:
   resource_gate: experimental_K9_49152MiB_plus4096MiB_safety_not_measured_peak
   config: configs/h030_151500_to_155k_gpu23_b2_k9_boundary2x_edgecontrast0p01.yaml
   note: research/notes/h030-gpu23-recovery-20260908.md
+
+h033_state_snapshot_20260926:
+  note: H033 kept its per-task compact research/STATE.yaml; the full compact file is preserved here verbatim (indented) so the owner-authorized H033 merge into main does not drop any H033 record.
+  source_commit: 0ee724dfbd9898ddfd19da874ee46d8d578e68a5
+  source_branch: prl/t-20260925081716-d5e7ad-decoder-camera-query-ray-210k
+  content:
+    updated_at: '2026-09-25T17:12:00Z'
+    active_hypothesis: H033
+    active_task: T-20260925081716-d5e7ad
+    user_decision_20260925:
+      decision: stop the K10 continuation and train the H033 camera from the durable202000 checkpoint to210000; no old-vs-new head comparison was requested
+      k10_stop: R-20260924095832-a6900f terminated gracefully at17:08:49Z (checkpoint-first SIGTERM, no SIGKILL); the queued K10 endpoint review R-20260924095842-8398e6 becomes dependency_failed and must not be retried
+      fork_point: checkpoint-0202000.pt step202000 world2 rng2 optimizer1104 old_camera_tensors51 clips_seen{kubric624664,pointodyssey465120,dynamic_replica526216} cycle_offset0
+      lr_redesign: camera head warmup re-anchored to the H033 phase start202000 (was196000) so the fresh head ramps over500 updates to1e-4; trunk rates unchanged (wan5e-7 others3e-6 rgb3e-5); max_steps and lr_restart.end_step stay210000, giving8000 camera updates
+      h033_dag:
+        gate: R-20260925171029-80abf4 (CPU; pins202000, writes counters, 238 tests, real GT ray probes)
+        capacity50: R-20260925171048-6cd605 (GPU1,6 exclusive77824MiB)
+        review_capacity: R-20260925171107-10ec8c (CPU)
+        continue_to210k: R-20260925171126-7499e7 (GPU1,6)
+        review_endpoint: R-20260925171146-620c16 (CPU)
+      abandoned: the K10 203k-210k segment under the old source-conditioned head
+    next_step: H033 now lives in its own task worktree T-20260925081716-d5e7ad (branch prl/t-20260925081716-d5e7ad-decoder-camera-query-ray-210k). Wait for the H032/K10 GPU1/6 continuation to reach210000, then run the H033 gate (CPU) under the new task; afterwards the50-update capacity, its review, and the continuation.
+    worktree_split:
+      h033_task: T-20260925081716-d5e7ad
+      h033_worktree: /data/WorldBridge4D/.pi-research/worktrees/T-20260925081716-d5e7ad
+      h032_task: T-20260924090829-46789c
+      h032_worktree: /data/WorldBridge4D/.pi-research/worktrees/T-20260924090829-46789c
+      method: new_task_then_no_ff_merge_of_the_H032_branch_tip_69a09119_into_the_new_branch
+      yaml_repair: fixed two invalid nested-scalar blocks inherited from the H032 STATE.yaml (verdict/evidence)
+      note: further H033 edits and runs belong to the new task; the H032 branch tip keeps the initial H033 implementation as history and the H032 running experiment stays snapshot-pinned and unaffected
+    h033:
+      status: implementation_landed_cpu_suite_passed_gate_waiting_on_parent_210000
+      hypothesis: research/hypotheses/H033.md
+      config: configs/h033_camera_query_ray_to210000.yaml
+      launcher: research/analysis/h033_camera_train.py
+      config_generator: research/analysis/h033_make_config.py
+      parent: /data/WorldBridge4D-runs/h032-source-camera-ray-k10-to210000-20260924/checkpoint-0210000.pt
+      handoff: /data/WorldBridge4D-runs/h033-camera-query-ray-handoff-20260925
+      output: /data/WorldBridge4D-runs/h033-camera-query-ray-to210000-20260925
+      deleted_from_h032: [memory_projection, spatial_projection, memory_time, cross_attention, cross_mlp, temporal, pose_mlp, fov_mlp, 21 pose queries, 21 intrinsic queries, time embeddings]
+      design:
+        pose: one camera token appended to the decoder pair-query sequence, MLP + fc_t/fc_qvec
+        intrinsics: per-frame unit ray field from the diagonal pair pixel tokens, decoded to pinhole K
+        translation_normalisation: per-dataset camera-scale medians 0.30/0.032/0.020 m
+        camera_parameters: 17 tensors 926218 params
+      preserved: [K10_sampling, direct_per_pair_pose, source_independent_per_frame_intrinsics, GT_principal_points, invalid_pose_masking_only, warmup_anchored196000, trunk_and_seeds]
+      migration:
+        drop_prefixes: ['camera_head.']
+        missing_prefixes: ['decoder.camera_pose.', 'decoder.camera_rays.']
+        expected_optimizer_states: 1070
+      tests:
+        full_suite: 576_passed
+        camera_tests: 27_passed
+        caught_bug: bare_reshape_interleaved_token_and_channel_axes_in_the_ray_head
+      gpu_smoke_200000_to_200020:
+        status: passed_on_physical_gpu3_5_with_degraded_gpu_override
+        run: R-20260925154410-9df9c3
+        task: T-20260925081716-d5e7ad
+        parent: /data/WorldBridge4D-runs/h032-source-camera-ray-k10-to210000-20260924/checkpoint-0200000.pt
+        parent_sha256: 0e583e4d41c2f21ac3f522606312796d28093d80376aca5caadc41942f3a6619
+        config: configs/h033_smoke_200000_to_200020.yaml
+        output: /data/WorldBridge4D-runs/h033-smoke-gpu35-200000-20260925
+        checkpoint_sha256: 24e38b20c18e934aa5b920411772148c2e99577b1097f02d000a0ab045695f28
+        migration:
+          dropped_old_camera_tensors: 51
+          fresh_camera_tensors: 17
+          optimizer_states: 1070
+          retained_states: 1053
+          groups: [wan_backbone, geometry_adapter, dense_decoder, source_rgb_decay, source_rgb_no_decay, camera_head]
+          rng_ranks: 2
+        first_update_200001:
+          xyz_loss: 0.04195
+          diagonal_xyz: 0.02644
+          offdiagonal_xyz: 0.04367
+          diagonal_ray: 0.00044
+          ray_field: 1.20148
+          ray_angle_deg: 103.31
+          pose_rotation: 0.02009
+          pose_translation: 0.90289
+          translation_m: 0.58621
+          gradient_norm: 5.83
+          peak_cuda_GiB: 63.519
+          step_seconds: 64.3
+        last_update_200020:
+          xyz_loss: 0.06339
+          raw_epe_m: 0.37825
+          ray_field: 0.01688
+          ray_angle_deg: 9.33
+          decoded_valid_fraction: 1.0
+          focal_relative_error: 0.1424
+          principal_offset_px: 34.13
+          pose_rotation: 0.00789
+          rotation_deg: 9.14
+          translation_m: 0.53026
+          gradient_norm: 14.94
+          peak_cuda_GiB: 63.519
+          step_seconds: 20.0
+        mixture_coverage:
+          clips_seen: {kubric: 616744, pointodyssey: 461160, dynamic_replica: 522256}
+          delta_from_parent: {kubric: 80, pointodyssey: 40, dynamic_replica: 40}
+          conclusion: one full 20-update mixture cycle over all three datasets with the cycle-free loader
+        review: H033_SMOKE_REVIEW_OK_1070_states_17_camera_tensors_adam_step+20_all_finite
+        proves:
+          - strict structural migration works end to end (drop51_add17, 1053 retained Adam states)
+          - the cycle-free data path covers Kubric512, DR512 and PO256 with the exact 10/5/5 mixture
+          - the decoder-native camera token plus ray field trains: ray loss fell1.20->0.017 and ray angle103->9.3deg in20 updates
+          - camera-scale translation normalisation puts the first-step translation error in the linear regime
+          - checkpoint save and independent review succeed with the new parameter set
+          - peak memory63.5GiB matches H032, so the new design adds no memory
+        does_not_prove:
+          - any quality or performance claim:20 updates, one batch per step, and GPU3 is ECC-degraded (900 volatile uncorrectable DRAM errors,66 bad rows), so numeric results are indicative only
+          - long-run stability or the real H033 trajectory
+        watch_items:
+          - xyz_loss0.0419->0.0634 and raw_epe_m0.280->0.378 over20 steps is within per-batch noise but the strengthened camera gradient now flows into the trunk; monitor train/xyz_loss in the real run
+          - decoded_valid_fraction started at0.125 (7/8 ray maps unidentifiable at random init) and reached1.0 by step20
+        blockers_encountered:
+          - GPU3_is_hardware_degraded_so_the_health_gate_refused_it_first_the_operator_then_authorized_an_explicit_override
+          - non_wan_parameter_double_count_of_camera_parameters_926218_introduced_by_moving_the_camera_into_the_decoder_fixed_with_a_unit_test
+          - smoke_launcher_output_dir_assertion_on_retry_fixed
+      h033_training_run:
+        status: capacity50_verified_continue_starting
+        config: configs/h033_camera_query_ray_to210000.yaml
+        output: /data/WorldBridge4D-runs/h033-camera-query-ray-to210000-20260925
+        handoff: /data/WorldBridge4D-runs/h033-camera-query-ray-handoff-20260925
+        wandb_run_id: 4fkx8tv0
+        parent: checkpoint-0202000.pt (sha beebc817d37039eb95b4d23d368b37828acb3b1d51d8df182bbfbfecc4a89b05)
+        gate: R-20260925172558-822a16 succeeded (fresh17, dropped51, 1104->1070, 238 tests, real GT ray probes ~1e-7)
+        capacity50: R-20260925173728-f5ba18 succeeded exit0 (202001..202050)
+        review_capacity:
+          run: R-20260925173733-657ec0
+          event: H033_CHECKPOINT_VERIFIED
+          checkpoint_sha256: 80e8080856a2f2498349d83c9cb605f87ac7d18399d6ee82cd5eb3270c055777
+          optimizer_states: 1070
+          camera_tensors: 17
+          clips_seen: {kubric: 624872, pointodyssey: 465208, dynamic_replica: 526320}
+          adam_increment: 50 on every parameter, model/moments finite, rng 2
+        continue_to210k: R-20260925173800-b83307 (queued, waiting_for checkpoint_validation of capacity.pt)
+        endpoint_review: R-20260925173806-566ac1 (queued)
+        capacity_observations:
+          po256_steps: 11 updates ran (the previous attempt crashed on the first 32x32 dense clip; the mixed-resolution fix is validated)
+          camera_head_lr: 2e-07 at202001 -> 1e-05 at202050 (exactly the 500-step ramp)
+          ray_field: ['1.253', '0.0449']
+          ray_angle_deg: ['107.4', '11.03']
+          decoded_valid_fraction_end: '0.875'
+          rotation_deg: '14.66 -> 8.18 | translation_m: 0.664 -> 0.567'
+
+          trunk: xyz_loss 0.0599 -> 0.0443, raw_epe_m 0.3585 -> 0.3038, peak_cuda 63.518 GiB
+          throughput: 1022 s / 50 updates = 20.4 s per update -> ~45 h for the remaining 7950 updates
+        fixes_this_phase:
+          - mixed-resolution query grid regression (native512 frozen the grid at construction) + regression test
+          - gate audit accepted only camera_head.* differences and used the per-pair CameraOutput ranks
+          - downstream runs inject the gate's pinned counters and rewrite the config byte-identically
+          - capacity launcher reuses a checkpoint-free output dir so the W&B id survives a retry
+        open: fixed-clip held-out camera evaluation plus the identity/constant baselines is still not built
+      camera_eval_tier_a:
+        status: done
+        script: research/analysis/h033_camera_eval_set.py
+        output: /data/WorldBridge4D-runs/h033-camera-eval-set-20260925
+        scope: fixed deterministic clip set and GT-only baselines, CPU only, no model
+        clips_per_dataset: 32
+        identity_pose_baseline:
+          kubric: {rotation_deg_mean: 2.978, rotation_deg_median: 2.345, translation_m_mean: 0.5257, translation_m_median: 0.5396}
+          pointodyssey: {rotation_deg_mean: 4.681, rotation_deg_median: 1.064, translation_m_mean: 0.06763, translation_m_median: 0.04627}
+          dynamic_replica: {rotation_deg_mean: 0.5236, rotation_deg_median: 0.3925, translation_m_mean: 0.02564, translation_m_median: 0.02173}
+        focal_oracle_clip_constant: [0.0, 2.9e-16, 0.0]
+        focal_finding: within-clip focal is constant on all 96 sampled clips, so the intrinsic task on this subset is per-clip identification; the 209 varying-focal PO clips must be selected explicitly to test per-frame zoom
+        anchor_distance_finding: GT identity-baseline error is only 2-10pct higher at distance 0 than at 1-2 for all datasets, so the 6-frame latent grid does not by itself make the between-anchor pairs harder; Tier B must measure the model, not the baseline
+        tier_b_plan: after210k evaluate the H032 checkpoint (202000) and the H033 checkpoint (210000) on eval_clips.json, compare pose and decoded intrinsics against these baselines, and add the varying-focal PO subset plus the two zero-cost ablations
+        caveat: fixed clips overlap the training corpus; this is not a held-out split
+      dead_code_removal:
+        status: slices1_to4_done_verified
+        slice1_removed:
+          - geometry_replay module plus --geometry-replay/--input-readiness/--input-readiness-timeout-seconds/--quiesce-geometry-before-forward and the batching replay hook
+          - lazy-VAE training modes --lazy-vae-cache/--lazy-vae-pipeline/--pipeline-lookahead-steps and the LazyVAEPipeline startup/prefetch/close paths (set_lazy_vae_identity and required_latent_indices stay because preflight and evaluation still use them)
+          - step-loop quiesce bookkeeping and the geometry-quiesce W&B keys
+          - result keys quiesce_geometry_before_forward/lazy_vae_cache/lazy_vae_pipeline/lazy_vae_rank0
+        slice1_sizes: [trainer.py_1160_to_1040_lines, geometry_replay.py_deleted_143, batching_load_geometry_simplified]
+        slice1_tests: 576_to_554_passing_deleted_tests_covered_only_removed_features
+        slice2_removed:
+          name: cycle_route
+          details: [cycle.py_deleted, visibility_loading_replaced_by_dataset.source_all_targets_through_source_with_eligible_targets, reverse_forward_and_11_cycle_metric_keys_removed, batching_tuple_9_to_6_fields, evaluation/diagnostics_cycle_diagnostic_removed, cycle_config_keys_rejected]
+        slice3_removed:
+          name: boundary_edge_contrast_schedule_extension_staged_inputs
+          details: [data/boundaries.py_deleted, objective.py_trimmed_to_masked_pair_smooth_l1_106_to_21_lines, source_boundary_context_removed_from_4_dataset_adapters, staged_inputs_command_and_prepare_data_entry_removed, 20_boundary_and_contrast_metric_keys_removed]
+        slice4_removed:
+          name: config_collapsed_to_one_profile
+          details: [370_to_219_lines, 19_legacy_profile_flags_rejected_explicitly, cycle/boundary/contrast/extension_keys_fail_closed, tracking_cycle_metric_definitions_removed, lazy_vae_LazyVAEPipeline_class_removed_245_to_112_lines]
+        verification: [234_tests_pass, build_real_model_on_CPU_with_the_H033_config, non_wan_parameter_count_matches_195523351, camera_tensor_prefix_audit]
+        net_diff: 54_files_+269/-3583_lines
+        slice5_removed:
+          name: factory_and_model_single_path
+          details: [readout_must_be_wan_hidden_structured, CleanLatentBackbone_and_FeedForwardWanBackbone_deleted, empty_text_condition/wan_dit_root/wan_checkpoint/wan_truncate_after_block_removed, layer_gate_random_init_removed_explicit_logits_required, coarse_diagnostic_DenseQueryOutput.coarse_and_coarse_head_removed, fullres_coordinates_and_fullres_uv_removed, motion_pair_projection_and_pair_conditioned_query_removed, 13_deleted_knobs_added_to_the_fail_closed_list]
+          verification: [234_tests_pass, model_builds_with_camera_926218_and_non_wan_195523351]
+        remaining_planned:
+          - models/factory.py dead options (clean_latent readout, coarse_diagnostic, fullres_coordinates, pair-motion queries, layer-gate seed/std, wan_truncate_after_block, wan_dit_root, empty_text_condition, validation cache root)
+          - legacy configs under configs/ and the H030-era analysis launchers under research/analysis (kept for provenance, not executable against the collapsed validator)
+          - final verification: H033 gate CPU probes then the 50-update GPU1/6 capacity run after the parent reaches210000
+      open_items:
+        - fixed_clip_camera_evaluation_is_still_missing_and_is_the_decisive_measurement
+        - linear_probe_from_memory_to_GT_pose_and_8clip_overfit_test
+        - H033_reuses_no_WB_run_id_so_it_gets_its_own_run_rather_than_appending_to_H032_thlx6gtz
+        - H032_baseline_evaluation_for_the_AB_must_use_the_H032_run_snapshots_because_the_branch_tip_now_carries_H033
+    latest:
+      status: K10_210k_continuation_completed197000
+      milestone197000:
+        notification: N-16630b12ab4691ca1fb4_acknowledged
+        at: '2026-09-24T14:22:04.597Z'
+        step: 197000
+        continuation_completed_updates: 960
+        peak_cuda_GiB_logged: 63.50692081451416
+        camera_head_lr: 0.0001
+        loss: 0.05977651383727789
+        gradient_norm: 10.103838920593262
+        pairs: 80
+        diagonal_pairs: 8
+        dataset: kubric
+        focal_relative_error: 0.01580618740990758
+        rotation_deg: 2.3158044442534447
+        translation_m: 0.448166923597455
+        checkpoint197000_complete_observed: false
+        decision: continue_same_GPU1_6_K10_to210k_no_change
+        caveat: single_training_batch_not_fixed_clip_quality_trend_or_checkpoint_completion
+      camera_mechanism_diagnostic:
+        run: R-20260925054703-5c394a
+        script: research/analysis/h032_camera_diagnose.py
+        notification: N-9b5e0d12485d0f42edf2_acknowledged
+        sigma_from_mixture_pointcloud_stats: 5.619326591491699
+        beta: 0.05
+        clips_per_dataset: 256
+        loss_space_identity_vs_dataset_mean_pose_predictor:
+          kubric: {identity_rotation_loss: 0.00397498, identity_translation_loss: 0.02898012, mean_pose_translation_loss: 0.02897891, mean_relative_translation_norm_m: 0.023082, identity_rotation_deg: 3.43661, identity_translation_m: 0.49809}
+          pointodyssey: {identity_rotation_loss: 0.00250372, identity_translation_loss: 0.00095795, mean_pose_translation_loss: 0.00095794, mean_relative_translation_norm_m: 0.000631, identity_rotation_deg: 2.62701, identity_translation_m: 0.058467}
+          dynamic_replica: {identity_rotation_loss: 6.2756e-05, identity_translation_loss: 0.00017020, mean_pose_translation_loss: 0.00017020, mean_relative_translation_norm_m: 0.000207, identity_rotation_deg: 0.63587, identity_translation_m: 0.028553}
+        finding_best_constant_pose_predictor_does_not_reduce_translation_loss: true
+        parameter_drift_vs196020:
+          camera_tensors: 51
+          adam_step_196020_198000_199000_200000: [40, 2000, 3000, 4000]
+          mean_relative_weight_drift: {198000: 17.92, 199000: 22.96, 200000: 27.30}
+          largest_movers: [quaternion.bias, temporal.norm2.bias, temporal.norm1.bias, temporal.self_attn.in_proj_bias, camera_query]
+          mean_implied_adam_step: {196020: 0.000214, 198000: 1.323e-05, 199000: 1.165e-05, 200000: 5.412e-06}
+        verdict:
+          name: not_capacity_not_gradient_starvation_weights_move_but_pose_stays_at_prior
+          evidence: weights_drift_far_from_init_and_zero_init_biases_learn_nonzero_while_pose_metrics_remain_at_trivial_baseline
+          suspected_causes: [pooled_features_may_not_identify_per_pair_camera_motion, translation_normalized_by_pointcloud_sigma_5.62m_puts_PO_DR_in_quadratic_region_with_weight0.1, pose_loss_nearly_flat_in_best_constant_predictor]
+        unverified: features_do_carry_pose_information
+        decisive_next_tests: [linear_probe_from_head_input_features_to_GT_pose, overfit_test_on_a_few_clips]
+        requirement: both_need_GPU_after_210k_on_explicit_physical1_6
+      camera_baseline_check:
+        run: R-20260925054024-7c2cb0
+        script: research/analysis/h032_camera_baseline.py
+        scope: read_only_CPU_GT_trivial_baselines_no_model_no_GPU
+        status: succeeded_H032_CAMERA_BASELINE_OK
+        clips_per_dataset: 512
+        verified: numpy_relative_pose_matches_trainer_relative_pose_gt_within_1e-9
+        identity_pose_baseline_predict_R_I_t_0:
+          kubric: {rotation_deg_mean: 3.0743, rotation_deg_median: 1.6198, translation_m_mean: 0.47222, translation_m_median: 0.30315}
+          pointodyssey: {rotation_deg_mean: 2.6853, rotation_deg_median: 0.92439, translation_m_mean: 0.05444, translation_m_median: 0.031474}
+          dynamic_replica: {rotation_deg_mean: 0.61511, rotation_deg_median: 0.42441, translation_m_mean: 0.028886, translation_m_median: 0.020395}
+        intrinsics_baseline_focal_relative_error:
+          kubric: {clip_constant: 0.0, dataset_constant: 0.0, note: GT_intrinsics_constant_within_clip}
+          pointodyssey: {clip_constant: 0.000317, dataset_constant: 0.16272, across_clip_spread_relative: 0.21518}
+          dynamic_replica: {clip_constant: 0.0, dataset_constant: 0.0, note: GT_intrinsics_constant_within_clip}
+        model_warmup_steps_ge_196500_from_run_console_log:
+          kubric: {n: 1910, rotation_deg_mean: 3.1781, translation_m_mean: 0.49589, focal_relative_error_mean: 0.01538, focal_relative_error_median: 0.01284}
+          pointodyssey: {n: 954, rotation_deg_mean: 2.2616, rotation_deg_median: 0.98409, translation_m_mean: 0.0606, translation_m_median: 0.05037, focal_relative_error_mean: 0.03718, focal_relative_error_median: 0.01745}
+          dynamic_replica: {n: 953, rotation_deg_mean: 0.62376, translation_m_mean: 0.0288, focal_relative_error_mean: 0.00805, focal_relative_error_median: 0.00529}
+        verdict:
+          name: pose_at_or_below_trivial_identity_baseline_all_three_datasets
+          kubric: rotation_+3pct_worse_3sigma_translation_+5pct_worse_9sigma
+          pointodyssey: rotation_mean_16pct_better_but_median_6pct_worse_and_translation_worse_mean+11pct_median+60pct
+          dynamic_replica: rotation_and_translation_statistically_equal_to_identity
+        intrinsics_verdict:
+          name: modelled_focal_is_mostly_a_per_clip_constant
+          kubric_dynamic_replica: GT_constant_within_clip_so_no_per_frame_signal_residual_1.5pct_and_0.8pct
+          pointodyssey: beats_global_constant_16.3pct_to_3.7pct_but_far_from_per_clip_constant_0.03pct_and_zoom_subset_not_isolated
+        in_sample_caveat: all_values_are_training_clip_metrics_not_heldout_fixed_clip_evaluation
+        decision: continue_training_to210k_then_run_fixed_clip_camera_evaluation_before_any_method_change
+      camera_training_trend:
+        analysis_run: R-20260924113923-c64d22
+        notification: N-380239071acb58316480_acknowledged
+        source: W_and_B_thlx6gtz_readonly_API
+        fetched_rows: 366
+        fetched_through_step: 196366
+        report_at: '2026-09-24T11:53:52.580Z'
+        caveat: API_SSL_retries_delayed_report_not_live_training_step
+        comparison: first10_vs_last10_per_dataset_K10_only_after196020_different_training_clips
+        mean_focal_relative_error:
+          kubric: [0.1604365887, 0.0162990740]
+          pointodyssey: [0.2000852514, 0.0847175318]
+          dynamic_replica: [0.0509639519, 0.0196995949]
+        mean_rotation_deg:
+          kubric: [4.0275357652, 3.2695941415]
+          pointodyssey: [2.4160357349, 3.3840225387]
+          dynamic_replica: [0.7010532092, 0.5613753384]
+        mean_translation_m:
+          kubric: [0.5769756379, 0.5138679056]
+          pointodyssey: [0.0646606343, 0.0702547726]
+          dynamic_replica: [0.0291085684, 0.0261411258]
+        conclusion: focal_training_fit_improved_pose_mixed_PO_pose_means_worse
+        limitations: no_fixed_clip_validation_or_identity_constant_camera_baseline_no_source_conditioning_or_zoom_generalization_proof
+        decision: continue_same_training_no_hyperparameter_change_based_on_small_unpaired_windows
+      latest_verified_checkpoint:
+        step: 196040
+        path: /data/WorldBridge4D-runs/h032-camera-ray-k10-handoff-20260924/capacity.pt
+        sha256: 3c137613dc7f89bbc6b8733637a6612d0883dc7a87621b3b51022e38cb2200e0
+        review_run: R-20260924095748-aa1413
+        accepted_at: '2026-09-24T10:09:19.740Z'
+        notifications: N-7d1250e2e44a35281aae_N-8a59ecba04b26f2a5c27_acknowledged
+        optimizer_states: 1104
+        camera_states: 51
+        RNG_ranks: 2
+        clips_seen: {kubric: 600824, pointodyssey: 453200, dynamic_replica: 514296}
+      authority: user_changes_K_to10_retains_perframe_intrinsics_and_explicit_physical_GPU1_6
+      execution_commit: 16c01a1b3d83b4fcc831a2cfb27c4a5702d008a3
+      K10_resume:
+        step: 196020
+        checkpoint: /data/WorldBridge4D-runs/h032-camera-ray-k10-handoff-20260924/resume.pt
+        sha256: ea7eb9b4e770888ac73c656f2a89419ff0445b4b19da0ef53bac02bfaf92430a
+        fullstate_review: R-20260924093945-b0a7bf_succeeded095205066Z
+        optimizer: all1104_retained_zero_fresh_including51_camera
+        K9_continuation_retired: R-20260924094002-93cb58_SIGTERM095304551Z_noSIGKILL_no_newer_checkpoint
+        capacity_target: 196040
+        pairs_per_update: 80
+        diagonal_pairs_per_update: 8
+        caveat: K_change_alters_target_sampling_not_exact_K9_trajectory_replay
+      code_baseline: ef5fc4634c7518cf295e70a3e56942bf98cdc016
+      baseline_note: H031 code restored into new H032 PRL worktree; shared main and H031 untouched.
+      implementation:
+        pose: direct_source_conditioned21queries_cross_attention_temporal_MLP_XYZW_translation
+        transform: T_source_from_target
+        intrinsics: source_independent21_perframe_FOV_queries_no_clip_averaging_center_principal
+        losses: balanced_diagonal_offdiagonal_XYZ_GT_ray_front_pose_rotation_pose_translation_FOV
+        sampling: exactly_one_valid_diagonal_plus9_non_diagonal
+        camera_parameters: 1414409
+        camera_parameter_tensors: 51
+        migration: strict_old_model_plus_all1053_old_Adam_RNG2_counters_retained_only_camera_fresh
+        zero_cycle_optimization: explicitly_skip_zero_weight_reverse_graph_keep_CPU_visibility_contract_no_allocator_change_not_an_OOM_fix_claim
+      source:
+        run: R-20260924091522-d3e3a8
+        status: independently_verified_and_hardlink_pinned
+        checkpoint: /data/WorldBridge4D-runs/h032-camera-ray-source196000-20260924/resume.pt
+        step: 196000
+        sha256: 2fdb827fb429d168d56fbb7326b6f761fd2591201a6e2f440f5e1fe194fdea82
+        bytes: 19363914955
+        old_Adam: 1053
+        world_size: 2
+        RNG_ranks: 2
+        clips_seen: {kubric: 600664, pointodyssey: 453120, dynamic_replica: 514216}
+        preservation: all_original_checkpoints_untouched_new_independent_experiment
+      validation:
+        run: R-20260924095719-d981d8
+        tests: 571_passed_in37p85s_at095813514Z
+        gate: accepted095837287Z_196020SHA_all1104Adam_and6_actual_K10_GT_probes
+        config_sha256: 11b81435c8b2590c81f5a9e3db0fc872fb21b6c046421af6eebfc6abe993e85a
+        scope: full_CPU_suite_perframe_zoom_labels_FP32_BF16_gradients_source_independence_ray_masks_pose_direction_invalid_pose_mask_structural_Adam_migration_legacy_tests
+        not_proven: real_FSDP_migration_native_memory_fit_new_checkpoint_or_quality
+        environment: python3p11p10_torch2p5p1cu121
+        isolated_cv2: /data/WorldBridge4D-runs/h032-cpu-test-env-20260924
+        isolated_cv2_version: opencv_python_headless4p11p0p86
+      calibration:
+        status: perframe_audit_passed_all_indexed_PO_DR_cameras
+        report: /data/WorldBridge4D-runs/h032-camera-calibration-audit-perframe-r2-20260924/complete.json
+        kubric: scalar_clip_intrinsics_contract_plus3_actual_native_samples_passed
+        dynamic_replica: all6090_train_clips_constant_intrinsics_and_valid_rotations_center_offset_max0p35556px
+        pointodyssey:
+          indexed_clips: 9746
+          varying_focal_clips: 209
+          maximum_relative_focal_drift: 0.3138780709936689
+          clips_with_invalid_pose: 103
+          invalid_pose_frames: 2145
+          maximum_rotation_orthogonality_error: 0.05282396280411783
+        pose_validity: preserve0p003_near_SO3_threshold_mask_only_affected_pose_labels_keep_all_clips_XYZ_actualK_ray_and_focal_supervision_log_valid_pair_coverage
+        pose_target: actual_inverse_for_relative_translation_nearest_SO3_rotation_for_valid_near_rigid_annotations_only
+        decision: no_focal_averaging_no_clip_drop_no_GT_mutation_no_threshold_relaxation
+      training:
+        submitted: true
+        K10_actual_first_update:
+          notification: N-5286eac78b2b6046badb_acknowledged
+          step: 196021
+          at: '2026-09-24T10:02:46.752Z'
+          dataset: kubric512
+          loss: 0.07059301668778062
+          peak_cuda_GiB_logged: 63.49941921234131
+          gradient_norm: 5.975056171417236
+          seconds: 60.691941377706826
+          total_pairs: 80
+          diagonal_pairs: 8
+          camera_head_lr: 4.2e-6
+          full_restore: 196020_optimizer_and_RNG2_restored100143607Z
+          decision: continue_existing20update_capacity_and_review_relay_no_change_not_long_run_stability_proof
+        historical_K9_first_update:
+          notification: N-c224da8bc4c0d145c473_acknowledged
+          step: 196001
+          at: '2026-09-24T09:45:44.472Z'
+          dataset: kubric512
+          loss: 0.07085104240104556
+          peak_cuda_GiB: 58.96105909347534
+          seconds: 70.02102488512173
+          gradient_norm: 5.684551239013672
+          diagonal_pairs: 8
+          camera_head_lr: 2.0e-7
+          interpretation: first_full_forward_backward_optimizer_success_not_long_run_capacity_or_quality_proof
+        structural_restore: 1053_old_Adam_retained_51_camera_fresh_RNG2_at094428996Z
+        historical_K9_process_started_at: '2026-09-24T09:41:58.911Z'
+        historical_K9_torchrun_begin_at: '2026-09-24T09:42:26.236Z'
+        historical_K9_rank_workers: [911538, 911539]
+        K10_process_started_at: '2026-09-24T09:59:14.545Z'
+        observed_phase: K10_210k_continuation_training
+        continuation_first_update:
+          notification: N-3e2cea4573d7187e9b6e_acknowledged
+          step: 196041
+          at: '2026-09-24T10:13:47.413Z'
+          restored_step: 196040
+          restored_at: '2026-09-24T10:12:59.596Z'
+          optimizer: restored
+          RNG_ranks: 2
+          dataset: kubric512
+          loss: 0.0597605905495584
+          gradient_norm: 8.543525695800781
+          peak_cuda_GiB_logged: 63.50692081451416
+          pairs: 80
+          diagonal_pairs: 8
+          camera_head_lr: 8.2e-6
+          decision: continue_unchanged_to210k_no_more_capacity_stops_no_quality_or_long_run_OOM_claim
+        continuation_startup_alert:
+          notification: N-d6df02cc0f8ca643c2f2_acknowledged
+          torchrun_begin_at: '2026-09-24T10:10:29.681Z'
+          own_container_rank_PIDs: [1108515, 1108516]
+          own_parent_PID: 1108234
+          NVML_PIDs: [3700535, 3700536]
+          NVML_PID_visibility: absent_from_container_proc
+          GPU1_6_process_count: [1, 1]
+          per_process_MiB: [706, 706]
+          GPU1_6_free_MiB: [80322, 80322]
+          interpretation: consistent_with_host_container_PID_namespace_mismatch_not_proven_mapping_or_confirmed_foreign_contention
+          decision: continue_same_Run_wait_fullrestore_firstupdate_no_foreign_signals_or_resource_relaxation
+        K10_capacity_result:
+          notification: N-3f52e1b8cb88a6909ee2_acknowledged
+          completed_step: 196040
+          complete_updates: 20
+          rank_exit_codes: [0, 0]
+          last_rank_exit_at: '2026-09-24T10:08:29.333Z'
+          peak_cuda_GiB_logged: 63.49941921234131
+          checkpoint_review: R-20260924095748-aa1413_succeeded
+          fullstate_SHA_accepted: true
+          decision: continue_existing_review_to210k_relay_no_change_no_retry
+        capacity_result:
+          notification: N-ac90cf116c7e75e31d6a_acknowledged
+          completed_step: 196020
+          final_update_at: '2026-09-24T09:50:21.042Z'
+          rank_exit_codes: [0, 0]
+          peak_cuda_GiB_logged: 58.96105909347534
+          complete_updates: 20
+          clips_increment: {kubric: 80, pointodyssey: 40, dynamic_replica: 40}
+          final_camera_head_lr: 4.0e-6
+          checkpoint_fullstate_SHA_review: accepted_R-20260924093945-b0a7bf_1104Adam_all_increment20_RNG2
+        wandb_id: thlx6gtz
+        physical_gpus: [1, 6]
+        CPU_gate: R-20260924095719-d981d8
+        capacity20: R-20260924095738-dce157
+        capacity_review: R-20260924095748-aa1413
+        continuation_to210k: R-20260924095832-a6900f
+        endpoint_review: R-20260924095842-8398e6
+        dependencies: all_success_only_worker_relay_no_LLM_handoff
+        config: configs/h032_camera_ray_k10_to210000.yaml
+        launcher: research/analysis/h032_camera_k10.py
+        output: /data/WorldBridge4D-runs/h032-source-camera-ray-k10-to210000-20260924
+        retain: B1_A4_K512_DR512_PO256_mix50_25_25_existing183000_warmup_hold_Wan5e-7_otherold3e-6_seed20260812_decoder424242
+        new_camera: seed424243_LR1e-4_500update_warmup_anchored196000
+        saves: every1000_keep3_plus_pinned_source_and_capacity_checkpoint
+        tracking: resume_same_H032_thlx6gtz_update_dashboard_K10_preserve_original_zypk1th1_and_K9_output
+        resources: exact_GPU1_6_exclusive77824MiB_each_no_foreign_admission_48h_wait_64GiB_disk_reserve
+        termination: checkpoint_first_SIGTERM_grace1800s_no_SIGKILL_no_auto_retry
+        events: first_update_structural_restore_fatal_exit_3600s_no_progress_plus197000_update
+        retired_attempt: 8ad8e8_perframe_audit_found_nonrigid_PO_GT_old52d81d_6d3ece_6c81e9_178218_5948f8_descendants_never_started
+    recent_results:
+      - User confirmed per-frame intrinsics and physical1/6;0/6 proposal retired.
+      - Per-frame calibration audit passed with explicit invalid-pose masking, no clip removal.
+      - K9 full196020 checkpoint independently accepted; user requests K10, old continuation stopped bySIGTERM.
+      - K10 CPU571tests and6actual GT probes accepted; exact GPU1/6 success-only K10 capacity/review/210k relay queued.

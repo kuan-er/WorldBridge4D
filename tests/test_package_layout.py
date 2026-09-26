@@ -61,12 +61,12 @@ def test_scripts_expose_exactly_five_thin_entrypoints():
 def test_prepare_data_subcommands_resolve_to_package_modules():
     script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_data.py"
     commands = runpy.run_path(str(script))["COMMANDS"]
-    assert len(commands) == 19
+    assert len(commands) == 18
     assert all(importlib.util.find_spec(module) is not None for module in commands.values())
 
 
 def test_refactored_decoder_forward_constructs_typed_output():
-    from worldbridge.models import DenseQueryDecoder, DenseQueryOutput
+    from worldbridge.models import DenseQueryDecoder, DenseQueryOutput, StructuredZ4D
 
     torch.manual_seed(7)
     model = DenseQueryDecoder(
@@ -74,10 +74,10 @@ def test_refactored_decoder_forward_constructs_typed_output():
         embedding_dim=8, num_layers=1, num_heads=4,
         upsample_channels=(16, 8), output_size=(8, 8), query_grid_size=4,
     )
-    output = model(
-        torch.randn(1, 8, 2, 4, 4),
-        torch.tensor([[0, 2]]), torch.tensor([[1, 3]]),
-    )
+    # The decoder consumes the typed structured latent; the raw-tensor path was
+    # only reachable from the deleted cycle route.
+    z4d = StructuredZ4D(dense=torch.randn(1, 8, 2, 4, 4), motion=torch.randn(1, 2, 0, 8))
+    output = model(z4d, torch.tensor([[0, 0]]), torch.tensor([[1, 3]]))
     assert isinstance(output, DenseQueryOutput)
     assert output.normalized_xyz.shape == (1, 2, 3, 8, 8)
     assert torch.isfinite(output.normalized_xyz).all()

@@ -15,7 +15,7 @@ from worldbridge.trainer.distributed import initialize_distributed
 ])
 def test_runtime_controls_fail_closed(key, value):
     root = Path(__file__).resolve().parents[1]
-    config = yaml.safe_load((root / "configs/h030_150k_lrrestart_gpu23_b2_k19.yaml").read_text())
+    config = yaml.safe_load((root / "configs/h033_camera_query_ray_to210000.yaml").read_text())
     validate_config(config, world=2)
     with pytest.raises(ValueError):
         validate_config({**config, key: value}, world=2)

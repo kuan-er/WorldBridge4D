@@ -11,3 +11,4 @@
  - Every GPU PRL launch, enqueue, or fork must declare `resources.gpu_ids` with the exact selected physical GPU IDs. Two-rank training must  
  request exactly two explicitly selected GPUs. 
 - After an event, decide whether to inspect, modify, retry, or stop.
+- For checkpoint transfer to the 6024 inference machine, read `research/notes/checkpoint-transfer-6024.md`: use verified internal SSH `10.129.22.20:22` and the authorized `Bridge4D_yj` container writer, not direct host-user writes to the root-owned destination. The runbook records paths, integrity checks, and a step-specific implementation; it does not authorize automatic future transfers.

@@ -27,7 +27,6 @@ COMMANDS = {
     "check-environment": "worldbridge.utils.commands.check_environment",
     "compare-replay": "worldbridge.trainer.commands.compare_replay",
     "recover-status": "worldbridge.trainer.commands.recover_status",
-    "stage-inputs": "worldbridge.trainer.commands.stage_inputs",
     "validate-checkpoint": "worldbridge.trainer.commands.validate_checkpoint",
 }
 

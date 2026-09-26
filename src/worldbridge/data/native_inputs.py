@@ -9,8 +9,12 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from .cache.native import CONTRACT, file_sha256, json_hash, latent_shape, rgb_identity
+from .cache.native import CONTRACT, CONTRACT_DR512, file_sha256, json_hash, latent_shape, rgb_identity
 from .movif import MOViFDataset
+
+TRANSFORM_IDENTITY = "identity_no_resize_crop_pad_or_temporal_resampling"
+TRANSFORM_DR512 = "center_crop_720_lanczos_512"
+_CONTRACT_TRANSFORMS = {CONTRACT: TRANSFORM_IDENTITY, CONTRACT_DR512: TRANSFORM_DR512}
 
 
 def stat_identity(path: str | Path) -> dict:
@@ -36,7 +40,8 @@ def external_paths(dataset: str, root: str | Path, row: dict) -> list[Path]:
     raise ValueError("not an external dataset")
 
 
-def build_manifest(config: dict, dataset: str, vae_sha256: str) -> dict:
+def build_manifest(config: dict, dataset: str, vae_sha256: str,
+                   contract: str = CONTRACT, transform: str = TRANSFORM_IDENTITY) -> dict:
     values = config["datasets"][dataset]
     index_path = Path(values["index"])
     rows = [json.loads(x) for x in index_path.read_text().splitlines() if x]
@@ -77,10 +82,10 @@ def build_manifest(config: dict, dataset: str, vae_sha256: str) -> dict:
         if len(records) % 512 == 0:
             print(json.dumps({'event': 'NATIVE_MANIFEST_PROGRESS', 'dataset': dataset,
                               'clips': len(records), 'total': len(rows)}), flush=True)
-    result = {"contract": CONTRACT, "dataset": dataset, "split": "train", "seed": config["seed"],
+    result = {"contract": contract, "dataset": dataset, "split": "train", "seed": config["seed"],
               "index_path": str(index_path), "index_sha256": file_sha256(index_path),
               "native_hw": list(shape), "latent_shape": list(latent_shape(*shape)),
-              "frames": 21, "transform": "identity_no_resize_crop_pad_or_temporal_resampling",
+              "frames": 21, "transform": transform,
               "vae_checkpoint": config["vae_checkpoint"], "vae_sha256": vae_sha256,
               "posterior": "mean", "compute_and_storage_dtype": "float32", "tiling": False,
               "source_file_identity_kind": "path_size_mtime_admission_plus_each_decoded_RGB_SHA256_in_cache",
@@ -88,12 +93,20 @@ def build_manifest(config: dict, dataset: str, vae_sha256: str) -> dict:
     return {**result, "sha256": json_hash(result)}
 
 
+def build_dr512_manifest(config: dict, vae_sha256: str) -> dict:
+    return build_manifest(config, "dynamic_replica", vae_sha256,
+                          contract=CONTRACT_DR512, transform=TRANSFORM_DR512)
+
+
 def validate_manifest(manifest: dict) -> None:
     unsigned = {k: v for k, v in manifest.items() if k != "sha256"}
-    if manifest["sha256"] != json_hash(unsigned) or manifest["contract"] != CONTRACT:
-        raise ValueError("native manifest checksum/contract mismatch")
+    if manifest["sha256"] != json_hash(unsigned):
+        raise ValueError("native manifest checksum mismatch")
+    contract = manifest["contract"]
+    if contract not in _CONTRACT_TRANSFORMS:
+        raise ValueError("unknown native manifest contract")
     if (manifest["latent_shape"] != list(latent_shape(*manifest["native_hw"]))
-            or manifest["transform"] != "identity_no_resize_crop_pad_or_temporal_resampling"
+            or manifest["transform"] != _CONTRACT_TRANSFORMS[contract]
             or manifest["frames"] != 21 or manifest["tiling"] is not False):
         raise ValueError("native manifest transform mismatch")
     if file_sha256(manifest["index_path"]) != manifest["index_sha256"]:
@@ -160,15 +173,25 @@ def iter_rgb(manifest: dict, indices: list[int]):
                 raise ValueError("native Kubric shard ended before requested records")
             _check_source(manifest, path)
     else:
+        dr512 = manifest.get("transform") == TRANSFORM_DR512
         for i in indices:
             r = manifest["records"][i]
             frames = []
             for path in r["paths"]:
                 _check_source(manifest, path)
                 with Image.open(path) as im:
-                    if [im.height, im.width] != manifest["native_hw"]:
-                        raise ValueError("native RGB shape differs from admitted manifest")
-                    frames.append(np.asarray(im.convert("RGB"), dtype=np.uint8))
+                    if dr512:
+                        if im.size != (1280, 720):
+                            raise ValueError("unexpected Dynamic Replica raw RGB size")
+                        im = im.convert("RGB").crop((280, 0, 280 + 720, 720))
+                        frames.append(np.asarray(
+                            im.resize(tuple(manifest["native_hw"]), Image.Resampling.LANCZOS),
+                            dtype=np.uint8,
+                        ))
+                    else:
+                        if [im.height, im.width] != manifest["native_hw"]:
+                            raise ValueError("native RGB shape differs from admitted manifest")
+                        frames.append(np.asarray(im.convert("RGB"), dtype=np.uint8))
                 _check_source(manifest, path)
             rgb = np.stack(frames)
             if list(rgb.shape) != expected:

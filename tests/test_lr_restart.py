@@ -54,15 +54,19 @@ def test_restart_rejects_wrong_phase_or_optimizer_groups():
         apply_lr_restart_schedule(optimizer, 150001, phase)
 
 
-def test_explicit_b2_a2_k19_cycle_config_and_legacy_guard():
+def test_supported_profile_lr_restart_guards():
     root = Path(__file__).resolve().parents[1]
-    config = yaml.safe_load((root / "configs/h030_150k_lrrestart_gpu23_b2_k19.yaml").read_text())
+    config = yaml.safe_load((root / "configs/h033_camera_query_ray_to210000.yaml").read_text())
     validate_config(config, world=2)
     with pytest.raises(ValueError):
-        validate_config({**config, "microbatch_per_gpu": 1}, world=2)
-    with pytest.raises(ValueError, match="targets_per_source=19"):
-        validate_config({**config, "targets_per_source": 13}, world=2)
+        validate_config({**config, "microbatch_per_gpu": 2}, world=2)
     with pytest.raises(ValueError):
-        validate_config({**config, "cycle_b2_a2_k19": False}, world=2)
-    legacy = yaml.safe_load((root / "configs/h030_h027_140k_to_150k_gpu56_k13_b1_cycle_all_norm30.yaml").read_text())
-    validate_config(legacy, world=2)
+        validate_config({**config, "targets_per_source": 13}, world=2)
+    rates = dict(config["lr_restart"]["group_learning_rates"])
+    rates.pop("camera_head")
+    with pytest.raises(ValueError):
+        validate_config({**config, "lr_restart": {**config["lr_restart"],
+                                                  "group_learning_rates": rates}}, world=2)
+    with pytest.raises(ValueError):
+        validate_config({**config, "max_steps": 220000}, world=2)
+

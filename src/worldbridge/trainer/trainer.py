@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-from datetime import timedelta
 from contextlib import nullcontext
 import faulthandler
 import json
@@ -25,6 +24,7 @@ from ..data.constants import DATASET_NAMES
 from ..data.factory import load_training_datasets, prepare_training_indexes
 from ..data.sampling import sample_eligible_targets
 from ..models.decoder import DenseUpsampler2D
+from ..models.decoder.query_decoder import CAMERA_MODULE_PREFIXES
 from ..models.factory import build_real_model, precision_dtype
 from ..data.text_conditions import load_dataset_text_conditions
 from ..utils.io import atomic_json
@@ -36,13 +36,13 @@ from .fsdp_checkpoint import (
     load_optimizer_checkpoint, load_unwrapped_model_checkpoint, prune_periodic_checkpoints,
     save_checkpoint, update_latest_checkpoint,
 )
-from .lazy_vae import (
-    LazyVAEPipeline, lazy_latent_owner, pipeline_work_for_rank, required_latent_indices,
-    required_latent_requests, set_lazy_vae_identity, warm_lazy_latents,
-)
-from .cycle import camera_batch, pixel_cycle_loss
-from .objective import (boundary_weighted_pair_smooth_l1, loss_scale_to_reference,
-                        masked_pair_smooth_l1, source_edge_contrast_loss)
+from .lazy_vae import set_lazy_vae_identity
+from .camera_objective import camera_ray_objective, supervision_camera_batch
+
+# H033 reads the camera from decoder-native modules; these prefixes are the
+# audited fresh parameters for a structural migration into an older trunk.
+CAMERA_PARAMETER_PREFIXES = tuple(f'decoder.{prefix}' for prefix in CAMERA_MODULE_PREFIXES)
+from .objective import masked_pair_smooth_l1
 from .optimizer import apply_fresh_group_warmup, parameter_groups
 from .precision import assert_fp32_optimizer_storage, prepare_fsdp_master_parameters
 from .preflight import DEFAULT_PREFLIGHT_UPDATES, validate_startup_latents
@@ -72,6 +72,18 @@ def fsdp_auto_wrap_policy(
     )
 
 
+def non_wan_parameter_counts(model) -> tuple[int, int, int]:
+    """Adapter, decoder (camera readout included) and camera parameter counts."""
+    adapter = sum(p.numel() for p in model.backbone.adapter_parameters)
+    decoder_parameters = list(model.decoder.parameters())
+    decoder_ids = {id(p) for p in decoder_parameters}
+    camera_parameters = list(model.camera_head_parameters())
+    if any(id(p) not in decoder_ids for p in camera_parameters):
+        raise RuntimeError('camera parameters must live inside the decoder')
+    return (adapter, sum(p.numel() for p in decoder_parameters),
+            sum(p.numel() for p in camera_parameters))
+
+
 def execution_stop_step(start: int, horizon: int, stop_after_updates: int | None) -> int:
     """Bound a diagnostic invocation without changing the configured LR horizon."""
     if stop_after_updates is None:
@@ -90,12 +102,6 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--resume")
-    parser.add_argument("--geometry-replay", help="hash-verified bounded native512 CPU geometry snapshot")
-    parser.add_argument("--input-readiness", action="store_true",
-                        help="CPU rank readiness guard with original live geometry readers")
-    parser.add_argument("--input-readiness-timeout-seconds", type=float, default=120)
-    parser.add_argument('--quiesce-geometry-before-forward', action='store_true',
-                        help='finish current/lookahead CPU futures before GPU compute; retain all inputs/RNG')
     parser.add_argument(
         "--finetune-from",
         help="load an audited structural extension and retained optimizer moments",
@@ -116,25 +122,14 @@ def main() -> None:
         "--no-checkpoint", action="store_true",
         help="debug only: skip periodic/final checkpoint materialization",
     )
-    parser.add_argument("--lazy-vae-cache", action="store_true",
-                        help="encode/cache all planned missing latents before constructing FSDP")
-    parser.add_argument("--lazy-vae-pipeline", action="store_true",
-                        help="warm a short prefix, then encode future clips beside training")
-    parser.add_argument("--pipeline-lookahead-steps", type=int, default=16)
     args = parser.parse_args()
     if args.resume and args.finetune_from:
         parser.error("--resume and --finetune-from are mutually exclusive")
-    if args.lazy_vae_cache and args.lazy_vae_pipeline:
-        parser.error("--lazy-vae-cache and --lazy-vae-pipeline are mutually exclusive")
-    if args.stop_after_updates is not None and (args.stop_after_updates < 1 or not args.resume
-            or args.lazy_vae_cache or args.lazy_vae_pipeline or args.no_checkpoint):
-        parser.error('--stop-after-updates requires positive full-resume, checkpointed, non-lazy diagnosis')
+    if args.stop_after_updates is not None and (args.stop_after_updates < 1 or not (args.resume or args.finetune_from)
+            or args.no_checkpoint):
+        parser.error('--stop-after-updates requires positive full-resume checkpointed diagnosis')
     if args.startup_preflight_updates < 0:
         parser.error('--startup-preflight-updates must be nonnegative (0 = full invocation)')
-    if args.quiesce_geometry_before_forward and not args.input_readiness:
-        parser.error('--quiesce-geometry-before-forward requires CPU input readiness')
-    if args.pipeline_lookahead_steps < 1:
-        parser.error("--pipeline-lookahead-steps must be positive")
     for value in (signal.SIGINT, signal.SIGTERM, signal.SIGUSR1):
         signal.signal(value, stop_signal)
     config = yaml.safe_load(Path(args.config).read_text())
@@ -142,28 +137,15 @@ def main() -> None:
         timeout_seconds=float(config.get("distributed_timeout_seconds", 86400)),
     )
     validate_config(config, world)
+    camera_cfg = config.get('camera_supervision')
+    if args.finetune_from and args.stop_after_updates and camera_cfg is None:
+        raise ValueError('bounded structural migration is restricted to camera extension')
     dataset_mix_counts = validated_mix_counts(config.get('dataset_mix_counts'))
     if rank == 0:
         print(json.dumps({'event': 'dataset_schedule_protocol', 'counts_per20': dataset_mix_counts,
                           'schedule': deterministic_dataset_schedule(config.get('seed', 20260812), dataset_mix_counts),
                           'phase_origin': config.get('selected_checkpoint_step'),
                           'K': config['targets_per_source']}), flush=True)
-    geometry_replay = None
-    input_ready_group = None
-    if args.geometry_replay or args.input_readiness:
-        if not (config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False)):
-            raise ValueError('input readiness/replay is restricted to bounded native512 admission')
-        if not 0 < args.input_readiness_timeout_seconds <= 900:
-            raise ValueError('CPU input readiness timeout must be in (0,900] seconds')
-        input_ready_group = dist.new_group(backend='gloo',
-            timeout=timedelta(seconds=args.input_readiness_timeout_seconds))
-    if args.geometry_replay:
-        from .geometry_replay import GeometryReplay
-        from ..data.cache.native import file_sha256
-        indexes = {name: file_sha256(Path(values['cache_root']) / 'splits/train.jsonl')
-                   for name, values in config['datasets'].items()}
-        geometry_replay = GeometryReplay(args.geometry_replay, file_sha256(args.config),
-                                         indexes=indexes, expected_count=80)
     seed = int(config.get("seed", 20260812))
     random.seed(seed + rank); np.random.seed(seed + rank); torch.manual_seed(seed + rank)
     torch.cuda.manual_seed_all(seed + rank)
@@ -179,12 +161,10 @@ def main() -> None:
     dist.barrier()
     mean, scale = load_stats(config)
     conditions, prompt_metadata = load_dataset_text_conditions(config)
-    datasets = load_training_datasets(
-        config, allow_missing_latents=args.lazy_vae_cache or args.lazy_vae_pipeline,
-    )
+    datasets = load_training_datasets(config)
     target_steps = int(args.steps if args.steps is not None else config["max_steps"])
     if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False):
-        if target_steps != int(config['max_steps']) or args.lazy_vae_cache or args.lazy_vae_pipeline or not args.resume:
+        if target_steps != int(config['max_steps']) or not args.resume:
             raise ValueError('native training requires the declared full-resume budget and no lazy input generation')
         from ..data.cache.native import file_sha256
         set_lazy_vae_identity(datasets, file_sha256(config['vae_checkpoint']))
@@ -223,59 +203,14 @@ def main() -> None:
                           'unchanged_LR_horizon': target_steps}), flush=True)
     if planned_start >= target_steps:
         raise ValueError(f"checkpoint step {planned_start} already reaches target {target_steps}")
-    lazy_counts = None
-    startup_preflight = None  # lazy production modes retain their own existing warmup policy
-    pipeline: LazyVAEPipeline | None = None
-    if args.lazy_vae_cache:
-        local_required = required_latent_indices(
-            datasets, seed, planned_start, target_steps, rank,
-            int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
-            dataset_mix_counts=dataset_mix_counts,
-        )
-        gathered: list[Any] = [None] * world
-        dist.all_gather_object(gathered, local_required)
-        # A clip needed by multiple ranks gets one deterministic hash owner, so
-        # overlapping rank-local plans remain balanced instead of assigning
-        # almost every shared clip to the first requester (rank zero). File
-        # locks still protect independent jobs sharing the persistent cache.
-        owned = {name: [] for name in DATASET_NAMES}
-        for name in DATASET_NAMES:
-            all_indices = sorted({index for item in gathered for index in item[name]})
-            for index in all_indices:
-                if lazy_latent_owner(name, index, world) == rank:
-                    owned[name].append(index)
-        lazy_counts = warm_lazy_latents(config, datasets, owned, device, rank)
-        dist.barrier()
-    elif args.lazy_vae_pipeline:
-        local_requests = required_latent_requests(
-            datasets, seed, planned_start, target_steps, rank,
-            int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
-            dataset_mix_counts=dataset_mix_counts,
-        )
-        gathered_requests: list[Any] = [None] * world
-        dist.all_gather_object(gathered_requests, local_requests)
-        work = pipeline_work_for_rank(gathered_requests, rank, world)
-        pipeline = LazyVAEPipeline(config, work, device, rank, output)
-        set_lazy_vae_identity(datasets, pipeline.checksum)
-        pipeline.warm_through(planned_start + args.pipeline_lookahead_steps)
-        dist.barrier()
-        pipeline.start()
-        lazy_counts = pipeline.snapshot()
-        if rank == 0:
-            print(json.dumps({
-                "event": "lazy_vae_pipeline_training_start",
-                "planned_start": planned_start,
-                "lookahead_steps": args.pipeline_lookahead_steps,
-            }), flush=True)
-    else:
-        # Keep complete catalog checks above, but do not scan the whole future phase.
-        # Actual batch indices are still read/validated before every forward below.
-        startup_preflight = validate_startup_latents(
-            datasets, seed, planned_start, execution_end, rank,
-            int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
-            updates=args.startup_preflight_updates, dataset_mix_counts=dataset_mix_counts,
-        )
-    if rank == 0 and not args.lazy_vae_pipeline:
+    # Keep complete catalog checks above, but do not scan the whole future phase.
+    # Actual batch indices are still read/validated before every forward below.
+    startup_preflight = validate_startup_latents(
+        datasets, seed, planned_start, execution_end, rank,
+        int(config["gradient_accumulation"]), int(config["microbatch_per_gpu"]),
+        updates=args.startup_preflight_updates, dataset_mix_counts=dataset_mix_counts,
+    )
+    if rank == 0:
         print(json.dumps({"event": "three_dataset_cache_ready", "clips": {k: len(v) for k, v in datasets.items()},
                           "startup_preflight": startup_preflight,
                           "note": "catalog ready; prefix validation does not certify every future payload"}), flush=True)
@@ -311,8 +246,9 @@ def main() -> None:
         raise RuntimeError(
             f"constructed readout weights changed: {layer_weights} != {expected_layer_weights}"
         )
-    adapter_count = sum(p.numel() for p in model.backbone.adapter_parameters)
-    decoder_count = sum(p.numel() for p in model.decoder.parameters())
+    adapter_count, decoder_count, camera_count = non_wan_parameter_counts(model)
+    # The H033 camera readout lives inside the decoder, so decoder_count already
+    # contains camera_count; adding it again double-counts 926,218 parameters.
     non_wan_count = adapter_count + decoder_count
     expected_non_wan = int(config.get("expected_non_wan_parameters", 193586693))
     if non_wan_count != expected_non_wan:
@@ -325,7 +261,8 @@ def main() -> None:
     if finetune_from is not None:
         finetune_payload, finetune_state, finetune_rng_states = load_unwrapped_model_checkpoint(
             finetune_from, model, rank, world,
-            allowed_missing_prefixes=("decoder.query_rgb_projection.",),
+            allowed_missing_prefixes=(CAMERA_PARAMETER_PREFIXES if camera_cfg else ("decoder.query_rgb_projection.",)),
+            allowed_unexpected_prefixes=tuple(config.get('finetune_drop_prefixes', ())),
         )
         expected_step = int(config.get("finetune_expected_global_step", -1))
         if int(finetune_state["global_step"]) != expected_step:
@@ -427,7 +364,9 @@ def main() -> None:
         load_filtered_optimizer_checkpoint(
             finetune_payload, fsdp, optimizer, finetune_rng_states,
             current_group_names, rank,
-            allowed_fresh_prefixes=("decoder.query_rgb_projection.",),
+            allowed_fresh_prefixes=(CAMERA_PARAMETER_PREFIXES if camera_cfg else ("decoder.query_rgb_projection.",)),
+            require_all_source_state=camera_cfg is not None,
+            allowed_unexpected_prefixes=tuple(config.get('finetune_drop_prefixes', ())),
         )
         start_step = int(finetune_state["global_step"])
         clips_seen.update({
@@ -441,16 +380,24 @@ def main() -> None:
                 "rng_states": len(finetune_rng_states),
             }), flush=True)
     if resume_state is not None:
-        load_optimizer_checkpoint(
-            resume_payload, fsdp, optimizer, resume_rng_states, rank,
-        )
+        if config.get('full_mode_unfreeze_resume'):
+            load_filtered_optimizer_checkpoint(
+                resume_payload, fsdp, optimizer, resume_rng_states,
+                current_group_names, rank, allowed_fresh_prefixes=("backbone.",),
+            )
+            optimizer_label = "filtered_restored"
+        else:
+            load_optimizer_checkpoint(
+                resume_payload, fsdp, optimizer, resume_rng_states, rank,
+            )
+            optimizer_label = "restored"
         start_step = int(resume_state["global_step"])
         clips_seen.update({key: int(value) for key, value in resume_state["clips_seen"].items()})
         del resume_payload
         if rank == 0:
             print(json.dumps({
                 "event": "resume_state_loaded", "step": start_step,
-                "world_size": world, "optimizer": "restored", "rng_states": len(resume_rng_states),
+                "world_size": world, "optimizer": optimizer_label, "rng_states": len(resume_rng_states),
             }), flush=True)
     if args.stop_after_updates is not None and start_step != planned_start:
         raise ValueError('diagnostic checkpoint planning sidecar does not match restored step')
@@ -476,32 +423,12 @@ def main() -> None:
     microbatch_per_gpu = int(config["microbatch_per_gpu"])
     k = int(config["targets_per_source"])
     use_source_rgb = bool(config.get("source_rgb_pyramid", False))
-    boundary_supervision = config.get('boundary_supervision')
-    edge_contrast_weight = float(config.get('source_edge_contrast_weight', 0.0))
-    cycle_enabled = bool(config.get("cycle_reprojection_enabled", False))
-    cycle_dataset_names = tuple(str(name) for name in config.get(
-        "cycle_reprojection_datasets", ["kubric"],
-    ))
-    cycle_weight = float(config.get("cycle_reprojection_weight", 0.0))
-    cycle_pixel_stride = int(config.get("cycle_reprojection_pixel_stride", 1))
-    cycle_huber_delta = float(config.get("cycle_reprojection_huber_delta", 0.01))
-    cycle_normalize_to_xyz = bool(config.get(
-        "cycle_reprojection_normalize_to_xyz", False,
-    ))
-    cycle_normalization_epsilon = float(config.get(
-        "cycle_reprojection_normalization_epsilon", 1e-6,
-    ))
-    cycle_normalization_max_scale = float(config.get(
-        "cycle_reprojection_normalization_max_scale", 1000.0,
-    ))
     diagnostic_every = int(config.get("diagnostic_every_steps", 20))
     ensure_dataset_diagnostics = bool(
         config.get("diagnostic_ensure_dataset_coverage", False)
     )
     last_diagnostic_cycle: dict[str, int] = {}
     completed_diagnostic_cycles: set[int] = set()
-    extension_start = config.get("schedule_extension_start_step")
-    extension_horizon = config.get("schedule_extension_horizon_steps")
     checkpoint_steps = {int(value) for value in config.get("checkpoint_steps", [])}
     checkpoint_every = int(config.get("checkpoint_every_after", 5000))
     graceful_seconds = float(config.get("graceful_stop_hours", 68)) * 3600
@@ -519,15 +446,11 @@ def main() -> None:
         microbatch_per_gpu=microbatch_per_gpu,
         targets_per_source=k,
         use_source_rgb=use_source_rgb,
-        cycle_enabled=cycle_enabled,
-        cycle_dataset_names=cycle_dataset_names,
-        boundary_supervision=boundary_supervision,
-        edge_contrast_enabled=edge_contrast_weight > 0,
+        camera_supervision=camera_cfg is not None,
         start_step=start_step,
         target_steps=execution_end,
         depth=prefetch_depth,
         workers=prefetch_workers,
-        geometry_replay=geometry_replay,
         dataset_mix_counts=dataset_mix_counts,
     )
     optimizer.zero_grad(set_to_none=True)
@@ -550,43 +473,22 @@ def main() -> None:
                 faulthandler.dump_traceback_later(stall_seconds, repeat=True)
             trace_phase("update_start", step)
             planned = prefetcher.pop(step)
-            quiesce_seconds = 0.0
-            if args.quiesce_geometry_before_forward:
-                quiesce_start = time.perf_counter()
-                read_count = prefetcher.quiesce(planned)
-                quiesce_seconds = time.perf_counter() - quiesce_start
-                print(json.dumps({'event': 'GEOMETRY_PREFETCH_QUIESCENT', 'rank': rank,
-                                  'update_number': step + 1, 'read_count': read_count,
-                                  'seconds': quiesce_seconds}), flush=True)
             name = planned.dataset_name
             dataset = planned.dataset
             image_size = int(getattr(dataset, 'image_size', config['image_size']))
             plans = planned.sample_plans
             futures = planned.geometry_futures
-            if pipeline is not None:
-                pipeline.wait_for(
-                    dataset, name, planned.clip_indices,
-                    float(config.get("pipeline_wait_timeout_seconds", 3600)),
-                )
             update_loss = 0.0
             xyz_loss_sum = 0.0
             update_epe = 0.0
             valid_points = 0
             pair_count = 0
-            cycle_loss_sum = 0.0
-            weighted_cycle_loss_sum = 0.0
-            cycle_scale_sum = 0.0
-            cycle_pixel_error_sum = 0.0
-            cycle_valid_points = 0
-            boundary_stats = (torch.zeros(7, device=device, dtype=torch.float64)
-                              if boundary_supervision is not None else None)
-            contrast_stats = (torch.zeros(3, device=device, dtype=torch.float64)
-                              if edge_contrast_weight > 0 else None)
+            camera_metrics = {} if camera_cfg is not None else None
             source_hist = torch.zeros(21, device=device, dtype=torch.float64)
             target_hist = torch.zeros(21, device=device, dtype=torch.float64)
             gap_hist = torch.zeros(21, device=device, dtype=torch.float64)
-            step_started = time.perf_counter() - quiesce_seconds
-            geometry_wait_seconds = quiesce_seconds
+            step_started = time.perf_counter()
+            geometry_wait_seconds = 0.0
             geometry_task_max_seconds = 0.0
             latent_load_seconds = 0.0
             for micro in range(accumulation):
@@ -600,16 +502,14 @@ def main() -> None:
                 target_counts = []
                 for (_planned_index, _source, rng), future in group:
                     wait_started = time.perf_counter()
-                    (
-                        index, source, xyz_all, valid_all, source_rgb_np,
-                        visible_all, camera, boundary_np, contrast_edges_np,
-                    ), task_seconds = future.result()
+                    (index, source, xyz_all, valid_all, source_rgb_np, camera), task_seconds = future.result()
                     geometry_wait_seconds += time.perf_counter() - wait_started
                     geometry_task_max_seconds = max(geometry_task_max_seconds, task_seconds)
-                    targets = sample_eligible_targets(valid_all, k, rng)
+                    targets = (sample_eligible_targets(valid_all, k, rng, diagonal_source=source)
+                               if camera_cfg else sample_eligible_targets(valid_all, k, rng))
                     batch_values.append((
                         index, source, targets, xyz_all[targets], valid_all[targets],
-                        source_rgb_np, visible_all, camera, valid_all, boundary_np, contrast_edges_np,
+                        source_rgb_np, camera, valid_all,
                     ))
                     target_counts.append(len(targets))
                 if len(set(target_counts)) != 1:
@@ -648,78 +548,17 @@ def main() -> None:
                 )
                 xyz = torch.from_numpy(normalized_np).to(device, non_blocking=True)
                 valid = torch.from_numpy(valid_np).to(device, non_blocking=True)
-                boundary_t = target_visible_t = None
-                if boundary_supervision is not None:
-                    if any(value[9] is None or value[6] is None for value in batch_values):
-                        raise RuntimeError('boundary-enabled batch is missing GT masks/visibility')
-                    boundary_t = torch.from_numpy(np.stack([value[9] for value in batch_values])).to(
-                        device, non_blocking=True)
-                    target_visible_t = torch.from_numpy(np.stack([
-                        value[6][value[2]] for value in batch_values
-                    ])).to(device, non_blocking=True)
-                contrast_edges_t = None
-                if edge_contrast_weight > 0:
-                    if any(value[10] is None for value in batch_values):
-                        raise RuntimeError('edge contrast batch is missing GT neighbor masks')
-                    contrast_edges_t = torch.from_numpy(np.stack([
-                        value[10] for value in batch_values
-                    ])).to(device, non_blocking=True)
                 condition = conditions[name].to(device, dtype=dtype, non_blocking=True)
-                cycle_batch = cycle_enabled and name in cycle_dataset_names
-                cycle_pair_indices = cycle_targets = None
-                cycle_source_t = cycle_target_t = cycle_source_rgb_t = None
-                cycle_source_valid = cycle_target_valid = cycle_target_visible = None
-                cycle_cameras = None
-                if cycle_batch:
-                    cycle_pair_indices = np.asarray([
-                        int(np.argmax(np.abs(value[2] - value[1])))
-                        for value in batch_values
-                    ], dtype=np.int64)
-                    cycle_targets = np.asarray([
-                        int(value[2][pair_index])
-                        for value, pair_index in zip(batch_values, cycle_pair_indices)
-                    ], dtype=np.int64)
-                    if any(value[6] is None or value[7] is None for value in batch_values):
-                        raise RuntimeError("cycle-enabled batch is missing visibility or camera metadata")
-                    reverse_rgb_np = np.stack([
-                        dataset.source_rgb(value[0], target_index)
-                        for value, target_index in zip(batch_values, cycle_targets)
-                    ])
-                    cycle_source_t = torch.from_numpy(cycle_targets[:, None]).to(
-                        device, dtype=torch.long, non_blocking=True,
-                    )
-                    cycle_target_t = source_t[:, :1]
-                    cycle_source_rgb_t = torch.from_numpy(reverse_rgb_np).permute(0, 3, 1, 2).to(
-                        device, dtype=dtype, non_blocking=True,
-                    ) / 127.5 - 1.0
-                    cycle_source_valid = torch.from_numpy(np.stack([
-                        value[8][value[1]] & value[6][value[1]]
-                        for value in batch_values
-                    ])).to(device, non_blocking=True)
-                    cycle_target_valid = torch.from_numpy(np.stack([
-                        value[8][target_index]
-                        for value, target_index in zip(batch_values, cycle_targets)
-                    ])).to(device, non_blocking=True)
-                    cycle_target_visible = torch.from_numpy(np.stack([
-                        value[6][target_index]
-                        for value, target_index in zip(batch_values, cycle_targets)
-                    ])).to(device, non_blocking=True)
-                    cycle_cameras = camera_batch(
-                        [value[7] for value in batch_values], device, torch.float32,
-                    )
-                if input_ready_group is not None:
-                    from .geometry_replay import input_ready
-                    input_ready(input_ready_group, rank=rank, step=step, micro=micro,
-                                dataset=name, clips=[int(v[0]) for v in batch_values],
-                                timeout_seconds=args.input_readiness_timeout_seconds)
+                camera_tensors = (supervision_camera_batch([v[6] for v in batch_values], device)
+                                  if camera_cfg else None)
                 sync = fsdp.no_sync() if micro + 1 < accumulation else nullcontext()
                 with sync, torch.autocast("cuda", dtype=dtype):
                     trace_phase("forward_start", step, micro)
-                    prediction, z4d, _ = fsdp(
+                    prediction, z4d, model_output = fsdp(
                         latent, source_t, target_t, condition, source_rgb_t,
                     )
                     trace_phase("forward_enqueued", step, micro)
-                    if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False):
+                    if config.get('native_kubric512_b1_a4_k15', False) or config.get('native_kubric512_b1_a4_k9', False) or config.get('native_kubric512_b1_a4_k5', False) or config.get('native_kubric512_full', False):
                         if prediction.shape != xyz.shape or tuple(prediction.shape[-2:]) != (image_size, image_size):
                             raise RuntimeError('native prediction/GT alignment mismatch')
                         if micro == 0:
@@ -728,78 +567,24 @@ def main() -> None:
                                 'RGB': list(source_rgb_t.shape), 'prediction_GT': list(prediction.shape),
                                 'dense': list(z4d.dense.shape), 'B': microbatch_per_gpu,
                                 'A': accumulation, 'K': k, 'world': world}), flush=True)
-                    xyz_value = masked_pair_smooth_l1(
-                        prediction.float(), xyz.float(), valid,
-                        beta=float(config.get("smooth_l1_beta", 0.05)),
-                    )
-                    optimized_xyz_value = xyz_value
-                    if boundary_supervision is not None:
-                        optimized_xyz_value = boundary_weighted_pair_smooth_l1(
-                            prediction.float(), xyz.float(), valid, boundary_t,
-                            multiplier=float(boundary_supervision['multiplier']),
-                            beta=float(config.get('smooth_l1_beta', 0.05)),
+                    with torch.set_grad_enabled(camera_cfg is None):
+                        xyz_value = masked_pair_smooth_l1(
+                            prediction.float(), xyz.float(), valid,
+                            beta=float(config.get("smooth_l1_beta", 0.05)),
                         )
+                    optimized_xyz_value = xyz_value
+                    if camera_cfg:
+                        with torch.autocast('cuda', enabled=False):
+                            optimized_xyz_value, camera_losses = camera_ray_objective(
+                                prediction, xyz, valid, source_t, target_t, model_output.camera,
+                                camera_tensors, mean, scale, camera_cfg,
+                                beta=float(config.get('smooth_l1_beta', 0.05)), dataset=name,
+                            )
+                        for metric_name, metric_value in camera_losses.items():
+                            camera_metrics[metric_name] = camera_metrics.get(metric_name, 0.0) + float(metric_value.detach()) / accumulation
                     # Keep xyz_value UNWEIGHTED for cycle diagnostics and all
                     # historical train/xyz_loss comparisons.
                     loss = optimized_xyz_value / accumulation
-                    if edge_contrast_weight > 0:
-                        contrast_value, contrast_edges_count, contrast_pairs = source_edge_contrast_loss(
-                            prediction.float(), xyz.float(), valid, contrast_edges_t,
-                            beta=float(config.get('smooth_l1_beta', 0.05)),
-                        )
-                        loss = loss + edge_contrast_weight * contrast_value / accumulation
-                        contrast_stats[0] += contrast_value.detach().double() / accumulation
-                        contrast_stats[1] += contrast_edges_count.detach()
-                        contrast_stats[2] += contrast_pairs.detach()
-                    cycle_value = prediction.new_zeros(())
-                    weighted_cycle_value = prediction.new_zeros(())
-                    cycle_scale = prediction.new_zeros(())
-                    cycle_points = prediction.new_zeros(())
-                    cycle_pixel_error = prediction.new_zeros(())
-                    if cycle_batch:
-                        batch_indices = torch.arange(
-                            prediction.shape[0], device=device,
-                        )
-                        forward_cycle = prediction[batch_indices, torch.as_tensor(
-                            cycle_pair_indices, device=device,
-                        )]
-                        forward_cycle = forward_cycle * torch.as_tensor(
-                            scale, device=device, dtype=forward_cycle.dtype,
-                        ).view(1, 3, 1, 1) + torch.as_tensor(
-                            mean, device=device, dtype=forward_cycle.dtype,
-                        ).view(1, 3, 1, 1)
-                        trace_phase("cycle_forward_start", step, micro)
-                        reverse_prediction, _, _ = fsdp(
-                            latent, cycle_source_t, cycle_target_t, condition,
-                            cycle_source_rgb_t, z4d_override=z4d,
-                        )
-                        trace_phase("cycle_forward_enqueued", step, micro)
-                        reverse_cycle = reverse_prediction[:, 0]
-                        reverse_cycle = reverse_cycle * torch.as_tensor(
-                            scale, device=device, dtype=reverse_cycle.dtype,
-                        ).view(1, 3, 1, 1) + torch.as_tensor(
-                            mean, device=device, dtype=reverse_cycle.dtype,
-                        ).view(1, 3, 1, 1)
-                        with torch.autocast("cuda", enabled=False):
-                            cycle_value, cycle_points, cycle_pixel_error = pixel_cycle_loss(
-                                forward_cycle.float(), reverse_cycle.float(),
-                                source_t[:, 0], cycle_source_t[:, 0],
-                                cycle_source_valid, cycle_target_valid, cycle_target_visible,
-                                *cycle_cameras,
-                                huber_delta=cycle_huber_delta, image_size=image_size,
-                                pixel_stride=cycle_pixel_stride,
-                            )
-                        cycle_scale = (
-                            loss_scale_to_reference(
-                                xyz_value, cycle_value,
-                                epsilon=cycle_normalization_epsilon,
-                                max_scale=cycle_normalization_max_scale,
-                            )
-                            if cycle_normalize_to_xyz
-                            else cycle_value.new_ones(())
-                        )
-                        weighted_cycle_value = cycle_weight * cycle_scale * cycle_value
-                        loss = loss + weighted_cycle_value / accumulation
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step={step}, micro={micro}")
                 trace_phase("backward_start", step, micro)
@@ -807,34 +592,19 @@ def main() -> None:
                 trace_phase("backward_enqueued", step, micro)
                 update_loss += float(loss.detach())
                 xyz_loss_sum += float(xyz_value.detach()) / accumulation
-                cycle_loss_sum += float(cycle_value.detach()) / accumulation
-                weighted_cycle_loss_sum += float(weighted_cycle_value.detach()) / accumulation
-                cycle_scale_sum += float(cycle_scale.detach()) / accumulation
-                cycle_pixel_error_sum += float(cycle_pixel_error.detach() * cycle_points.detach())
-                cycle_valid_points += int(cycle_points.detach())
                 with torch.no_grad():
                     metric_error = (prediction.float() - xyz) * torch.as_tensor(scale, device=device).view(1, 1, 3, 1, 1)
                     epe = torch.linalg.vector_norm(metric_error, dim=2)
                     update_epe += float(epe[valid].sum())
                     valid_points += int(valid.sum())
-                    if boundary_stats is not None:
-                        boundary_valid = valid & boundary_t[:, None]
-                        occluded_boundary = boundary_valid & ~target_visible_t
-                        counts = valid.sum(dim=(-2, -1))
-                        fractions = boundary_valid.sum(dim=(-2, -1)).double() / counts.clamp_min(1)
-                        boundary_stats[0] += optimized_xyz_value.detach().double() / accumulation
-                        boundary_stats[1] += epe[boundary_valid].double().sum()
-                        boundary_stats[2] += boundary_valid.sum()
-                        boundary_stats[3] += fractions[counts > 0].mean() / accumulation
-                        boundary_stats[4] += epe[occluded_boundary].double().sum()
-                        boundary_stats[5] += occluded_boundary.sum()
-                        boundary_stats[6] += epe[valid & ~boundary_t[:, None]].double().sum()
                 pair_count += sum(target_counts)
-                for _index, source, targets, _xyz, _valid, _source_rgb, _visible, _camera, _valid_all, _boundary, _contrast_edges in batch_values:
+                for _index, source, targets, _xyz, _valid, _source_rgb, _camera, _valid_all in batch_values:
                     source_hist[source] += 1
                     for target_index in targets.tolist():
                         target_hist[target_index] += 1
                         gap_hist[abs(int(target_index) - source)] += 1
+                if camera_cfg:
+                    del prediction, z4d, model_output, camera_losses
             gradient_norm = fsdp.clip_grad_norm_(float(config["gradient_clip"]))
             if not torch.isfinite(gradient_norm):
                 raise FloatingPointError(f"non-finite gradient norm at step={step + 1}")
@@ -845,10 +615,11 @@ def main() -> None:
                     step + 1,
                     int(config["warmup_steps"]),
                     int(config["schedule_horizon_steps"]),
-                    None if extension_start is None else int(extension_start),
-                    None if extension_horizon is None else int(extension_horizon),
                 )
             )
+            if camera_cfg:
+                apply_fresh_group_warmup(optimizer, {'camera_head'}, step+1,
+                    int(camera_cfg['phase_start_step']), int(camera_cfg['warmup_steps']))
             warmup_groups = (
                 {"wan_backbone", "dense_decoder"}
                 if str(config.get("trainable_mode")) == "source_rgb_plus_wan_decoder"
@@ -880,21 +651,19 @@ def main() -> None:
             if diagnostic:
                 last_diagnostic_cycle[name] = step // 20
                 scalars = torch.tensor(
-                    [
-                        update_loss, xyz_loss_sum, update_epe, valid_points, pair_count,
-                        cycle_loss_sum, weighted_cycle_loss_sum, cycle_scale_sum,
-                        cycle_pixel_error_sum, cycle_valid_points,
-                    ], device=device, dtype=torch.float64,
+                    [update_loss, xyz_loss_sum, update_epe, valid_points, pair_count],
+                    device=device, dtype=torch.float64,
                 )
                 timing_max = torch.tensor([
                     geometry_wait_seconds, geometry_task_max_seconds, latent_load_seconds,
                 ], device=device, dtype=torch.float64)
                 dist.all_reduce(scalars, op=dist.ReduceOp.SUM)
                 dist.all_reduce(timing_max, op=dist.ReduceOp.MAX)
-                if boundary_stats is not None:
-                    dist.all_reduce(boundary_stats, op=dist.ReduceOp.SUM)
-                if contrast_stats is not None:
-                    dist.all_reduce(contrast_stats, op=dist.ReduceOp.SUM)
+                if camera_cfg:
+                    camera_metric_names = sorted(camera_metrics)
+                    camera_metric_values = torch.tensor([camera_metrics[n] for n in camera_metric_names],
+                                                        device=device, dtype=torch.float64)
+                    dist.all_reduce(camera_metric_values, op=dist.ReduceOp.SUM)
                 for histogram in (source_hist, target_hist, gap_hist):
                     dist.all_reduce(histogram, op=dist.ReduceOp.SUM)
                 rgb_alpha_names = list(fsdp.module.decoder.upsampler.source_fusions)
@@ -913,21 +682,11 @@ def main() -> None:
                     rgb_alpha_stats = torch.empty((0, 2), device=device, dtype=torch.float64)
             if rank == 0 and diagnostic:
                 (
-                    global_loss, global_xyz_loss, global_epe_sum, global_valid,
-                    global_pairs, global_cycle_loss, global_weighted_cycle_loss,
-                    global_cycle_scale, global_cycle_pixel_error_sum,
-                    global_cycle_points,
+                    global_loss, global_xyz_loss, global_epe_sum, global_valid, global_pairs,
                 ) = scalars.tolist()
                 dataset_loss = global_loss / world
                 dataset_xyz_loss = global_xyz_loss / world
                 raw_epe_m = global_epe_sum / max(global_valid, 1)
-                cycle_dataset_loss = global_cycle_loss / world
-                weighted_cycle_dataset_loss = global_weighted_cycle_loss / world
-                cycle_loss_ratio = weighted_cycle_dataset_loss / max(
-                    dataset_xyz_loss, cycle_normalization_epsilon,
-                )
-                cycle_scale = global_cycle_scale / world
-                cycle_pixel_error = global_cycle_pixel_error_sum / max(global_cycle_points, 1)
                 weights = fsdp.module.backbone.layer_weights().detach().float().cpu().tolist()
                 rgb_alphas = {
                     scale_name: float(rgb_alpha_stats[index, 0] / rgb_alpha_stats[index, 1])
@@ -940,16 +699,6 @@ def main() -> None:
                     f"train/xyz_loss_by_dataset/{name}": dataset_xyz_loss,
                     "train/raw_epe_m": raw_epe_m,
                     f"train/raw_epe_m_by_dataset/{name}": raw_epe_m,
-                    "train/cycle_reprojection_loss": cycle_dataset_loss,
-                    f"train/cycle_reprojection_loss_by_dataset/{name}": cycle_dataset_loss,
-                    "train/weighted_cycle_reprojection_loss": weighted_cycle_dataset_loss,
-                    f"train/weighted_cycle_reprojection_loss_by_dataset/{name}": weighted_cycle_dataset_loss,
-                    "train/cycle_reprojection_loss_ratio": cycle_loss_ratio,
-                    f"train/cycle_reprojection_loss_ratio_by_dataset/{name}": cycle_loss_ratio,
-                    "train/cycle_reprojection_scale": cycle_scale,
-                    f"train/cycle_reprojection_scale_by_dataset/{name}": cycle_scale,
-                    "train/cycle_reprojection_pixel_error": cycle_pixel_error,
-                    "train/cycle_reprojection_valid_points": int(global_cycle_points),
                     "train/dataset": DATASET_NAMES.index(name), "train/pairs": int(global_pairs),
                     "train/clips_seen_total": sum(clips_seen.values()),
                     **{f"train/clips_seen_{key}": value for key, value in clips_seen.items()},
@@ -962,8 +711,6 @@ def main() -> None:
                     "system/latent_load_seconds_max_rank": float(timing_max[2]),
                     "system/geometry_prefetch_depth": prefetch_depth,
                     "system/geometry_prefetch_workers": prefetch_workers,
-                    "system/geometry_quiesce_seconds_rank0": quiesce_seconds,
-                    "system/geometry_quiesce_enabled": int(args.quiesce_geometry_before_forward),
                     "system/diagnostic_dataset_coverage": int(ensure_dataset_diagnostics),
                     "system/elapsed_seconds": elapsed, "train/lr_factor": lr_factor,
                     "train/fresh_group_warmup_factor": fresh_group_warmup_factor,
@@ -972,30 +719,13 @@ def main() -> None:
                     **{f"sampling/target_{index}": int(value) for index, value in enumerate(target_hist.tolist())},
                     **{f"sampling/gap_{index}": int(value) for index, value in enumerate(gap_hist.tolist())},
                 }
-                if boundary_stats is not None:
-                    weighted_xyz, boundary_epe_sum, boundary_points, pair_fraction, occluded_epe_sum, occluded_points, nonboundary_epe_sum = boundary_stats.tolist()
-                    payload.update({
-                        'train/boundary_weighted_xyz_loss': weighted_xyz / world,
-                        'train/boundary_multiplier': float(boundary_supervision['multiplier']),
-                        'train/boundary_uses_dense_instance_gt': int(name == 'kubric'),
-                        'train/boundary_raw_epe_m': boundary_epe_sum / max(boundary_points, 1),
-                        'train/boundary_valid_points': int(boundary_points),
-                        'train/boundary_pair_mean_fraction': pair_fraction / world,
-                        'train/boundary_valid_fraction': boundary_points / max(global_valid, 1),
-                        'train/nonboundary_raw_epe_m': nonboundary_epe_sum / max(global_valid - boundary_points, 1),
-                        'train/nonboundary_valid_points': int(global_valid - boundary_points),
-                        'train/boundary_occluded_raw_epe_m': occluded_epe_sum / max(occluded_points, 1),
-                        'train/boundary_occluded_valid_points': int(occluded_points),
-                    })
-                if contrast_stats is not None:
-                    contrast_loss, edge_count, eligible_pairs = contrast_stats.tolist()
-                    payload.update({
-                        'train/source_edge_contrast_loss': contrast_loss / world,
-                        'train/weighted_source_edge_contrast_loss': edge_contrast_weight * contrast_loss / world,
-                        'train/source_edge_contrast_weight': edge_contrast_weight,
-                        'train/source_edge_contrast_valid_edges': int(edge_count),
-                        'train/source_edge_contrast_eligible_pairs': int(eligible_pairs),
-                    })
+                if camera_cfg:
+                    for key, value in zip(camera_metric_names, camera_metric_values.tolist()):
+                        payload[f'train/camera/{key}'] = value/world
+                        payload[f'train/camera_by_dataset/{name}/{key}'] = value/world
+                    payload['train/camera_head_lr'] = next(g['lr'] for g in optimizer.param_groups if g['name']=='camera_head')
+                    payload['train/diagonal_pairs'] = world*accumulation*microbatch_per_gpu
+                    payload['train/targets_per_source'] = k
                 print(json.dumps(payload), flush=True)
                 if run is not None and completed > args.wandb_log_after_step:
                     run.log(payload, step=completed)
@@ -1069,9 +799,6 @@ def main() -> None:
         if stall_seconds > 0:
             faulthandler.cancel_dump_traceback_later()
         prefetcher.close()
-        if pipeline is not None:
-            pipeline.close()
-            lazy_counts = pipeline.snapshot()
         if run is not None:
             run.finish()
     dist.barrier()
@@ -1079,7 +806,6 @@ def main() -> None:
         result = {
             "completed_steps": completed, "target_steps": target_steps, "world_size": world,
             "execution_end": execution_end, "diagnostic_stop_after_updates": args.stop_after_updates,
-            "quiesce_geometry_before_forward": bool(args.quiesce_geometry_before_forward),
             "startup_preflight": startup_preflight,
             "clips_seen": clips_seen, "non_wan_parameters": non_wan_count,
             "dataset_mix_counts": dataset_mix_counts,
@@ -1088,9 +814,6 @@ def main() -> None:
             "source_rgb_pyramid": use_source_rgb,
             "trainable_mode": str(config.get("trainable_mode")),
             "trainable_parameters": trainable_count,
-            "lazy_vae_cache": bool(args.lazy_vae_cache),
-            "lazy_vae_pipeline": bool(args.lazy_vae_pipeline),
-            "lazy_vae_rank0": lazy_counts,
         }
         atomic_json(output / "train_status.json", result)
         print(json.dumps(result, indent=2), flush=True)

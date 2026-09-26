@@ -96,6 +96,7 @@ def prune_periodic_checkpoints(output: Path, keep_last: int) -> list[str]:
 def load_unwrapped_model_checkpoint(
     path: Path, model: torch.nn.Module, rank: int, world: int,
     allowed_missing_prefixes: tuple[str, ...] = (),
+    allowed_unexpected_prefixes: tuple[str, ...] = (),
 ) -> tuple[dict[str, Any] | None, dict[str, Any], list[Any]]:
     """Load rank 0 before FSDP so ``sync_module_states`` broadcasts exact weights.
 
@@ -117,7 +118,7 @@ def load_unwrapped_model_checkpoint(
     if len(states) != world:
         raise ValueError("checkpoint lacks one RNG state per rank")
     if rank == 0:
-        if not allowed_missing_prefixes:
+        if not allowed_missing_prefixes and not allowed_unexpected_prefixes:
             model.load_state_dict(payload["model"], strict=True)
         else:
             missing, unexpected = model.load_state_dict(payload["model"], strict=False)
@@ -125,16 +126,23 @@ def load_unwrapped_model_checkpoint(
                 name for name in missing
                 if not name.startswith(allowed_missing_prefixes)
             ]
-            if unexpected or invalid_missing or not missing:
+            invalid_unexpected = [
+                name for name in unexpected
+                if not name.startswith(allowed_unexpected_prefixes)
+            ]
+            if (invalid_unexpected or invalid_missing
+                    or (not missing and not unexpected)):
                 raise RuntimeError(
                     "structural checkpoint migration mismatch: "
                     f"missing={missing[:8]}, invalid_missing={invalid_missing[:8]}, "
-                    f"unexpected={unexpected[:8]}"
+                    f"unexpected={unexpected[:8]}, invalid_unexpected={invalid_unexpected[:8]}"
                 )
             print(json.dumps({
                 "event": "structural_model_extension_loaded",
                 "fresh_parameters": len(missing),
+                "dropped_parameters": len(unexpected),
                 "allowed_prefixes": list(allowed_missing_prefixes),
+                "dropped_prefixes": list(allowed_unexpected_prefixes),
             }), flush=True)
     return payload, training_state, states
 
@@ -147,6 +155,8 @@ def load_filtered_optimizer_checkpoint(
     current_group_names: dict[str, list[str]],
     rank: int,
     allowed_fresh_prefixes: tuple[str, ...],
+    require_all_source_state: bool = False,
+    allowed_unexpected_prefixes: tuple[str, ...] = (),
 ) -> None:
     """Restore retained moments while allowing only audited new parameters."""
     full_optimizer_state = None
@@ -165,6 +175,17 @@ def load_filtered_optimizer_checkpoint(
         if len(names) != len(set(names)):
             raise RuntimeError("fine-tune optimizer contains duplicate parameters")
         source_state = payload["optimizer"]["state"]
+        dropped = [
+            name for name in source_state
+            if name not in names and not name.startswith(allowed_unexpected_prefixes)
+        ]
+        if dropped:
+            raise RuntimeError(
+                f'structural extension would discard existing Adam state: {dropped[:8]}'
+            )
+        if require_all_source_state and set(source_state) - set(names) \
+                and not allowed_unexpected_prefixes:
+            raise RuntimeError('structural extension would discard existing Adam state')
         fresh_names = [name for name in names if name not in source_state]
         invalid_fresh = [
             name for name in fresh_names

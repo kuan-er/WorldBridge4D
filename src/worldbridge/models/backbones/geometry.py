@@ -12,40 +12,6 @@ from ..decoder.blocks import _group_count
 from ..outputs import StructuredZ4D
 from ..wan import WAN_LATENT_SHAPE, WanDiTMapping
 
-class CleanLatentBackbone(nn.Module):
-    """Control readout returning the frozen clean VAE latent unchanged."""
-
-    raw_velocity_convention = "not_applicable"
-    z4d_transform = "clean_latent_identity"
-
-    def forward(self, clean_video_latent: torch.Tensor) -> torch.Tensor:
-        return clean_video_latent
-
-
-class FeedForwardWanBackbone(nn.Module):
-    """Clean latent -> Wan at exact RF time zero -> negative raw velocity."""
-
-    raw_velocity_convention = "epsilon_minus_clean"
-    z4d_transform = "negative_raw_velocity"
-
-    def __init__(self, mapping: WanDiTMapping):
-        super().__init__()
-        self.mapping = mapping
-
-    @property
-    def dit(self) -> nn.Module:
-        return self.mapping.dit
-
-    def forward(self, clean_video_latent: torch.Tensor) -> torch.Tensor:
-        flow_time = torch.zeros(clean_video_latent.shape[0], device=clean_video_latent.device,
-                                dtype=clean_video_latent.dtype)
-        raw_velocity = self.mapping(clean_video_latent, flow_time)
-        z4d = -raw_velocity
-        if z4d.shape != clean_video_latent.shape:
-            raise RuntimeError(f"Z4D {tuple(z4d.shape)} != clean latent {tuple(clean_video_latent.shape)}")
-        return z4d
-
-
 class ResidualBlock3D(nn.Module):
     def __init__(self, channels: int):
         super().__init__()
@@ -87,7 +53,6 @@ class WanHiddenGeometryBackbone(nn.Module):
                  geometry_dim: int = 128, num_frames: int = 21, spatial_size: int = 16,
                  motion_slots: int = 16, num_heads: int = 8, use_clean_skip: bool = True,
                  layer_gate_temperature: float = 1.0, layer_gate_top_k: int | None = None,
-                 layer_gate_init_std: float = 0.0, layer_gate_seed: int = 0,
                  layer_gate_initial_logits: Sequence[float] | None = None,
                  native_512: bool = False):
         super().__init__()
@@ -103,15 +68,12 @@ class WanHiddenGeometryBackbone(nn.Module):
         self.use_clean_skip = bool(use_clean_skip)
         self.layer_gate_temperature = float(layer_gate_temperature)
         self.layer_gate_top_k = len(self.hidden_layers) if layer_gate_top_k is None else int(layer_gate_top_k)
-        self.layer_gate_init_std = float(layer_gate_init_std)
         if self.geometry_dim % int(num_heads):
             raise ValueError("geometry_dim must be divisible by geometry attention heads")
         if self.layer_gate_temperature <= 0:
             raise ValueError("layer gate temperature must be positive")
         if not 1 <= self.layer_gate_top_k <= len(self.hidden_layers):
             raise ValueError("layer gate top-k must be within the selected hidden layers")
-        if self.layer_gate_init_std < 0:
-            raise ValueError("layer gate initialization std must be non-negative")
         hidden_dim = int(mapping.dit.config.num_attention_heads * mapping.dit.config.attention_head_dim)
         native_frames = WAN_LATENT_SHAPE[1] // int(mapping.dit.config.patch_size[0])
         self.native_frames = native_frames
@@ -119,17 +81,13 @@ class WanHiddenGeometryBackbone(nn.Module):
             nn.Sequential(nn.LayerNorm(hidden_dim), nn.Linear(hidden_dim, self.geometry_dim))
             for _ in self.hidden_layers
         ])
-        initial_layer_logits = torch.zeros(len(self.hidden_layers))
-        if layer_gate_initial_logits is not None:
-            initial_layer_logits = torch.as_tensor(layer_gate_initial_logits, dtype=torch.float32).clone()
-            if initial_layer_logits.shape != (len(self.hidden_layers),):
-                raise ValueError("layer_gate_initial_logits must match hidden_layers")
-            if not torch.isfinite(initial_layer_logits).all():
-                raise ValueError("layer gate initial logits must be finite")
-        elif self.layer_gate_init_std:
-            generator = torch.Generator(device="cpu")
-            generator.manual_seed(int(layer_gate_seed))
-            initial_layer_logits.normal_(std=self.layer_gate_init_std, generator=generator)
+        if layer_gate_initial_logits is None:
+            raise ValueError("layer_gate_initial_logits is required by the supported profile")
+        initial_layer_logits = torch.as_tensor(layer_gate_initial_logits, dtype=torch.float32).clone()
+        if initial_layer_logits.shape != (len(self.hidden_layers),):
+            raise ValueError("layer_gate_initial_logits must match hidden_layers")
+        if not torch.isfinite(initial_layer_logits).all():
+            raise ValueError("layer gate initial logits must be finite")
         self.layer_logits = nn.Parameter(initial_layer_logits)
         self.clean_projection = nn.Conv3d(WAN_LATENT_SHAPE[0], self.geometry_dim, 1) \
             if self.use_clean_skip else None
@@ -201,17 +159,12 @@ class WanHiddenGeometryBackbone(nn.Module):
         return -(weights * weights.clamp_min(1e-12).log()).sum()
 
     def forward(self, clean_video_latent: torch.Tensor,
-                encoder_hidden_states: torch.Tensor | None = None) -> StructuredZ4D:
+                encoder_hidden_states: torch.Tensor) -> StructuredZ4D:
         flow_time = torch.zeros(clean_video_latent.shape[0], device=clean_video_latent.device,
                                 dtype=clean_video_latent.dtype)
-        if encoder_hidden_states is None:
-            hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
-                clean_video_latent, flow_time, self.hidden_layers
-            )
-        else:
-            hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
-                clean_video_latent, flow_time, self.hidden_layers, encoder_hidden_states
-            )
+        hidden_layers, grid_shape = self.mapping.forward_hidden_layers(
+            clean_video_latent, flow_time, self.hidden_layers, encoder_hidden_states
+        )
         if grid_shape[0] != self.native_frames:
             raise RuntimeError(f"Wan hidden temporal grid {grid_shape[0]} != {self.native_frames}")
         projected = torch.stack([

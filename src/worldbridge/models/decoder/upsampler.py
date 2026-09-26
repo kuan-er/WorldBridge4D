@@ -15,7 +15,7 @@ class DenseUpsampler2D(nn.Module):
 
     def __init__(self, query_dim: int = 256, channels: Sequence[int] = (256, 128, 64, 32),
                  latent_size: tuple[int, int] = (16, 16), output_size: tuple[int, int] = (128, 128),
-                 fullres_coordinates: bool = False, source_rgb_pyramid: bool = False,
+                 source_rgb_pyramid: bool = False,
                  source_rgb_channels: Sequence[int] = (32, 64, 128),
                  source_rgb_fusion_32: bool = False, native_512: bool = False):
         super().__init__()
@@ -27,11 +27,10 @@ class DenseUpsampler2D(nn.Module):
             raise ValueError(f"{latent_size} with {len(channels)-1} x2 stages does not produce {output_size}")
         self.native_512 = bool(native_512)
         if self.native_512 and (latent_size != (32, 32) or output_size != (256, 256)
-                                or fullres_coordinates or not source_rgb_pyramid):
+                                or not source_rgb_pyramid):
             raise ValueError('native512 extends the checkpoint-stable RGB32-to256 decoder only')
         self.latent_size = tuple(latent_size)
         self.output_size = tuple(output_size)
-        self.fullres_coordinates = bool(fullres_coordinates)
         self.source_rgb_pyramid_enabled = bool(source_rgb_pyramid)
         self.source_rgb_fusion_32 = bool(source_rgb_fusion_32)
         self.projection = nn.Conv2d(query_dim, channels[0], 3, padding=1)
@@ -57,18 +56,7 @@ class DenseUpsampler2D(nn.Module):
                 self.source_fusions[str(scale)] = GatedSourceFusion(
                     self.source_rgb_encoder.channels_by_scale[scale], tracking_channels,
                 )
-        self.xyz = nn.Conv2d(channels[-1] + (2 if self.fullres_coordinates else 0), 3, 3, padding=1)
-        if self.fullres_coordinates:
-            v, u = torch.meshgrid(
-                torch.linspace(-1.0, 1.0, self.output_size[0]),
-                torch.linspace(-1.0, 1.0, self.output_size[1]),
-                indexing="ij",
-            )
-            self.register_buffer(
-                "fullres_uv",
-                torch.stack((u, v), dim=0).unsqueeze(0),
-                persistent=False,
-            )
+        self.xyz = nn.Conv2d(channels[-1], 3, 3, padding=1)
 
     def encode_source_rgb(self, source_rgb: torch.Tensor) -> dict[int, torch.Tensor]:
         if not self.source_rgb_pyramid_enabled or self.source_rgb_encoder is None:
@@ -111,8 +99,6 @@ class DenseUpsampler2D(nn.Module):
                 x = self.source_fusions[str(scale)](
                     x, source_pyramid[scale], int(batch), int(pairs),
                 )
-        if self.fullres_coordinates:
-            x = torch.cat((x, self.fullres_uv.expand(x.shape[0], -1, -1, -1).to(dtype=x.dtype)), dim=1)
         x = self.xyz(x)
         if x.shape[-2:] != output_size:
             raise RuntimeError(f"upsampler output {tuple(x.shape[-2:])} != {output_size}")
